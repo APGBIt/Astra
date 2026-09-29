@@ -1,0 +1,22 @@
+ASTRA · Tu vida en modo juego de rol
+====================================
+
+Esta carpeta es la app completa. Funciona en el navegador y se instala en el celular.
+Tus datos se guardan solo en tu teléfono.
+
+1) PROBARLA EN LA COMPUTADORA
+   Abre index.html con Google Chrome o Microsoft Edge.
+
+2) PUBLICARLA CON TU PROPIO ENLACE (gratis)
+   GitHub Pages: sube el proyecto a un repositorio y activa Pages sobre la carpeta docs/.
+   Netlify: entra en https://app.netlify.com/drop y arrastra ESTA carpeta.
+
+3) INSTALARLA EN EL CELULAR
+   Android (Chrome): menú ⋮ → «Instalar app».
+   iPhone (Safari): Compartir → «Agregar a inicio».
+
+4) LECTURA DE RECIBOS CON IA
+   Personaje → Ajustes → Lectura con IA. Lo más seguro es el servidor propio (carpeta server/).
+
+5) TUS DATOS
+   Personaje → Ajustes → «Descargar copia» para guardar tu progreso o pasarlo a otro teléfono.
