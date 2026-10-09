@@ -1,6 +1,6 @@
 import { useState, useRef } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
-import { Sheet, SheetHead, money, toast, areaColor, areaSoft } from '../ui/kit.jsx';
+import { Sheet, SheetHead, money, toast, areaColor, areaSoft, dueLabel } from '../ui/kit.jsx';
 import { canDictate, dictate } from '../ui/dictate.js';
 import { act, useApp } from '../app/store.js';
 import { back, go } from '../app/router.js';
@@ -8,16 +8,17 @@ import { parseCapture } from '../game/parse.js';
 import { MOOD_QUADS } from '../game/content.js';
 import {
   dayMissions, addTx, logHealth, completeMission, addPerson, contactPerson, addMood, finishFocus, logCalm, logPages, addBook, catName, fmtHours, uid,
+  addTodo, todoCategory, repeatLabel,
 } from '../game/logic.js';
 import { aiProvider, aiJSON, capturePrompt, aiErrorText } from '../ai/ai.js';
 
 const SHORTCUTS = [
+  { href: '/pendientes/nuevo', icon: 'list', label: 'Pendiente', area: null },
   { href: '/recibo', icon: 'camera', label: 'Escanear recibo', area: 'finanzas' },
   { href: '/finanzas?alerta=1', icon: 'paste', label: 'Pegar alerta del banco', area: 'finanzas' },
   { href: '/animo', icon: 'face', label: 'Ánimo', area: 'emocional' },
   { href: '/enfoque', icon: 'timer', label: 'Enfoque', area: 'laborales' },
   { href: '/personas', icon: 'people', label: 'Contacto', area: 'relaciones' },
-  { href: '/area/salud', icon: 'pulse', label: 'Salud', area: 'salud' },
 ];
 
 export function describeItem(s, it) {
@@ -34,6 +35,10 @@ export function describeItem(s, it) {
     case 'mission': return { icon: 'check', area: s.missions.find((m) => m.id === it.missionId)?.area || 'crecimiento', title: `Completa «${it.title}»`, sub: 'Misión de hoy' };
     case 'focus': return { icon: 'timer', area: 'laborales', title: `Enfoque · ${it.minutes} minutos`, sub: 'Sesión de trabajo' };
     case 'calm': return { icon: 'face', area: 'emocional', title: `Calma · ${it.minutes} minutos`, sub: 'Respiración o meditación' };
+    case 'todo': {
+      const c = todoCategory(s, it.cat);
+      return { icon: 'list', area: c.area, title: `Pendiente · ${it.title}`, sub: `${c.name}${it.due ? ` · ${dueLabel(it.due, s.energy.day).toLowerCase()}` : ''}${it.repeat ? ` · ${repeatLabel(it.repeat).toLowerCase()}` : ''}${it.important ? ' · importante' : ''}` };
+    }
     default: return { icon: 'note', area: 'emocional', title: 'Nota del día', sub: it.text };
   }
 }
@@ -61,6 +66,7 @@ export function applyItems(st, items, today, ev) {
       case 'mission': completeMission(st, it.missionId, today, ev); break;
       case 'focus': finishFocus(st, { minutes: it.minutes, label: 'Registrado' }, today, ev); break;
       case 'calm': logCalm(st, it.minutes, today, ev); break;
+      case 'todo': addTodo(st, { title: it.title, cat: it.cat, due: it.due, important: it.important, repeat: it.repeat }, today); break;
       default:
         st.journal = st.journal || [];
         st.journal.unshift({ id: uid(), day: today, text: String(it.text).slice(0, 500) });
@@ -83,7 +89,7 @@ export function Capture() {
   const close = () => back('/');
 
   const understand = (t = text) => {
-    const ctx = { people: s.people, missions: dayMissions(s, today).pending };
+    const ctx = { people: s.people, missions: dayMissions(s, today).pending, today };
     setItems(parseCapture(t, ctx));
     setOff({});
     setAiMsg('');
@@ -101,7 +107,7 @@ export function Capture() {
     try {
       const p = await aiProvider(s.settings);
       if (!p) throw { code: 'no_ai' };
-      const r = await aiJSON(p, capturePrompt(text, s.people), { task: 'texto' });
+      const r = await aiJSON(p, capturePrompt(text, s.people, today), { task: 'texto' });
       const list = Array.isArray(r.items) ? r.items : [];
       const fixed = list.map((it) => {
         if (it.kind === 'contact') {
@@ -109,8 +115,9 @@ export function Capture() {
           return { ...it, personId: person ? person.id : null, name: person ? person.name : it.name };
         }
         if (it.kind === 'mood') return { ...it, quad: Math.max(0, Math.min(3, Number(it.quad) || 0)) };
+        if (it.kind === 'todo') return { ...it, title: String(it.title || '').slice(0, 120), due: /^\d{4}-\d{2}-\d{2}$/.test(it.due || '') ? it.due : null, cat: it.cat || 'general', important: !!it.important, repeat: ['semana', 'mes', 'ano'].includes(it.repeat) ? it.repeat : null };
         return it;
-      }).filter((it) => ['tx', 'health', 'pages', 'contact', 'mood', 'focus', 'note', 'calm'].includes(it.kind));
+      }).filter((it) => ['tx', 'health', 'pages', 'contact', 'mood', 'focus', 'note', 'calm', 'todo'].includes(it.kind) && (it.kind !== 'todo' || it.title));
       if (fixed.length) { setItems(fixed); setOff({}); } else setAiMsg('La IA tampoco encontró algo que registrar.');
     } catch (e) {
       setAiMsg(aiErrorText(e));
@@ -137,7 +144,7 @@ export function Capture() {
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, padding: '8px 8px 8px 16px', background: 'var(--surface)', border: '2px solid var(--ink)', borderRadius: 22 }}>
           <textarea id="cap" rows={2} value={text} maxLength={600} placeholder="Ej. Gasté 850 en el súper y caminé 40 minutos" onInput={(e) => { setText(e.currentTarget.value); setItems(null); }}
             style={{ flex: '1 1 auto', border: 'none', outline: 'none', resize: 'none', background: 'transparent', fontSize: 16, lineHeight: 1.4, color: 'var(--ink)', minHeight: 48 }} />
-          {canDictate && <button type="button" class="icon-btn" aria-label={listening ? 'Detener dictado' : 'Dictar'} aria-pressed={listening ? 'true' : 'false'} onClick={mic} style={listening ? { background: 'var(--vit)', color: '#fff' } : null}><Icon name="mic" size={20} /></button>}
+          {canDictate && <button type="button" class="icon-btn" aria-label={listening ? 'Detener dictado' : 'Dictar'} aria-pressed={listening ? 'true' : 'false'} onClick={mic} style={listening ? { background: 'var(--vit)', color: 'var(--on-accent)' } : null}><Icon name="mic" size={20} /></button>}
         </div>
         {!items && <button type="button" class="btn block" disabled={text.trim().length < 3} onClick={() => understand()}><Icon name="sparkle" size={18} />Entender</button>}
       </div>

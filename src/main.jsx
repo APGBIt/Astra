@@ -6,7 +6,9 @@ import { initPWA } from './app/pwa.js';
 import { Toasts, Celebrations, Confirmer } from './ui/kit.jsx';
 import { Welcome, Create, NewGoal } from './screens/Onboarding.jsx';
 import { Home } from './screens/Home.jsx';
-import { NewMission, MissionDetail } from './screens/Missions.jsx';
+import { NewMission, MissionDetail, MissionsList } from './screens/Missions.jsx';
+import { Todos, TodoSheet } from './screens/Todos.jsx';
+import { Record, RecordSection } from './screens/Record.jsx';
 import { Capture } from './screens/Capture.jsx';
 import { Receipt } from './screens/Receipt.jsx';
 import { Finance } from './screens/Finance.jsx';
@@ -15,21 +17,39 @@ import { Areas, Health, Mood, People, Learn, Focus } from './screens/Areas.jsx';
 import { Character, Inn, Shop, Chronicle, Recovery } from './screens/Character.jsx';
 import { Settings } from './screens/Settings.jsx';
 
+// Las hojas (misión, pendiente, registrar) se abren encima de su pantalla. Esa pantalla no se vuelve
+// a montar: conserva dónde ibas en la lista, el filtro y la búsqueda.
+function screenKey(parts) {
+  const [a] = parts;
+  if (!a || a === 'mision' || a === 'registrar') return 'hoy';
+  if (a === 'pendientes' || a === 'misiones') return a;
+  return parts.join('/');
+}
+const sameScreen = (x, y) => screenKey(x.parts) === screenKey(y.parts);
+
 function Screen({ route }) {
   const s = useApp();
   const [a, b, c] = route.parts;
   const q = route.query;
+  const k = route.path;
   if (!s.profile.onboarded) {
     if (a === 'crear') return <Create />;
     return <Welcome />;
   }
   switch (a) {
-    case undefined: return <Home />;
+    case undefined:
     case 'mision':
-      if (b === 'nueva') return <><Home /><NewMission /></>;
-      if (c === 'editar') return <><Home /><NewMission id={b} /></>;
-      return <><Home /><MissionDetail id={b} /></>;
-    case 'registrar': return <><Home /><Capture /></>;
+    case 'registrar': {
+      let sheet = null;
+      if (a === 'registrar') sheet = <Capture key={k} />;
+      else if (a === 'mision') sheet = b === 'nueva' ? <NewMission key={k} /> : c === 'editar' ? <NewMission key={k} id={b} /> : <MissionDetail key={k} id={b} />;
+      return <><Home />{sheet}</>;
+    }
+    case 'misiones':
+      return <><MissionsList />{b && (c === 'editar' ? <NewMission key={k} id={b} backTo="/misiones" /> : <MissionDetail key={k} id={b} base="/misiones" />)}</>;
+    case 'pendientes':
+      return <><Todos query={q} />{b && (b === 'nuevo' ? <TodoSheet key={k} query={q} /> : <TodoSheet key={k} id={b} />)}</>;
+    case 'expediente': return b ? <RecordSection id={b} /> : <Record />;
     case 'recibo': return <Receipt />;
     case 'finanzas': return <Finance query={q} />;
     case 'camino': return <Path query={q} />;
@@ -52,7 +72,7 @@ function Screen({ route }) {
 }
 
 function App() {
-  const route = useRoute();
+  const route = useRoute(sameScreen);
   useEffect(() => {
     applyTheme(getState().settings.theme);
     runReconcile();
@@ -64,7 +84,7 @@ function App() {
   }, []);
   return (
     <div class="app">
-      <Screen key={route.path} route={route} />
+      <Screen key={screenKey(route.parts)} route={route} />
       <Toasts />
       <Celebrations />
       <Confirmer />

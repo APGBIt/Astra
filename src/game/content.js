@@ -217,6 +217,52 @@ export const DEADLINES = [
   { days: 180, label: '6 meses' },
 ];
 
+// Metas diarias que cada persona puede cambiar (Ajustes → Metas diarias).
+export const DEFAULT_GOALS = { steps: 8000, water: 8, exercise: 30 };
+export const GOAL_PRESETS = {
+  sleep: [6, 7, 8, 9],
+  steps: [5000, 8000, 10000, 12000],
+  water: [6, 8, 10],
+  exercise: [20, 30, 45, 60],
+};
+
+// ---------- Pendientes ----------
+
+// Categorías fijas: General (sin atributo) y las seis áreas. Las propias se crean en la app.
+export const TODO_GENERAL = { id: 'general', name: 'General', area: null };
+export const TODO_XP = { base: 5, important: 5 };
+export const TODO_GOLD = { base: 2, important: 2 };
+
+// ---------- Expediente personal ----------
+
+// Formas de las listas del expediente: qué pide cada registro y qué fecha avisa.
+export const RECORD_SCHEMAS = {
+  docs: { item: 'documento', items: 'documentos', labels: { title: 'Documento', detail: 'Número (opcional)', end: 'Vence' }, suggest: ['Cédula', 'Pasaporte', 'Licencia de conducir', 'Seguro médico', 'Seguro del vehículo', 'Marbete', 'Visa'], alert: 'Vence', secretDetail: true },
+  checkups: { item: 'chequeo', items: 'chequeos', labels: { title: 'Chequeo', detail: 'Médico o lugar', start: 'Último', end: 'Próximo' }, suggest: ['Chequeo general', 'Odontólogo', 'Oftalmólogo', 'Análisis de sangre', 'Ginecólogo', 'Dermatólogo'], alert: 'Próximo' },
+  contacts: { item: 'contacto', items: 'contactos', labels: { title: 'Nombre', detail: 'Parentesco', phone: 'Teléfono' }, suggest: ['Mamá', 'Papá', 'Pareja', 'Hermano', 'Hermana'] },
+  study: { item: 'estudio', items: 'estudios', labels: { title: 'Título o curso', detail: 'Institución', start: 'Desde', end: 'Hasta' }, suggest: ['Licenciatura', 'Maestría', 'Diplomado', 'Certificación', 'Curso'] },
+  jobs: { item: 'puesto', items: 'puestos', labels: { title: 'Puesto', detail: 'Institución', start: 'Desde', end: 'Hasta (vacío si es el actual)', note: 'Logros y funciones' } },
+  assets: { item: 'registro', items: 'registros', labels: { title: 'Cuenta, seguro o bien', detail: 'Entidad o últimos 4 dígitos', end: 'Vence o se renueva', note: 'Nota' }, suggest: ['Cuenta de ahorro', 'Tarjeta de crédito', 'Préstamo', 'AFP', 'Seguro de vida', 'Seguro de la casa', 'Vehículo', 'Inmueble'], alert: 'Vence', secretDetail: true, last4: true, hint: 'Anota solo los últimos 4 dígitos. Si escribes un número completo, guardo solo el final. Nunca guardes claves ni PIN.' },
+  milestones: { item: 'hito', items: 'hitos', labels: { title: 'Logro o hito', start: 'Fecha', note: 'Nota' } },
+  generic: { item: 'registro', items: 'registros', labels: { title: 'Nombre', detail: 'Detalle', start: 'Fecha', end: 'Vence o próxima fecha', note: 'Nota' }, alert: 'Fecha clave' },
+};
+
+// Secciones con las que empieza el expediente. [etiqueta, tipo, oculto]
+export const RECORD_SECTIONS = [
+  { id: 'datos', kind: 'fields', icon: 'user', title: 'Datos personales', area: null, fields: [['Nombre completo'], ['Fecha de nacimiento', 'date'], ['Cédula', 'text', true], ['Teléfono', 'tel'], ['Correo', 'email'], ['Dirección'], ['Estado civil'], ['Profesión u ocupación']] },
+  { id: 'documentos', kind: 'list', schema: 'docs', icon: 'idcard', title: 'Documentos y vencimientos', area: null },
+  { id: 'salud', kind: 'fields', icon: 'heart', title: 'Salud', area: 'salud', fields: [['Tipo de sangre'], ['Alergias', 'long'], ['Condiciones', 'long'], ['Medicamentos', 'long'], ['Médico de cabecera'], ['Seguro médico (ARS)'], ['Número de afiliado', 'text', true]] },
+  { id: 'chequeos', kind: 'list', schema: 'checkups', icon: 'pulse', title: 'Chequeos médicos', area: 'salud' },
+  { id: 'emergencia', kind: 'list', schema: 'contacts', icon: 'phone', title: 'Contactos de emergencia', area: 'relaciones' },
+  { id: 'formacion', kind: 'list', schema: 'study', icon: 'cap', title: 'Formación y certificaciones', area: 'crecimiento' },
+  { id: 'trayectoria', kind: 'list', schema: 'jobs', icon: 'briefcase', title: 'Trayectoria laboral', area: 'laborales' },
+  { id: 'patrimonio', kind: 'list', schema: 'assets', icon: 'coins', title: 'Cuentas, seguros y bienes', area: 'finanzas' },
+  { id: 'hitos', kind: 'list', schema: 'milestones', icon: 'flag', title: 'Logros e hitos', area: null },
+  { id: 'proposito', kind: 'fields', icon: 'sparkle', title: 'Quién soy', area: 'emocional', fields: [['Mi propósito', 'long'], ['Mis valores', 'long'], ['Mis fortalezas', 'long'], ['Lo que quiero mejorar', 'long'], ['Cómo me veo en 5 años', 'long']] },
+];
+export const RECORD_ICONS = ['note', 'folder', 'idcard', 'heart', 'home', 'coins', 'car', 'cap', 'briefcase', 'people', 'flag', 'star'];
+export const RECORD_XP = { field: 3, item: 5, dailyCap: 60 };
+
 export const INTENSITIES = [
   { key: 'suave', label: 'Suave', energy: 2, missions: 1 },
   { key: 'normal', label: 'Normal', energy: 3, missions: 2 },
@@ -310,11 +356,11 @@ export const CATEGORY_WORDS = {
 
 // Palabras que sugieren el atributo de una misión (sin tildes, en minúscula).
 export const AREA_WORDS = {
-  salud: ['camin', 'corr', 'entren', 'gym', 'gimnasio', 'pasos', 'dorm', 'sueno', 'agua', 'fruta', 'ensalada', 'vegetal', 'yoga', 'estir', 'bici', 'nad', 'medico', 'chequeo', 'vitamina', 'ejercicio', 'pesas', 'deporte', 'cocina', 'azucar', 'refresco', 'comer'],
+  salud: ['camin', 'corr', 'entren', 'gym', 'gimnasio', 'pasos', 'dorm', 'sueno', 'agua', 'fruta', 'ensalada', 'vegetal', 'yoga', 'estir', 'bici', 'nad', 'medico', 'chequeo', 'vitamina', 'ejercicio', 'pesas', 'deporte', 'cocina', 'azucar', 'refresco', 'comer', 'dentista', 'odontolog', 'doctor', 'analisis', 'farmacia', 'medicina'],
   emocional: ['medit', 'respir', 'diario', 'gratitud', 'terapia', 'calma', 'relaj', 'ansiedad', 'estres', 'journal', 'sentir', 'emocion', 'pantalla', 'desconect', 'orar', 'silencio'],
   relaciones: ['llam', 'escrib', 'visit', 'mama', 'papa', 'amig', 'familia', 'pareja', 'hijo', 'hija', 'cena con', 'almuerzo con', 'cumple', 'whatsapp', 'abuel', 'herman', 'tio', 'prim', 'novi', 'esposa', 'esposo'],
-  crecimiento: ['leer', 'lee', 'libro', 'pagina', 'curso', 'estudi', 'aprend', 'ingles', 'clase', 'podcast', 'practic', 'idioma', 'certific', 'tutorial', 'tarjetas', 'repas', 'python', 'excel'],
-  finanzas: ['gast', 'ahorr', 'presupuest', 'deuda', 'factur', 'banco', 'invers', 'dinero', 'recibo', 'tarjeta', 'prestamo', 'cuenta', 'compra', 'impulso', 'pago'],
+  crecimiento: ['leer', 'lee', 'libro', 'pagina', 'curso', 'estudi', 'aprend', 'ingles', 'clase', 'podcast', 'practic', 'idioma', 'certific', 'tutorial', 'tarjetas', 'repas', 'python', 'excel', 'maestr', 'diplomado', 'matricul', 'tesis', 'tarea'],
+  finanzas: ['gast', 'ahorr', 'presupuest', 'deuda', 'factur', 'banco', 'invers', 'dinero', 'recibo', 'tarjeta', 'prestamo', 'cuenta', 'compra', 'impulso', 'pago', 'pagar', 'marbete', 'impuesto', 'dgii', 'seguro'],
   laborales: ['informe', 'reunion', 'correo', 'email', 'proyecto', 'trabajo', 'oficina', 'presentacion', 'enfoque', 'pomodoro', 'cliente', 'entrega', 'agenda', 'jornada'],
 };
 

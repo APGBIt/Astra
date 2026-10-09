@@ -196,3 +196,281 @@ test('siguiente mejor jugada', () => {
   const m = L.addMission(s, { title: 'Entrenar', area: 'salud', cost: 2, penalty: true }, D);
   assert.equal(L.nextBestAction(s, D, 9).mission.id, m.id);
 });
+
+// ---------- Versión 1.1 ----------
+
+test('pendientes: XP en su atributo, oro, deshacer y categoría General', () => {
+  const s = fresh();
+  const a = L.addTodo(s, { title: 'Pagar la luz', cat: 'finanzas', important: true }, D);
+  const g = L.addTodo(s, { title: 'Lavar el carro' }, D);
+  assert.equal(g.cat, 'general');
+  const ev = [];
+  const r = L.completeTodo(s, a.id, D, ev);
+  assert.equal(r.area, 'finanzas');
+  assert.ok(r.xp >= 10);
+  assert.ok(s.attrs.finanzas >= 10);
+  assert.equal(s.stats.todos, 1);
+  assert.equal(s.streak.count, 1);
+  const gold = s.gold;
+  L.uncompleteTodo(s, a.id);
+  assert.equal(s.attrs.finanzas, 0);
+  assert.equal(s.gold, gold - r.gold);
+  const r2 = L.completeTodo(s, g.id, D, []);
+  assert.equal(r2.area, null);
+  assert.ok(s.xp >= 5);
+  assert.equal(L.completeTodo(s, g.id, D, []), null);
+});
+
+test('pendientes: grupos por fecha y orden', () => {
+  const s = fresh();
+  L.addTodo(s, { title: 'Ayer', due: addDays(D, -1) }, D);
+  L.addTodo(s, { title: 'Hoy', due: D }, D);
+  L.addTodo(s, { title: 'Mañana', due: addDays(D, 1) }, D);
+  L.addTodo(s, { title: 'Semana', due: addDays(D, 5) }, D);
+  L.addTodo(s, { title: 'Luego', due: addDays(D, 20) }, D);
+  L.addTodo(s, { title: 'Sin fecha' }, D);
+  const by = Object.fromEntries(s.todos.map((t) => [t.title, L.todoBucket(t, D)]));
+  assert.deepEqual(by, { Ayer: 'vencidos', Hoy: 'hoy', Mañana: 'manana', Semana: 'semana', Luego: 'despues', 'Sin fecha': 'sinfecha' });
+  assert.deepEqual(L.todosDue(s, D).map((t) => t.title), ['Ayer', 'Hoy']);
+  L.addTodo(s, { title: 'Urgente', important: true, due: addDays(D, 3) }, D);
+  assert.equal(L.sortTodos(L.pendingTodos(s))[0].title, 'Urgente');
+});
+
+test('pendientes: categorías propias con atributo y al borrarlas pasan a General', () => {
+  const s = fresh();
+  const l = L.addTodoList(s, { name: 'Casa', area: 'salud' });
+  const t = L.addTodo(s, { title: 'Limpiar nevera', cat: l.id }, D);
+  assert.equal(L.todoCategory(s, t.cat).name, 'Casa');
+  const r = L.completeTodo(s, t.id, D, []);
+  assert.equal(r.area, 'salud');
+  L.uncompleteTodo(s, t.id);
+  L.removeTodoList(s, l.id);
+  assert.equal(t.cat, 'general');
+  assert.equal(L.todoCategories(s).length, 7);
+});
+
+test('expediente: secciones fijas, XP una sola vez por dato y avisos de vencimiento', () => {
+  const s = fresh();
+  assert.ok(L.recordSection(s, 'datos'));
+  const f = L.recordSection(s, 'datos').fields[0];
+  L.setRecordField(s, 'datos', f.id, 'Ana Prueba', D, []);
+  const xp1 = s.xp;
+  assert.ok(xp1 > 0);
+  L.setRecordField(s, 'datos', f.id, 'Ana Prueba Pérez', D, []);
+  assert.equal(s.xp, xp1);
+  const doc = L.addRecordItem(s, 'documentos', { title: 'Pasaporte', end: addDays(D, 20) }, D, []);
+  L.addRecordItem(s, 'documentos', { title: 'Licencia', end: addDays(D, 400) }, D, []);
+  const al = L.recordAlerts(s, D);
+  assert.equal(al.length, 1);
+  assert.equal(al[0].item.id, doc.id);
+  assert.equal(al[0].inDays, 20);
+  const t = L.alertToTodo(s, 'documentos', doc.id, D);
+  assert.equal(t.title, 'Renovar pasaporte');
+  assert.equal(t.due, addDays(D, 6));
+  assert.equal(L.alertToTodo(s, 'documentos', doc.id, D), null);
+  assert.ok(L.hasAlertTodo(s, 'documentos', doc));
+  const p = L.recordProgress(s);
+  assert.ok(p.filled >= 2 && p.pct > 0);
+});
+
+test('expediente: secciones propias y datos agregados', () => {
+  const s = fresh();
+  const sec = L.addRecordSection(s, { title: 'Mi carro', kind: 'fields', area: 'finanzas' });
+  const f = L.addRecordField(s, sec.id, { label: 'Placa', secret: true });
+  L.setRecordField(s, sec.id, f.id, 'A123456', D, []);
+  assert.equal(L.recordSection(s, sec.id).fields[0].value, 'A123456');
+  L.removeRecordSection(s, 'datos');
+  assert.ok(L.recordSection(s, 'datos'), 'las secciones fijas no se borran');
+  L.removeRecordSection(s, sec.id);
+  assert.equal(L.recordSection(s, sec.id), null);
+});
+
+test('metas: editar el número del jefe y vencerlo al alcanzarlo', () => {
+  const s = fresh();
+  const c = L.startCampaign(s, { area: 'salud', goalId: 'entrenar', target: 24, days: 60, intensity: 'normal', missions: [] }, D);
+  const b = s.bosses.find((x) => x.id === c.bossId);
+  L.hitBoss(s, b.id, 10, '', D, []);
+  L.editCampaign(s, c.id, { target: 30, deadline: addDays(D, 100), title: 'Entrenar fuerte' }, D, []);
+  assert.equal(b.target, 30);
+  assert.equal(c.days, 100);
+  assert.equal(c.title, 'Entrenar fuerte');
+  const ev = [];
+  L.editCampaign(s, c.id, { target: 8 }, D, ev);
+  assert.equal(b.status, 'won');
+  assert.ok(ev.some((e) => e.type === 'boss'));
+});
+
+test('metas: tareas propias en los capítulos', () => {
+  const s = fresh();
+  const c = L.startCampaign(s, { area: 'crecimiento', goalId: 'custom', title: 'Terminar la maestría', target: 6, unit: 'módulos', days: 180, missions: [] }, D);
+  const t = L.addTask(s, c.id, 0, 'Inscribirme en el módulo 3');
+  assert.ok(c.chapters[0].tasks.some((x) => x.id === t.id));
+  L.renameTask(s, c.id, t.id, 'Inscribirme en el módulo 4');
+  assert.equal(t.title, 'Inscribirme en el módulo 4');
+  L.removeTask(s, c.id, t.id);
+  assert.ok(!c.chapters[0].tasks.some((x) => x.id === t.id));
+});
+
+test('metas diarias propias: la meta de pasos alimenta al jefe', () => {
+  const s = fresh();
+  s.profile.goals.steps = 10000;
+  const c = L.startCampaign(s, { area: 'salud', goalId: 'moverse', target: 30, days: 30, intensity: 'normal', missions: [] }, D);
+  const b = s.bosses.find((x) => x.id === c.bossId);
+  L.logHealth(s, D, { steps: 9000 }, D, []);
+  assert.equal(b.progress, 0);
+  L.logHealth(s, D, { steps: 10500 }, D, []);
+  assert.equal(b.progress, 1);
+  const sug = L.suggestedMissions('salud', 'moverse', 'normal', s)[0];
+  assert.equal(sug.title, '10,000 pasos');
+  assert.equal(sug.auto.gte, 10000);
+});
+
+test('un entrenamiento cuenta una sola vez al día aunque marques la misión y el ejercicio', () => {
+  const s = fresh();
+  const c = L.startCampaign(s, { area: 'salud', goalId: 'entrenar', target: 24, days: 60, intensity: 'normal', missions: [{ title: 'Entrenar 30 minutos', cost: 2, feed: 'training' }] }, D);
+  const b = s.bosses.find((x) => x.id === c.bossId);
+  const m = s.missions[0];
+  L.completeMission(s, m.id, D, []);
+  L.logHealth(s, D, { exercise: 40 }, D, []);
+  assert.equal(b.progress, 1);
+});
+
+test('misiones archivadas se pueden restaurar', () => {
+  const s = fresh();
+  const m = L.addMission(s, { title: 'Leer', area: 'crecimiento', cost: 1 }, D);
+  L.archiveMission(s, m.id);
+  assert.equal(L.dayMissions(s, D).all.length, 0);
+  L.restoreMission(s, m.id);
+  assert.equal(L.dayMissions(s, D).all.length, 1);
+});
+
+test('siguiente mejor jugada sugiere un pendiente vencido si no hay misiones', () => {
+  const s = fresh();
+  L.logHealth(s, D, { sleep: 7 }, D, []);
+  const t = L.addTodo(s, { title: 'Pagar la luz', due: addDays(D, -1) }, D);
+  const n = L.nextBestAction(s, D, 10);
+  assert.equal(n.kind, 'todo');
+  assert.equal(n.todo.id, t.id);
+});
+
+test('pendientes que se repiten: al completarlos aparece el siguiente y deshacer lo quita', () => {
+  const s = fresh();
+  const ev = [];
+  const t = L.addTodo(s, { title: 'Pagar la luz', cat: 'finanzas', due: '2026-10-15', repeat: 'mes' }, D);
+  assert.equal(t.anchor, 15);
+  const r = L.completeTodo(s, t.id, D, ev);
+  assert.equal(r.next, '2026-11-15');
+  const next = s.todos.find((x) => !x.done && x.title === 'Pagar la luz');
+  assert.equal(next.due, '2026-11-15');
+  assert.equal(next.repeat, 'mes');
+  L.uncompleteTodo(s, t.id);
+  assert.equal(s.todos.filter((x) => x.title === 'Pagar la luz').length, 1);
+  // Atrasado varios meses: el siguiente queda en el futuro.
+  const old = L.addTodo(s, { title: 'Cuota del gimnasio', due: '2026-06-28', repeat: 'mes' }, D);
+  assert.equal(L.completeTodo(s, old.id, D, ev).next, '2026-10-28');
+  // Fin de mes: el 31 pasa al último día del mes siguiente y vuelve al 31.
+  assert.equal(L.nextRepeat('2026-01-31', 'mes', 31), '2026-02-28');
+  assert.equal(L.nextRepeat('2026-02-28', 'mes', 31), '2026-03-31');
+  assert.equal(L.nextRepeat('2026-10-09', 'semana'), '2026-10-16');
+  assert.equal(L.nextRepeat('2028-02-29', 'ano', 29), '2029-02-28');
+  // Si se repite y no tiene fecha, empieza hoy.
+  assert.equal(L.addTodo(s, { title: 'Regar las plantas', repeat: 'semana' }, D).due, D);
+});
+
+test('posponer un pendiente que se repite no mueve la serie', () => {
+  const s = fresh();
+  // Lunes 28 de septiembre: la factura vence el 20 y no llegaste.
+  const t = L.addTodo(s, { title: 'Pagar el internet', cat: 'finanzas', due: '2026-09-20', repeat: 'mes' }, D);
+  assert.equal(t.anchor, 20);
+  L.postponeTodo(s, t.id, addDays(D, 1));
+  assert.equal(t.due, '2026-09-29');
+  assert.equal(t.anchor, 20);
+  const r = L.completeTodo(s, t.id, addDays(D, 1), []);
+  assert.equal(r.next, '2026-10-20');
+  // Cambiar la fecha a mano sí mueve la serie.
+  const w = L.addTodo(s, { title: 'Sacar la basura', due: D, repeat: 'semana' }, D);
+  L.updateTodo(s, w.id, { due: addDays(D, 2) }, D);
+  assert.equal(L.completeTodo(s, w.id, addDays(D, 2), []).next, addDays(D, 9));
+  // Posponer uno semanal: el siguiente sigue en lunes.
+  const g = L.addTodo(s, { title: 'Revisar el presupuesto', due: D, repeat: 'semana' }, D);
+  L.postponeTodo(s, g.id, addDays(D, 2));
+  assert.equal(L.completeTodo(s, g.id, addDays(D, 2), []).next, addDays(D, 7));
+  assert.equal(L.postponeTodo(s, g.id, 'mañana'), null);
+});
+
+test('pasar a hoy los vencidos (todos o solo los que ves)', () => {
+  const s = fresh();
+  const a = L.addTodo(s, { title: 'A', due: addDays(D, -3) }, D);
+  const b = L.addTodo(s, { title: 'B', due: addDays(D, -1), cat: 'salud' }, D);
+  const c = L.addTodo(s, { title: 'C', due: addDays(D, 2) }, D);
+  assert.equal(L.overdueToToday(s, D, [b.id]), 1);
+  assert.equal(b.due, D);
+  assert.equal(a.due, addDays(D, -3));
+  assert.equal(L.overdueToToday(s, D), 1);
+  assert.equal(a.due, D);
+  assert.equal(c.due, addDays(D, 2));
+});
+
+test('los pendientes de un área incluyen tus categorías que suben ese atributo', () => {
+  const s = fresh();
+  const m = L.addTodoList(s, { name: 'Maestría', area: 'crecimiento' });
+  L.addTodo(s, { title: 'Leer el caso', cat: 'crecimiento' }, D);
+  L.addTodo(s, { title: 'Entregar el ensayo', cat: m.id }, D);
+  L.addTodo(s, { title: 'Pagar la luz', cat: 'finanzas' }, D);
+  assert.deepEqual(L.todosForArea(s, 'crecimiento').map((t) => t.title).sort(), ['Entregar el ensayo', 'Leer el caso']);
+  assert.equal(L.todosIn(s, 'crecimiento').length, 1);
+});
+
+test('meta de pasos propia: las misiones de pasos la siguen', () => {
+  const s = fresh();
+  const m = L.addMission(s, { title: '8,000 pasos', area: 'salud', cost: 1, auto: { metric: 'steps', gte: 8000 } }, D);
+  const other = L.addMission(s, { title: 'Caminata larga: 15000 pasos', area: 'salud', cost: 2, auto: { metric: 'steps', gte: 15000 } }, D);
+  L.setDailyGoal(s, 'steps', 10000, D);
+  assert.equal(L.dailyGoal(s, 'steps'), 10000);
+  assert.equal(m.title, '10,000 pasos');
+  assert.equal(m.auto.gte, 10000);
+  assert.equal(other.auto.gte, 15000);
+  assert.equal(other.title, 'Caminata larga: 15000 pasos');
+  // Ya no se completa con 9,000 pasos.
+  L.logHealth(s, D, { steps: 9000 }, D, []);
+  assert.equal(L.isDone(s, m, D), false);
+  L.logHealth(s, D, { steps: 10500 }, D, []);
+  assert.equal(L.isDone(s, m, D), true);
+  // Sueño: la energía de hoy se recalcula con la meta nueva.
+  L.logHealth(s, D, { sleep: 7 }, D, []);
+  assert.equal(L.energyInfo(s, D).max, 10);
+  L.setDailyGoal(s, 'sleep', 8, D);
+  assert.equal(s.profile.sleepGoal, 8);
+  assert.equal(L.energyInfo(s, D).max, 8);
+  L.setDailyGoal(s, 'water', 0, D);
+  assert.equal(L.dailyGoal(s, 'water'), 8);
+});
+
+test('expediente: la sección de cuentas y seguros entra en su lugar al actualizar', () => {
+  const s = fresh();
+  const ids = s.record.sections.map((x) => x.id);
+  assert.ok(ids.indexOf('patrimonio') === ids.indexOf('trayectoria') + 1);
+  // Un expediente guardado antes de existir la sección la recibe después de «Trayectoria laboral».
+  s.record.sections = s.record.sections.filter((x) => x.id !== 'patrimonio');
+  L.addRecordSection(s, { title: 'Mi vehículo', kind: 'fields' });
+  L.ensureRecord(s);
+  const after = s.record.sections.map((x) => x.id);
+  assert.equal(after[after.indexOf('trayectoria') + 1], 'patrimonio');
+  assert.equal(after[after.length - 1].startsWith('x'), true);
+  const it = L.addRecordItem(s, 'patrimonio', { title: 'Seguro de la casa', detail: 'Universal', end: addDays(D, 20) }, D, []);
+  assert.ok(it);
+  assert.ok(L.recordAlerts(s, D, 30).some((a) => a.item.id === it.id));
+});
+
+test('cuentas y tarjetas: se guarda solo el final del número', () => {
+  const s = fresh();
+  const it = L.addRecordItem(s, 'patrimonio', { title: 'Tarjeta de crédito', detail: 'Popular 4111 1111 1111 1234' }, D, []);
+  assert.equal(it.detail, 'Popular •••• 1234');
+  L.updateRecordItem(s, 'patrimonio', it.id, { detail: 'Banreservas 9600-1234-5678' });
+  assert.equal(it.detail, 'Banreservas •••• 5678');
+  assert.equal(L.keepLast4('AFP Popular · 1234'), 'AFP Popular · 1234');
+  assert.equal(L.keepLast4('Placa A123456'), 'Placa A123456');
+  // En documentos no se recorta (la cédula se guarda completa y se oculta en pantalla).
+  const d = L.addRecordItem(s, 'documentos', { title: 'Cédula', detail: '001-1234567-8' }, D, []);
+  assert.equal(d.detail, '001-1234567-8');
+});

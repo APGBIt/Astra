@@ -8,6 +8,8 @@ import { installState, promptInstall } from '../app/pwa.js';
 import { AREAS } from '../game/content.js';
 import { className } from '../game/logic.js';
 import { aiProvider, providerLabel } from '../ai/ai.js';
+import { DailyGoalsEditor } from './Goals.jsx';
+import { fmtDay } from '../app/dates.js';
 
 const MODELS = [
   { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5 (recomendado)' },
@@ -20,7 +22,7 @@ export function Settings() {
   const [name, setName] = useState(s.profile.name);
   const [prov, setProv] = useState(undefined);
   const [inst, setInst] = useState(installState());
-  const set = (fn) => act((st) => fn(st));
+  const set = (fn) => act((st, t) => fn(st, t));
 
   useEffect(() => { aiProvider(s.settings, { needImages: true }).then(setProv).catch(() => setProv(null)); }, [s.settings.aiMode, s.settings.aiKey, s.settings.serverUrl, s.settings.serverToken]);
   useEffect(() => {
@@ -43,7 +45,7 @@ export function Settings() {
       if (dl) {
         try {
           const r = await dl.save({ filename: name, data });
-          if (r && r.status === 'saved') toast('Copia descargada', 'download');
+          if (r && r.status === 'saved') { set((st, t) => { st.settings.lastBackup = t; }); toast('Copia descargada', 'download'); }
         } catch { /* la persona canceló o esta vista no permite descargas */ }
         return;
       }
@@ -56,6 +58,7 @@ export function Settings() {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    set((st, t) => { st.settings.lastBackup = t; });
     toast('Copia descargada', 'download');
   };
   const onImport = async (e) => {
@@ -73,7 +76,11 @@ export function Settings() {
       <section class="card" aria-label="Perfil">
         <h2 class="h2">Perfil</h2>
         <div class="field"><label for="nm">Nombre</label><input id="nm" class="input" value={name} maxLength={30} onInput={(e) => setName(e.currentTarget.value)} onBlur={() => set((st) => { st.profile.name = name.trim() || st.profile.name; })} /></div>
-        <div class="stack-sm"><span class="label">Meta de sueño</span><div class="chips">{[6, 7, 8, 9].map((h) => <TChip key={h} sm on={s.profile.sleepGoal === h} onClick={() => set((st) => { st.profile.sleepGoal = h; })}>{h} horas</TChip>)}</div></div>
+      </section>
+
+      <section class="card" aria-label="Metas diarias">
+        <div class="stack-xs"><h2 class="h2">Metas diarias</h2><span class="small muted">Elige una opción o toca «Otro» para escribir tu propio número.</span></div>
+        <DailyGoalsEditor />
       </section>
 
       <section class="card" aria-label="Clase">
@@ -124,7 +131,8 @@ export function Settings() {
 
       <section class="card" aria-label="Tus datos">
         <h2 class="h2">Tus datos</h2>
-        <span class="small muted">Todo vive en este navegador. Descarga una copia para no perder tu progreso o para pasarlo a otro teléfono.</span>
+        <span class="small muted">Todo vive en este navegador. Descarga una copia para no perder tu progreso o para pasarlo a otro teléfono. La copia incluye tu expediente: guárdala en un lugar seguro.</span>
+        <span class="small strong">{s.settings.lastBackup ? `Última copia: ${fmtDay(s.settings.lastBackup, { weekdayName: false })}` : 'Todavía no has descargado una copia.'}</span>
         <div class="row wrap">
           <button type="button" class="btn sm" onClick={download}><Icon name="download" size={18} />Descargar copia</button>
           <label class="btn sm ghost" style={{ position: 'relative' }}><Icon name="upload" size={18} />Recuperar copia<input type="file" accept="application/json,.json" onChange={onImport} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} /></label>
@@ -136,7 +144,7 @@ export function Settings() {
         <h2 class="h2">Privacidad</h2>
         <p class="small muted">Astra no tiene cuentas ni servidores propios. Tus misiones, gastos, ánimo y notas se guardan solo en este navegador. Nada se envía a otro lugar, salvo la foto de un recibo o una frase cuando pides leerla con IA, y solo al proveedor que tú configuras.</p>
       </section>
-      <p class="tiny muted" style={{ textAlign: 'center' }}>Astra 1.0 · versión web instalable</p>
+      <p class="tiny muted" style={{ textAlign: 'center' }}>Astra 1.1 · versión web instalable</p>
     </main>
   );
 }

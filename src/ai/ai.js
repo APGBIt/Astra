@@ -212,10 +212,10 @@ export function checkReceipt(r) {
 
 // ---------- Frases libres (cuando el analizador sin conexión no entiende) ----------
 
-export function capturePrompt(text, people) {
+export function capturePrompt(text, people, today = '') {
   return `Interpreta lo que una persona en República Dominicana cuenta sobre su día y conviértelo en registros para una app de hábitos.
 Frase: """${String(text).slice(0, 1500)}"""
-Personas conocidas: ${people.map((p) => p.name).join(', ') || 'ninguna'}.
+Personas conocidas: ${people.map((p) => p.name).join(', ') || 'ninguna'}.${today ? `\nHoy es ${today}.` : ''}
 Tipos posibles:
 - {"kind":"tx","type":"gasto" o "ingreso","amount":número,"cat":"super|transporte|comida|servicios|hogar|salud|educacion|ocio|deuda|ahorro|otros","merchant":"texto"}
 - {"kind":"health","field":"steps|sleep|water|exercise","value":número} (sueño en horas, ejercicio en minutos)
@@ -223,6 +223,7 @@ Tipos posibles:
 - {"kind":"contact","name":"nombre"}
 - {"kind":"mood","quad":0-3,"word":"emoción"} (0 tenso, 1 animado, 2 bajo, 3 tranquilo)
 - {"kind":"focus","minutes":número}
+- {"kind":"todo","title":"lo que tiene pendiente, sin la fecha","due":"AAAA-MM-DD o null","important":true o false,"repeat":"semana|mes|ano o null","cat":"general|salud|emocional|relaciones|crecimiento|finanzas|laborales"} (cosas que tiene que hacer: «tengo que», «hay que», «no olvidar»; repeat si dice «cada mes», «cada semana»…)
 - {"kind":"note","text":"texto"}
 Devuelve JSON: {"items": [ ... ]}`;
 }

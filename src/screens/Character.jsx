@@ -1,14 +1,24 @@
 import { useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
-import { Nav, TopBar, Segs, Bar, Avatar, TChip, Sheet, SheetHead, toast, areaColor, areaSoft, plural, ask } from '../ui/kit.jsx';
+import { Nav, TopBar, Segs, Bar, Avatar, TChip, Sheet, SheetHead, NumberChips, toast, areaColor, areaSoft, plural, ask } from '../ui/kit.jsx';
+import { RecordCard } from './Record.jsx';
 import { act, useApp } from '../app/store.js';
 import { back } from '../app/router.js';
-import { relDay, DAYS_SHORT, weekday, fmtDay } from '../app/dates.js';
+import { relDay, DAYS_SHORT, weekday, fmtDay, diffDays, addDays } from '../app/dates.js';
 import { AREAS, AREA, AREA_ROUTE, POTIONS, SHOP_ITEMS, RECOVERY_QUESTS } from '../game/content.js';
 import {
   playerLevel, attrLevel, className, energyInfo, statuses, usePotion, potionUses, buyItem, redeemReward, uid,
-  saveInn, weekStats, weekXpBy, ACHIEVEMENTS, completeRecoveryQuest, inRecovery, dayMissions, talentsFor,
+  saveInn, weekStats, weekXpBy, ACHIEVEMENTS, completeRecoveryQuest, inRecovery, dayMissions, talentsFor, recordProgress, fmtHours,
 } from '../game/logic.js';
+
+// ¿Toca descargar una copia? Si nunca se hizo y ya hay datos, o si la última tiene más de 14 días.
+export function backupDue(s, today) {
+  const last = s.settings.lastBackup;
+  const hasData = (s.stats.done || 0) + s.todos.length + recordProgress(s).filled > 5;
+  if (!hasData) return false;
+  if (!last) return diffDays(s.profile.created || today, today) >= 3;
+  return diffDays(last, today) > 14;
+}
 
 // ---------- Personaje: estado de rol ----------
 
@@ -42,6 +52,16 @@ export function Character() {
           </div>
         </section>
 
+        {backupDue(s, today) && (
+          <a class="note tone-ene" href="#/ajustes" style={{ textDecoration: 'none' }}>
+            <Icon name="download" size={20} />
+            <span class="grow"><b>Descarga una copia de seguridad.</b> Tu progreso, pendientes y expediente viven solo en este teléfono.{s.settings.lastBackup ? ` La última es del ${fmtDay(s.settings.lastBackup, { weekdayName: false })}.` : ''}</span>
+            <Icon name="right" size={18} />
+          </a>
+        )}
+
+        <RecordCard />
+
         <section class="stack-sm" aria-label="Vitalidad">
           <div class="between">
             <span class="row h2" style={{ gap: 8, color: 'var(--vit-ink)' }}><Icon name="heart" size={22} fill />Vitalidad</span>
@@ -57,7 +77,7 @@ export function Character() {
             <span class="display-num tab-num" style={{ fontSize: 22 }}>{en.left}<span class="small muted semi"> / 10</span></span>
           </div>
           <Segs value={en.left} lg color="var(--ene)" label={`Energía ${en.left} de 10`} />
-          <p class="small muted">Tu presupuesto del día. Cada misión cuesta de 1 a 3. Se llena al dormir tu meta ({s.profile.sleepGoal} h); hoy empezaste con {en.max}{en.bonus ? ` y recuperaste ${en.bonus} con pociones` : ''}.</p>
+          <p class="small muted">Tu presupuesto del día. Cada misión cuesta de 1 a 3. Se llena al dormir tu meta ({fmtHours(s.profile.sleepGoal)}); hoy empezaste con {en.max}{en.bonus ? ` y recuperaste ${en.bonus} con pociones` : ''}.</p>
         </section>
 
         <section class="stack-sm" aria-label="Experiencia">
@@ -127,7 +147,8 @@ export function Character() {
           <a href="#/tienda" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)' }}><span class="row"><Icon name="bag" /><span class="strong grow">Tienda</span></span><span class="small muted">{s.gold} de oro</span></a>
           <a href="#/posada" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)' }}><span class="row"><Icon name="moon" /><span class="strong grow">Posada</span></span><span class="small muted">{s.inn[today] ? 'Hoy cerrado' : 'Cierra el día'}</span></a>
           <a href="#/cronica" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)' }}><span class="row"><Icon name="chart" /><span class="strong grow">Crónica</span></span><span class="small muted">{Object.keys(s.achievements).length} logros</span></a>
-          <a href="#/ajustes" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)' }}><span class="row"><Icon name="gear" /><span class="strong grow">Ajustes</span></span><span class="small muted">IA, datos, tema</span></a>
+          <a href="#/misiones" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)' }}><span class="row"><Icon name="sword" /><span class="strong grow">Misiones</span></span><span class="small muted">{s.missions.filter((m) => !m.archived).length} activas</span></a>
+          <a href="#/ajustes" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)', gridColumn: '1 / -1' }}><span class="row"><Icon name="gear" /><span class="strong grow">Ajustes</span><span class="small muted">Metas diarias, IA, copia de seguridad y tema</span></span></a>
         </div>
       </main>
       <Nav active="personaje" />
@@ -144,7 +165,7 @@ function Radar({ values, size = 260 }) {
   return (
     <svg width="100%" viewBox={`-50 0 ${size + 100} ${size}`} role="img" aria-label="Mapa de tus seis atributos" style={{ alignSelf: 'center', maxWidth: 360 }}>
       {[1, 0.66, 0.33].map((f) => <polygon key={f} points={poly(f)} fill={f === 1 ? 'var(--soft)' : 'none'} stroke="var(--line-2)" stroke-width="1.2" />)}
-      <polygon points={vals.map((p) => p.map((n) => n.toFixed(1)).join(',')).join(' ')} fill="var(--xp-soft)" stroke="var(--ink)" stroke-width="2.2" stroke-linejoin="round" />
+      <polygon points={vals.map((p) => p.map((n) => n.toFixed(1)).join(',')).join(' ')} fill="var(--ink)" fill-opacity="0.08" stroke="var(--ink)" stroke-width="2.2" stroke-linejoin="round" />
       {vals.map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r="5" fill={areaColor(AREAS[i].key)} stroke="var(--surface)" stroke-width="2" />)}
       {AREAS.map((a, i) => {
         const [x, y] = pt(i, R + 24);
@@ -170,6 +191,8 @@ export function Inn() {
   const d = s.days[today];
   const { done, all } = dayMissions(s, today);
   const vitToday = s.vitLog.filter((l) => l.day === today).reduce((a, l) => a + l.delta, 0);
+  const todosToday = s.todos.filter((t) => t.done === today).length;
+  const todosTomorrow = s.todos.filter((t) => !t.done && t.due && t.due <= addDays(today, 1)).length;
   const save = () => {
     const first = act((st, t, ev) => saveInn(st, { mood, good, better, bed }, t, ev));
     toast(first ? 'Descansaste en la posada · +5 de vitalidad' : 'Cierre actualizado', 'moon');
@@ -184,10 +207,17 @@ export function Inn() {
         <div class="kpi"><span class="v" style={{ color: 'var(--xp-ink)' }}>+{d ? d.xp : 0}</span><span class="l">XP de hoy</span></div>
         <div class="kpi"><span class="v" style={{ color: vitToday >= 0 ? 'var(--good-ink)' : 'var(--vit-ink)' }}>{vitToday >= 0 ? `+${vitToday}` : `−${-vitToday}`}</span><span class="l">Vitalidad</span></div>
       </div>
+      {(todosToday > 0 || todosTomorrow > 0) && (
+        <a class="note" href="#/pendientes" style={{ textDecoration: 'none' }}>
+          <Icon name="list" size={20} />
+          <span class="grow">{todosToday > 0 ? `Hoy completaste ${plural(todosToday, 'pendiente', 'pendientes')}. ` : ''}{todosTomorrow > 0 ? `Para mañana tienes ${plural(todosTomorrow, 'pendiente', 'pendientes')}.` : ''}</span>
+          <Icon name="right" size={18} />
+        </a>
+      )}
       <div class="stack-sm"><span class="label">¿Cómo termina tu día?</span><div class="chips" role="group" aria-label="Ánimo">{INN_MOODS.map((m) => <TChip key={m} sm on={mood === m} onClick={() => setMood(m)}>{m}</TChip>)}</div></div>
       <div class="field"><label for="g">¿Qué salió bien hoy?</label><textarea id="g" class="input" rows={3} value={good} maxLength={500} onInput={(e) => setGood(e.currentTarget.value)} /></div>
       <div class="field"><label for="b">Una cosa para mejorar mañana</label><textarea id="b" class="input" rows={2} value={better} maxLength={500} onInput={(e) => setBetter(e.currentTarget.value)} /></div>
-      <div class="field"><label for="bd">¿A qué hora te vas a acostar?</label><input id="bd" type="time" class="input" value={bed} onInput={(e) => setBed(e.currentTarget.value)} /><span class="small muted">Dormir {s.profile.sleepGoal} h llena tu energía de mañana.</span></div>
+      <div class="field"><label for="bd">¿A qué hora te vas a acostar?</label><input id="bd" type="time" class="input" value={bed} onInput={(e) => setBed(e.currentTarget.value)} /><span class="small muted">Dormir {fmtHours(s.profile.sleepGoal)} llena tu energía de mañana.</span></div>
       <button type="button" class="btn block" onClick={save}><Icon name="moon" size={20} />{prev ? 'Guardar cambios' : 'Descansar y guardar · +5 vitalidad'}</button>
     </main>
   );
@@ -242,7 +272,7 @@ export function Shop() {
         <Sheet onClose={() => setAdding(false)} label="Nueva recompensa">
           <SheetHead title="Nueva recompensa" onClose={() => setAdding(false)} />
           <div class="field"><label for="rt">¿Qué te vas a regalar?</label><input id="rt" class="input" value={title} maxLength={60} onInput={(e) => setTitle(e.currentTarget.value)} placeholder="Ej. Un helado sin culpa" autoFocus /></div>
-          <div class="stack-sm"><span class="label">Precio en oro</span><div class="chips">{[50, 100, 150, 300, 500].map((c) => <TChip key={c} sm on={cost === c} onClick={() => setCost(c)}>{c}</TChip>)}</div><span class="small muted">Una misión de energía 1 da 5 de oro.</span></div>
+          <div class="stack-sm"><span class="label">Precio en oro</span><NumberChips value={cost} onChange={setCost} presets={[50, 100, 150, 300, 500]} unit="de oro" min={1} max={100000} label="Precio en oro" /><span class="small muted">Una misión de energía 1 da 5 de oro; un pendiente, 2.</span></div>
           <button type="button" class="btn block" disabled={title.trim().length < 2} onClick={() => { act((st) => st.rewards.push({ id: uid(), title: title.trim(), cost })); setTitle(''); setAdding(false); toast('Recompensa agregada', 'gift'); }}><Icon name="check" size={20} />Guardar</button>
         </Sheet>
       )}
@@ -260,14 +290,16 @@ export function Chronicle() {
   const maxBy = Math.max(1, ...Object.values(by));
   const done = week.reduce((a, w) => a + w.done, 0);
   const xp = week.reduce((a, w) => a + w.xp, 0);
+  const todos = week.reduce((a, w) => a + (w.todos || 0), 0);
   const moods = s.moods.filter((m) => week.some((w) => w.day === m.day)).length;
   return (
     <main class="screen no-nav">
       <TopBar backTo="/personaje" title="Crónica" />
       <div class="stack-xs"><span class="small muted semi">Últimos 7 días</span><h1 class="h1">Tu semana</h1></div>
-      <div class="kpis">
+      <div class="kpis four">
         <div class="kpi"><span class="v">{done}</span><span class="l">Misiones</span></div>
-        <div class="kpi"><span class="v" style={{ color: 'var(--xp-ink)' }}>+{xp}</span><span class="l">XP</span></div>
+        <div class="kpi"><span class="v">{todos}</span><span class="l">Pendientes hechos</span></div>
+        <div class="kpi"><span class="v" style={{ color: 'var(--xp-ink)' }}>+{xp.toLocaleString('en-US')}</span><span class="l">XP</span></div>
         <div class="kpi"><span class="v">{moods}</span><span class="l">Check-ins</span></div>
       </div>
       <section class="card" aria-label="Vitalidad de la semana">

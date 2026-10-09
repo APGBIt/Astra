@@ -6,6 +6,7 @@ import { go } from '../app/router.js';
 import { monthKey, monthName, relDay } from '../app/dates.js';
 import { attrLevel, monthSummary, addTx, removeTx, setBudget, catName, bossHP } from '../game/logic.js';
 import { parseBankAlert, toNumber, guessCategory } from '../game/parse.js';
+import { AreaTodos } from './Todos.jsx';
 
 const SRC_ICON = { recibo: 'receipt', alerta: 'mail', voz: 'mic', manual: 'edit' };
 const SRC_LABEL = { recibo: 'recibo', alerta: 'alerta del banco', voz: 'registro rápido', manual: 'manual' };
@@ -58,11 +59,15 @@ export function Finance({ query }) {
           </button>
         )}
 
-        <div class="kpis">
-          <div class="kpi"><span class="v" style={{ fontSize: 18 }}>{money(sum.income)}</span><span class="l">Ingresos</span></div>
-          <div class="kpi"><span class="v" style={{ fontSize: 18 }}>{money(sum.spent)}</span><span class="l">Gastos</span></div>
-          <div class="kpi"><span class="v" style={{ fontSize: 18, color: sum.income - sum.spent < 0 ? 'var(--vit-ink)' : undefined }}>{money(sum.income - sum.spent)}</span><span class="l">Balance</span></div>
-        </div>
+        {/* En filas: los montos largos (RD$150,000.00) caben sin cortarse. */}
+        <section class="card flush" aria-label="Resumen del mes">
+          {[['Ingresos', sum.income, null], ['Gastos', sum.spent, null], ['Balance', sum.income - sum.spent, sum.income - sum.spent < 0 ? 'var(--vit-ink)' : sum.income - sum.spent > 0 ? 'var(--good-ink)' : null]].map(([l, v, c]) => (
+            <div key={l} class="lrow" style={{ minHeight: 50 }}>
+              <span class="grow semi muted">{l}</span>
+              <span class="display-num tab-num" style={{ fontSize: l === 'Balance' ? 22 : 19, color: c || undefined }}>{money(v)}</span>
+            </div>
+          ))}
+        </section>
 
         <section class="card" aria-label="Presupuesto">
           <div class="between-c"><h2 class="h2">Presupuesto</h2><button type="button" class="link-btn" onClick={() => setSheet({ kind: 'budgets' })}>Editar<Icon name="right" size={16} /></button></div>
@@ -81,11 +86,13 @@ export function Finance({ query }) {
 
         {bosses.map((b) => (
           <a key={b.id} href={`#/jefe/${b.id}`} class="card" style={{ textDecoration: 'none', color: 'var(--ink)' }}>
-            <div class="row"><span class="tile" style={{ background: 'var(--ink)', color: 'var(--xp)' }}><Icon name="sword" /></span><span class="stack-xs grow"><span class="tiny strong muted">Jefe</span><span class="strong">{b.title}</span></span><span class="strong">{Math.round(bossHP(b) * 100)} %</span></div>
+            <div class="row"><span class="tile" style={{ background: 'var(--boss)', color: 'var(--xp)' }}><Icon name="sword" /></span><span class="stack-xs grow"><span class="tiny strong muted">Jefe</span><span class="strong">{b.title}</span></span><span class="strong">{Math.round(bossHP(b) * 100)} %</span></div>
             <Bar value={bossHP(b)} size="lg" color="var(--vit)" label={`Vida del jefe ${Math.round(bossHP(b) * 100)} %`} />
             <span class="small muted">{b.money ? `Faltan ${money(b.target - b.progress)}. Registra los pagos con la categoría «${b.source === 'saving' ? 'Ahorro' : 'Pago de deuda'}».` : `${b.progress} de ${b.target} ${b.unit}.`}</span>
           </a>
         ))}
+
+        <AreaTodos area="finanzas" />
 
         <section class="card flush" aria-label="Movimientos">
           <div class="between-c" style={{ padding: '14px 0 4px' }}><h2 class="h2">Movimientos</h2><span class="small muted">{sum.count}</span></div>

@@ -2,7 +2,15 @@
 
 Tu vida en modo juego de rol. App web instalable (y futura APK) para crecer en seis áreas de la vida con barras de vitalidad y energía, caminos, misiones y jefes.
 
-## Qué incluye (versión 1.0)
+## Novedades de la versión 1.1
+
+- **Pendientes**: una lista general con todo lo que tienes que hacer, agrupada por fecha o por categoría. Cada pendiente va a cualquier categoría: General, las seis áreas o las tuyas (Casa, Trámites, Maestría…), y sube el atributo que elijas. Se escriben en una línea («Pagar el marbete el viernes #carro !»): la fecha, la importancia, la categoría y la repetición («el 20 de cada mes») se detectan solas. Se pueden posponer (sin mover la serie si se repiten) y pasar los vencidos a hoy. Cada área muestra y agrega sus pendientes.
+- **Expediente personal**: datos personales, documentos con vencimiento, salud, chequeos, contactos de emergencia, formación, trayectoria laboral, cuentas y seguros, logros y «Quién soy». Avisa en Hoy 30 días antes de que algo venza y lo pasa a Pendientes con un toque. Los números se ocultan («•••• 5678») y en cuentas y tarjetas se guarda solo el final. Puedes crear tus propias secciones.
+- **Metas con tu número**: además de las opciones sugeridas, escribes el número que quieras en la meta de cada camino, su fecha límite, el sueño, los pasos, el agua y el ejercicio diarios. La meta se edita después de creada y tus misiones de pasos siguen tu meta diaria.
+- **Colores ajustados**: cada área tiene un color propio que ya no se confunde con la vitalidad (rojo), la energía (azul) ni la XP (dorado), con contraste suficiente en claro y oscuro, también para daltonismo.
+- **Mejoras**: lista de todas tus misiones (con archivadas para restaurar), tareas editables en cada capítulo, aviso para descargar la copia de seguridad, las hojas se abren sin perder tu lugar en la lista y «atrás» vuelve a la pantalla anterior.
+
+## Qué incluye
 
 - **Personaje**: nivel, clase según tus caminos (Atleta, Monje, Guardián, Erudito, Mercader, Artesano), seis atributos (Vigor, Temple, Vínculo, Sabiduría, Fortuna, Oficio) y talentos que suman XP.
 - **Vitalidad**: tu barra de vida (0–100). Sube al cuidarte y cumplir; baja al fallar misiones marcadas, al caer en malos hábitos o al dormir poco. En 0 entras en **modo recuperación**: no pierdes nada y cada misión devuelve el doble.
@@ -18,7 +26,7 @@ Tu vida en modo juego de rol. App web instalable (y futura APK) para crecer en s
 
 ## Privacidad
 
-No hay cuentas ni servidores propios. Todo se guarda en el navegador. La IA es opcional y solo recibe la foto de un recibo o el texto que decides enviar. La foto no se guarda.
+No hay cuentas ni servidores propios. Todo se guarda en el navegador, también el expediente. La IA es opcional y solo recibe la foto de un recibo o el texto que decides enviar. La foto no se guarda. La copia de seguridad incluye el expediente: guárdala en un lugar seguro.
 
 ## Lectura de recibos con IA
 

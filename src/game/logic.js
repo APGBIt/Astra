@@ -3,19 +3,49 @@
 import { dayKey, addDays, diffDays, weekday, monthKey } from '../app/dates.js';
 import {
   AREA, AREA_KEYS, GOALS, CUSTOM_CHAPTERS, TALENTS, TALENT_LEVELS, POTIONS, SHOP_ITEMS,
-  CATEGORIES, DEFAULT_REWARDS, INTENSITIES, MOOD_QUADS, INFLUENCES,
+  CATEGORIES, DEFAULT_REWARDS, INTENSITIES, MOOD_QUADS, INFLUENCES, DEFAULT_GOALS,
+  TODO_GENERAL, TODO_XP, TODO_GOLD, RECORD_SECTIONS, RECORD_SCHEMAS, RECORD_XP,
 } from './content.js';
 
 export const ENERGY_CAP = 10;
-export const STEPS_GOAL = 8000;
+export const STEPS_GOAL = DEFAULT_GOALS.steps;
+
+// Metas diarias de la persona (pasos, agua, ejercicio y sueño).
+export function dailyGoal(s, key) {
+  if (key === 'sleep') return Number(s.profile.sleepGoal) || 7;
+  const v = Number(s.profile.goals && s.profile.goals[key]);
+  return v > 0 ? v : DEFAULT_GOALS[key];
+}
+
+// Cambia una meta diaria. Las misiones que dependen de ella la siguen:
+// «8,000 pasos» pasa a «10,000 pasos» y la energía de hoy se recalcula con tu nueva meta de sueño.
+export function setDailyGoal(s, key, value, today = null) {
+  const v = Math.round(Number(value) * 100) / 100;
+  if (!(v > 0)) return;
+  const before = dailyGoal(s, key);
+  if (key === 'sleep') {
+    s.profile.sleepGoal = v;
+    const sl = today && s.health[today] ? s.health[today].sleep : null;
+    if (sl != null && s.energy && s.energy.day === today) s.energy.max = energyMaxFromSleep(sl, v);
+    return;
+  }
+  s.profile.goals = { ...(s.profile.goals || {}), [key]: v };
+  if (key !== 'steps' || before === v) return;
+  const old = new RegExp(`(^|\\D)${String(Math.round(before)).replace(/\B(?=(\d{3})+$)/g, '[,.]?')}(?!\\d)`);
+  for (const m of s.missions) {
+    if (!m.auto || m.auto.metric !== 'steps' || Number(m.auto.gte) !== before) continue;
+    m.auto = { ...m.auto, gte: v };
+    if (old.test(m.title)) m.title = m.title.replace(old, (_, pre) => `${pre}${v.toLocaleString('en-US')}`);
+  }
+}
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
 
 export function defaultState(today = dayKey()) {
   return {
-    v: 1,
-    profile: { name: '', emblem: 'star', onboarded: false, created: today, classKeys: [], sleepGoal: 7, selfRating: {} },
-    settings: { theme: 'auto', aiMode: 'auto', aiKey: '', aiModel: 'claude-sonnet-5-5', serverUrl: '', serverToken: '' },
+    v: 2,
+    profile: { name: '', emblem: 'star', onboarded: false, created: today, classKeys: [], sleepGoal: 7, selfRating: {}, goals: { ...DEFAULT_GOALS } },
+    settings: { theme: 'auto', aiMode: 'auto', aiKey: '', aiModel: 'claude-sonnet-5-5', serverUrl: '', serverToken: '', lastBackup: null, hideNumbers: true },
     xp: 0,
     attrs: Object.fromEntries(AREA_KEYS.map((k) => [k, 0])),
     gold: 0,
@@ -24,7 +54,7 @@ export function defaultState(today = dayKey()) {
     streak: { count: 0, best: 0, lastDay: null, freezes: 1, freezeDays: [] },
     recovery: null,
     processed: today,
-    stats: { done: 0, recovered: 0 },
+    stats: { done: 0, recovered: 0, todos: 0 },
     missions: [],
     days: {},
     vitLog: [],
@@ -46,6 +76,9 @@ export function defaultState(today = dayKey()) {
     achievements: {},
     titles: [],
     journal: [],
+    todos: [],
+    todoLists: [],
+    record: buildRecord(),
   };
 }
 
@@ -116,6 +149,19 @@ export function gainXP(s, area, base, today, ev, { applyMods = true } = {}) {
   return amt;
 }
 
+// XP que sube el nivel del jugador sin pasar por un atributo (pendientes «General», por ejemplo).
+function gainPlayerXP(s, base, today, ev, { applyMods = true } = {}) {
+  let mult = 1;
+  if (applyMods) for (const st of statuses(s, today)) mult += st.xp || 0;
+  const amt = Math.max(1, Math.round(base * mult));
+  const before = playerLevel(s.xp).n;
+  s.xp += amt;
+  getDay(s, today).xp += amt;
+  const after = playerLevel(s.xp).n;
+  if (after > before) ev.push({ type: 'level', n: after });
+  return amt;
+}
+
 function addGold(s, n, today) {
   s.gold = Math.max(0, s.gold + n);
   getDay(s, today).gold += n;
@@ -182,7 +228,7 @@ export function statuses(s, today) {
   const sl = s.health[today]?.sleep;
   const goal = s.profile.sleepGoal || 7;
   if (sl != null && sl >= goal) out.push({ id: 'descansado', label: 'Descansado', desc: '+10 % de XP hoy por dormir tu meta', icon: 'moon', tone: 'good', xp: 0.1 });
-  else if (sl != null && sl < goal - 0.5) out.push({ id: 'cansado', label: 'Cansancio leve', desc: `−10 % de XP hasta que duermas ${goal} h`, icon: 'moon', tone: 'vit', xp: -0.1 });
+  else if (sl != null && sl < goal - 0.5) out.push({ id: 'cansado', label: 'Cansancio leve', desc: `−10 % de XP hasta que duermas ${fmtHours(goal)}`, icon: 'moon', tone: 'vit', xp: -0.1 });
   const lastOk = s.streak.lastDay && diffDays(s.streak.lastDay, today) <= 1;
   if (s.streak.count >= 7 && lastOk) out.push({ id: 'racha', label: 'Racha encendida', desc: `+5 % de XP por ${s.streak.count} días seguidos`, icon: 'flame', tone: 'xp', xp: 0.05 });
   if (inRecovery(s, today)) out.push({ id: 'recuperacion', label: 'Recuperación', desc: 'Cada misión devuelve el doble de vitalidad', icon: 'heart', tone: 'vit', xp: 0 });
@@ -330,6 +376,11 @@ export function updateMission(s, id, patch) {
 export function archiveMission(s, id) {
   const m = s.missions.find((x) => x.id === id);
   if (m) m.archived = true;
+}
+
+export function restoreMission(s, id) {
+  const m = s.missions.find((x) => x.id === id);
+  if (m) m.archived = false;
 }
 
 // ---------- Misiones automáticas ----------
@@ -492,21 +543,27 @@ export function hitBoss(s, id, amount, note, today, ev, source = 'manual') {
   b.hits.unshift({ day: today, amount: n, note: note || '', source });
   b.hits = b.hits.slice(0, 200);
   gainXP(s, b.area, clamp(Math.round((300 * n) / b.target), 3, 60), today, ev);
-  if (b.progress >= b.target) {
-    b.status = 'won';
-    b.wonOn = today;
-    gainXP(s, b.area, b.reward.xp, today, ev, { applyMods: false });
-    addGold(s, b.reward.gold, today);
-    if (b.reward.title && !s.titles.includes(b.reward.title)) s.titles.push(b.reward.title);
-    const c = s.campaigns.find((x) => x.id === b.campaignId);
-    if (c) { c.status = 'won'; c.wonOn = today; }
-    ev.push({ type: 'boss', title: b.title, reward: b.reward });
-  }
+  if (b.progress >= b.target) defeatBoss(s, b, today, ev);
   checkAchievements(s, today, ev);
   return n;
 }
 
-export function bossFeed(s, source, amount, today, ev, { oncePerDay = false, note = '' } = {}) {
+function defeatBoss(s, b, today, ev) {
+  if (b.status !== 'active') return;
+  b.status = 'won';
+  b.wonOn = today;
+  gainXP(s, b.area, b.reward.xp, today, ev, { applyMods: false });
+  addGold(s, b.reward.gold, today);
+  if (b.reward.title && !s.titles.includes(b.reward.title)) s.titles.push(b.reward.title);
+  const c = s.campaigns.find((x) => x.id === b.campaignId);
+  if (c) { c.status = 'won'; c.wonOn = today; }
+  ev.push({ type: 'boss', title: b.title, reward: b.reward });
+}
+
+// Estas fuentes cuentan días (un entrenamiento, una noche, un día de pasos): solo suman una vez al día.
+const DAILY_SOURCES = new Set(['training', 'sleepNight', 'stepsDay']);
+
+export function bossFeed(s, source, amount, today, ev, { oncePerDay = DAILY_SOURCES.has(source), note = '' } = {}) {
   const d = getDay(s, today);
   if (oncePerDay) {
     if (d.fed[source]) return;
@@ -602,16 +659,84 @@ export function setTask(s, cid, tid, done, today, ev) {
   for (const ch of c.chapters) {
     const t = ch.tasks.find((x) => x.id === tid);
     if (!t || !!t.done === !!done) continue;
-    t.done = done ? today : null;
-    if (done) gainXP(s, c.area, 15, today, ev);
-    else {
-      s.xp = Math.max(0, s.xp - 15);
-      s.attrs[c.area] = Math.max(0, (s.attrs[c.area] || 0) - 15);
+    if (done) {
+      t.done = today;
+      t.xp = gainXP(s, c.area, 15, today, ev);
+    } else {
+      takeBackXP(s, c.area, t.xp ?? 15, t.done);
+      t.done = null;
+      t.xp = 0;
     }
   }
   const after = currentChapter(c);
   if (after > before) ev.push({ type: 'chapter', title: c.chapters[before].title, battle: after >= c.chapters.length });
   checkAchievements(s, today, ev);
+}
+
+// Cambia la meta después de creada: nombre, número, unidad y fecha límite.
+export function editCampaign(s, cid, p, today, ev) {
+  const c = s.campaigns.find((x) => x.id === cid);
+  if (!c) return null;
+  const b = s.bosses.find((x) => x.id === c.bossId);
+  if (p.title != null && String(p.title).trim().length > 1) c.title = String(p.title).trim().slice(0, 60);
+  if (p.deadline && /^\d{4}-\d{2}-\d{2}$/.test(p.deadline) && p.deadline > c.start) {
+    c.deadline = p.deadline;
+    c.days = Math.max(1, diffDays(c.start, p.deadline));
+    if (b) b.deadline = p.deadline;
+  }
+  if (b) {
+    if (p.unit != null && String(p.unit).trim()) b.unit = String(p.unit).trim().slice(0, 20);
+    const t = Number(p.target);
+    if (t > 0) {
+      b.target = Math.round(t * 100) / 100;
+      if (b.status === 'active' && b.progress >= b.target) {
+        b.progress = b.target;
+        defeatBoss(s, b, today, ev);
+      }
+    }
+  }
+  checkAchievements(s, today, ev);
+  return c;
+}
+
+export function addTask(s, cid, chapterIndex, title) {
+  const c = s.campaigns.find((x) => x.id === cid);
+  const t = String(title || '').trim().slice(0, 80);
+  if (!c || t.length < 2) return null;
+  const ch = c.chapters[clamp(Number(chapterIndex) || 0, 0, c.chapters.length - 1)];
+  const task = { id: uid(), title: t, done: null };
+  ch.tasks.push(task);
+  return task;
+}
+
+export function renameTask(s, cid, tid, title) {
+  const c = s.campaigns.find((x) => x.id === cid);
+  const t = String(title || '').trim().slice(0, 80);
+  if (!c || t.length < 2) return;
+  for (const ch of c.chapters) for (const x of ch.tasks) if (x.id === tid) x.title = t;
+}
+
+export function removeTask(s, cid, tid) {
+  const c = s.campaigns.find((x) => x.id === cid);
+  if (!c) return;
+  for (const ch of c.chapters) {
+    // Quitar una tarea hecha devuelve su XP: agregar, marcar y borrar no suma nada.
+    for (const t of ch.tasks) if (t.id === tid && t.done) takeBackXP(s, c.area, t.xp ?? 15, t.done);
+    ch.tasks = ch.tasks.filter((x) => x.id !== tid);
+  }
+}
+
+// Devuelve XP ganada (al desmarcar o borrar): total, atributo y el día en que se ganó.
+function takeBackXP(s, area, amt, day) {
+  const n = Math.max(0, Number(amt) || 0);
+  if (!n) return;
+  s.xp = Math.max(0, s.xp - n);
+  if (area) s.attrs[area] = Math.max(0, (s.attrs[area] || 0) - n);
+  const d = day && s.days[day];
+  if (d) {
+    d.xp = Math.max(0, (d.xp || 0) - n);
+    if (area && d.xpBy) d.xpBy[area] = Math.max(0, (d.xpBy[area] || 0) - n);
+  }
 }
 
 export function abandonCampaign(s, cid) {
@@ -634,26 +759,26 @@ export function logHealth(s, day, patch, today, ev) {
   const goal = s.profile.sleepGoal || 7;
   if (patch.steps != null) {
     h.steps = Math.max(0, Math.round(Number(patch.steps) || 0));
-    if (h.steps >= STEPS_GOAL) bossFeed(s, 'stepsDay', 1, day, ev, { oncePerDay: true });
+    if (h.steps >= dailyGoal(s, 'steps')) bossFeed(s, 'stepsDay', 1, day, ev);
   }
   if (patch.sleep != null) {
     h.sleep = clamp(Math.round(Number(patch.sleep) * 4) / 4, 0, 16);
     const eff = h.sleep >= goal ? 5 : h.sleep < goal - 1 ? -5 : 0;
     const prev = h.sleepVit || 0;
-    if (eff !== prev) changeVit(s, eff - prev, eff > 0 ? 'Dormiste tu meta' : eff < 0 ? `Dormiste ${fmtHours(h.sleep)} (meta ${goal} h)` : 'Ajuste de sueño', day, ev);
+    if (eff !== prev) changeVit(s, eff - prev, eff > 0 ? 'Dormiste tu meta' : eff < 0 ? `Dormiste ${fmtHours(h.sleep)} (meta ${fmtHours(goal)})` : 'Ajuste de sueño', day, ev);
     h.sleepVit = eff;
     if (day === today) {
       ensureEnergyDay(s, today);
       s.energy.max = energyMaxFromSleep(h.sleep, goal);
     }
-    if (h.sleep >= goal) bossFeed(s, 'sleepNight', 1, day, ev, { oncePerDay: true });
+    if (h.sleep >= goal) bossFeed(s, 'sleepNight', 1, day, ev);
   }
   if (patch.water != null) h.water = clamp(Math.round(Number(patch.water) || 0), 0, 30);
   if (patch.exercise != null) {
     const before = h.exercise || 0;
     h.exercise = clamp(Math.round(Number(patch.exercise) || 0), 0, 600);
     if (h.exercise > before) gainXP(s, 'salud', Math.min(30, Math.round((h.exercise - before) / 2)), day, ev);
-    if (h.exercise >= 20) bossFeed(s, 'training', 1, day, ev, { oncePerDay: true });
+    if (h.exercise >= 20) bossFeed(s, 'training', 1, day, ev);
   }
   if (day === today) autoCheck(s, today, ev);
   checkAchievements(s, today, ev);
@@ -940,6 +1065,468 @@ export function setBudget(s, catId, amount) {
 
 export const catName = (s, id) => (id === 'ingreso' ? 'Ingreso' : (s.money.categories.find((c) => c.id === id) || { name: 'Otros' }).name);
 
+// ---------- Pendientes ----------
+
+const validDay = (d) => (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null);
+
+export function todoCategories(s) {
+  return [
+    { ...TODO_GENERAL, builtin: true },
+    ...AREA_KEYS.map((k) => ({ id: k, name: AREA[k].area, area: k, builtin: true })),
+    ...s.todoLists.map((l) => ({ id: l.id, name: l.name, area: l.area || null, builtin: false })),
+  ];
+}
+
+export function todoCategory(s, cat) {
+  if (AREA[cat]) return { id: cat, name: AREA[cat].area, area: cat, builtin: true };
+  const l = s.todoLists.find((x) => x.id === cat);
+  if (l) return { id: l.id, name: l.name, area: l.area || null, builtin: false };
+  return { ...TODO_GENERAL, builtin: true };
+}
+
+const validCat = (s, cat) => (AREA[cat] || s.todoLists.some((l) => l.id === cat) ? cat : 'general');
+
+// Pendientes que se repiten: al completarlos aparece el siguiente con su nueva fecha.
+export const TODO_REPEATS = [
+  { key: 'semana', label: 'Cada semana', short: 'Semanal' },
+  { key: 'mes', label: 'Cada mes', short: 'Mensual' },
+  { key: 'ano', label: 'Cada año', short: 'Anual' },
+];
+const validRepeat = (r) => (TODO_REPEATS.some((x) => x.key === r) ? r : null);
+export const repeatLabel = (r) => (TODO_REPEATS.find((x) => x.key === r) || { label: '' }).label;
+
+const pad2 = (n) => String(n).padStart(2, '0');
+// Siguiente fecha: misma semana +7, mismo día del mes (o el último si no existe) o mismo día del año.
+export function nextRepeat(due, repeat, anchor = null) {
+  if (!validDay(due)) return null;
+  if (repeat === 'semana') return addDays(due, 7);
+  const [y, m, d] = due.split('-').map(Number);
+  const day = anchor || d;
+  if (repeat === 'mes') {
+    const ny = m === 12 ? y + 1 : y;
+    const nm = m === 12 ? 1 : m + 1;
+    return `${ny}-${pad2(nm)}-${pad2(Math.min(day, new Date(ny, nm, 0).getDate()))}`;
+  }
+  if (repeat === 'ano') return `${y + 1}-${pad2(m)}-${pad2(Math.min(day, new Date(y + 1, m, 0).getDate()))}`;
+  return null;
+}
+
+export function addTodo(s, p, today) {
+  const title = String(p.title || '').trim().slice(0, 120);
+  if (!title) return null;
+  const repeat = validRepeat(p.repeat);
+  // Si se repite y no tiene fecha, empieza hoy.
+  const due = validDay(p.due) || (repeat ? today : null);
+  const t = {
+    id: uid(),
+    title,
+    cat: validCat(s, p.cat),
+    due,
+    important: !!p.important,
+    note: String(p.note || '').slice(0, 1000),
+    created: today,
+    done: null,
+    reward: null,
+    src: p.src || null,
+    repeat,
+    anchor: repeat ? (Number(p.anchor) || (due ? Number(due.slice(8)) : null)) : null,
+  };
+  s.todos.unshift(t);
+  return t;
+}
+
+export function updateTodo(s, id, patch, today = null) {
+  const t = s.todos.find((x) => x.id === id);
+  if (!t) return;
+  if (patch.title != null && String(patch.title).trim()) t.title = String(patch.title).trim().slice(0, 120);
+  if (patch.cat != null) t.cat = validCat(s, patch.cat);
+  const before = { due: t.due, repeat: t.repeat };
+  if (patch.due !== undefined) t.due = validDay(patch.due);
+  if (patch.important != null) t.important = !!patch.important;
+  if (patch.note != null) t.note = String(patch.note).slice(0, 1000);
+  if (patch.repeat !== undefined) t.repeat = validRepeat(patch.repeat);
+  if (t.repeat && !t.due && !t.done) t.due = today || dayKey();
+  // El día ancla (p. ej. el 31) solo cambia si cambias la fecha o la repetición: editar la nota no lo pierde.
+  if (!t.repeat) t.anchor = null;
+  else if (t.due !== before.due || t.repeat !== before.repeat || !t.anchor) t.anchor = t.due ? Number(t.due.slice(8)) : null;
+  // Cambiar la fecha a mano mueve la serie completa (posponer, en cambio, mueve solo esta vez).
+  if (t.due !== before.due || t.repeat !== before.repeat) t.sched = null;
+}
+
+export function removeTodo(s, id) {
+  s.todos = s.todos.filter((x) => x.id !== id);
+}
+
+export const todoReward = (t) => ({
+  xp: TODO_XP.base + (t.important ? TODO_XP.important : 0),
+  gold: TODO_GOLD.base + (t.important ? TODO_GOLD.important : 0),
+});
+
+export function completeTodo(s, id, today, ev) {
+  const t = s.todos.find((x) => x.id === id);
+  if (!t || t.done) return null;
+  const area = todoCategory(s, t.cat).area;
+  const d = getDay(s, today);
+  d.todos = (d.todos || 0) + 1;
+  let got = { xp: 0, gold: 0, area };
+  // Tope: 20 pendientes con recompensa al día (deshacer uno libera su cupo).
+  if ((d.todosPaid || 0) < 20) {
+    const { xp, gold } = todoReward(t);
+    const amt = area ? gainXP(s, area, xp, today, ev) : gainPlayerXP(s, xp, today, ev);
+    addGold(s, gold, today);
+    d.todosPaid = (d.todosPaid || 0) + 1;
+    got = { xp: amt, gold, area };
+  }
+  t.done = today;
+  t.reward = got;
+  s.stats.todos = (s.stats.todos || 0) + 1;
+  if (t.src) markAlertHandled(s, t.src, true);
+  // Si se repite, deja listo el siguiente (aunque estuviera atrasado, la próxima fecha queda en el futuro).
+  if (t.repeat) {
+    const prev = t.spawned && s.todos.find((x) => x.id === t.spawned);
+    if (prev) got.next = prev.due;
+    else {
+      let next = nextRepeat(t.sched || t.due || today, t.repeat, t.anchor);
+      for (let i = 0; next && next <= today && i < 400; i++) next = nextRepeat(next, t.repeat, t.anchor);
+      const n = next && addTodo(s, { title: t.title, cat: t.cat, due: next, important: t.important, note: t.note, repeat: t.repeat, anchor: t.anchor }, today);
+      if (n) { t.spawned = n.id; got.next = next; }
+    }
+  }
+  touchStreak(s, today, ev);
+  checkAchievements(s, today, ev);
+  return got;
+}
+
+export function uncompleteTodo(s, id) {
+  const t = s.todos.find((x) => x.id === id);
+  if (!t || !t.done) return;
+  const r = t.reward || { xp: 0, gold: 0, area: null };
+  s.xp = Math.max(0, s.xp - r.xp);
+  if (r.area) s.attrs[r.area] = Math.max(0, (s.attrs[r.area] || 0) - r.xp);
+  s.gold = Math.max(0, s.gold - r.gold);
+  const d = s.days[t.done];
+  if (d) {
+    d.xp = Math.max(0, d.xp - r.xp);
+    if (r.area && d.xpBy) d.xpBy[r.area] = Math.max(0, (d.xpBy[r.area] || 0) - r.xp);
+    d.gold -= r.gold;
+    d.todos = Math.max(0, (d.todos || 1) - 1);
+    if (r.xp > 0 || r.gold > 0) d.todosPaid = Math.max(0, (d.todosPaid || 1) - 1);
+  }
+  s.stats.todos = Math.max(0, (s.stats.todos || 0) - 1);
+  // Deshacer también quita el siguiente que se había creado, si sigue sin hacer.
+  // Si el siguiente ya se completó, se queda y el enlace también (así no se duplica al volver a marcar).
+  if (t.spawned) {
+    const n = s.todos.find((x) => x.id === t.spawned);
+    if (n && !n.done) { s.todos = s.todos.filter((x) => x.id !== n.id); t.spawned = null; }
+    else if (!n) t.spawned = null;
+  }
+  if (t.src) markAlertHandled(s, t.src, false);
+  t.done = null;
+  t.reward = null;
+}
+
+export function clearDoneTodos(s) {
+  s.todos = s.todos.filter((t) => !t.done);
+}
+
+export const TODO_BUCKETS = [
+  { key: 'vencidos', label: 'Vencidos' },
+  { key: 'hoy', label: 'Hoy' },
+  { key: 'manana', label: 'Mañana' },
+  { key: 'semana', label: 'Próximos 7 días' },
+  { key: 'despues', label: 'Más adelante' },
+  { key: 'sinfecha', label: 'Sin fecha' },
+];
+
+export function todoBucket(t, today) {
+  if (!t.due) return 'sinfecha';
+  const n = diffDays(today, t.due);
+  if (n < 0) return 'vencidos';
+  if (n === 0) return 'hoy';
+  if (n === 1) return 'manana';
+  if (n <= 7) return 'semana';
+  return 'despues';
+}
+
+export function sortTodos(list) {
+  return [...list].sort((a, b) => (Number(b.important) - Number(a.important))
+    || ((a.due || '9999') < (b.due || '9999') ? -1 : (a.due || '9999') > (b.due || '9999') ? 1 : 0)
+    || (a.created < b.created ? 1 : a.created > b.created ? -1 : 0));
+}
+
+export const pendingTodos = (s) => s.todos.filter((t) => !t.done);
+export const todosDue = (s, today) => sortTodos(pendingTodos(s).filter((t) => t.due && t.due <= today));
+export const todosIn = (s, cat) => pendingTodos(s).filter((t) => t.cat === cat);
+// Lo de un área: su categoría y tus categorías propias que suben su atributo (p. ej. «Maestría» en Crecimiento).
+export const todosForArea = (s, area) => pendingTodos(s).filter((t) => t.cat === area || s.todoLists.some((l) => l.id === t.cat && l.area === area));
+
+// Posponer cambia solo esta vez: si se repite, la serie sigue en su fecha de siempre
+// (la fecha original queda en `sched` y de ahí sale la siguiente).
+function moveDue(t, d) {
+  if (t.repeat && t.due && !t.sched) t.sched = t.due;
+  t.due = d;
+}
+
+export function postponeTodo(s, id, due) {
+  const t = s.todos.find((x) => x.id === id);
+  const d = validDay(due);
+  if (!t || t.done || !d) return null;
+  moveDue(t, d);
+  return t;
+}
+
+// «Pasar a hoy»: los vencidos (todos, o solo los que ves con tu filtro) vuelven a la lista de hoy.
+export function overdueToToday(s, today, ids = null) {
+  let n = 0;
+  for (const t of s.todos) {
+    if (t.done || !t.due || t.due >= today || (ids && !ids.includes(t.id))) continue;
+    moveDue(t, today);
+    n += 1;
+  }
+  return n;
+}
+
+export function addTodoList(s, p) {
+  const name = String(p.name || '').trim().slice(0, 30);
+  if (name.length < 2) return null;
+  const l = { id: `l${uid()}`, name, area: AREA[p.area] ? p.area : null };
+  s.todoLists.push(l);
+  return l;
+}
+
+export function updateTodoList(s, id, p) {
+  const l = s.todoLists.find((x) => x.id === id);
+  if (!l) return;
+  if (p.name != null && String(p.name).trim().length > 1) l.name = String(p.name).trim().slice(0, 30);
+  if (p.area !== undefined) l.area = AREA[p.area] ? p.area : null;
+}
+
+export function removeTodoList(s, id) {
+  s.todoLists = s.todoLists.filter((x) => x.id !== id);
+  for (const t of s.todos) if (t.cat === id) t.cat = 'general';
+}
+
+// ---------- Expediente personal ----------
+
+const str = (v, n) => String(v ?? '').trim().slice(0, n);
+
+function sectionFromTemplate(t) {
+  const sec = { id: t.id, kind: t.kind, title: t.title, icon: t.icon, area: t.area || null, builtin: true };
+  if (t.kind === 'fields') sec.fields = t.fields.map(([label, type = 'text', secret = false]) => ({ id: uid(), label, type, secret: !!secret, value: '' }));
+  else { sec.schema = t.schema; sec.items = []; }
+  return sec;
+}
+
+export function buildRecord() {
+  return { sections: RECORD_SECTIONS.map(sectionFromTemplate) };
+}
+
+// Completa un expediente guardado con las secciones fijas que falten (al actualizar la app).
+export function ensureRecord(s) {
+  if (!s.record || typeof s.record !== 'object' || !Array.isArray(s.record.sections)) s.record = buildRecord();
+  const ok = (x) => x && typeof x === 'object' && x.id;
+  // Entradas dañadas (por ejemplo, de una copia editada a mano) se descartan en vez de romper la app.
+  s.record.sections = s.record.sections.filter((x) => ok(x) && (x.kind === 'fields' || x.kind === 'list'));
+  // Una sección fija nueva entra en su lugar: después de la sección fija anterior que ya tengas.
+  RECORD_SECTIONS.forEach((t, i) => {
+    if (s.record.sections.some((x) => x.id === t.id)) return;
+    const prev = RECORD_SECTIONS.slice(0, i).reverse().map((p) => s.record.sections.findIndex((x) => x.id === p.id)).find((k) => k >= 0);
+    s.record.sections.splice(prev == null ? 0 : prev + 1, 0, sectionFromTemplate(t));
+  });
+  for (const sec of s.record.sections) {
+    if (sec.kind === 'fields') sec.fields = Array.isArray(sec.fields) ? sec.fields.filter(ok) : [];
+    if (sec.kind === 'list') sec.items = Array.isArray(sec.items) ? sec.items.filter(ok) : [];
+  }
+  return s.record;
+}
+
+export const recordSection = (s, id) => (s.record && s.record.sections.find((x) => x.id === id)) || null;
+export const recordSchema = (sec) => RECORD_SCHEMAS[sec && sec.schema] || RECORD_SCHEMAS.generic;
+
+function recordXP(s, sec, base, today, ev) {
+  const d = getDay(s, today);
+  d.recordXp = d.recordXp || 0;
+  if (d.recordXp >= RECORD_XP.dailyCap) return 0;
+  const amt = Math.min(base, RECORD_XP.dailyCap - d.recordXp);
+  d.recordXp += amt;
+  return sec.area ? gainXP(s, sec.area, amt, today, ev, { applyMods: false }) : gainPlayerXP(s, amt, today, ev, { applyMods: false });
+}
+
+export function setRecordField(s, secId, fieldId, value, today, ev) {
+  const sec = recordSection(s, secId);
+  const f = sec && sec.kind === 'fields' && sec.fields.find((x) => x.id === fieldId);
+  if (!f) return;
+  f.value = String(value ?? '').slice(0, f.type === 'long' ? 2000 : 200);
+  if (f.value.trim() && !f.xp) {
+    f.xp = true;
+    recordXP(s, sec, RECORD_XP.field, today, ev);
+  }
+  checkAchievements(s, today, ev);
+}
+
+const FIELD_TYPES = ['text', 'long', 'date', 'tel', 'email'];
+
+export function addRecordField(s, secId, p) {
+  const sec = recordSection(s, secId);
+  const label = str(p.label, 40);
+  if (!sec || sec.kind !== 'fields' || label.length < 2) return null;
+  const f = { id: uid(), label, type: FIELD_TYPES.includes(p.type) ? p.type : 'text', secret: !!p.secret, value: '' };
+  sec.fields.push(f);
+  return f;
+}
+
+export function updateRecordField(s, secId, fieldId, p) {
+  const sec = recordSection(s, secId);
+  const f = sec && sec.kind === 'fields' && sec.fields.find((x) => x.id === fieldId);
+  if (!f) return;
+  if (p.label != null && str(p.label, 40).length > 1) f.label = str(p.label, 40);
+  if (p.type && FIELD_TYPES.includes(p.type)) f.type = p.type;
+  if (p.secret != null) f.secret = !!p.secret;
+}
+
+export function removeRecordField(s, secId, fieldId) {
+  const sec = recordSection(s, secId);
+  if (sec && sec.kind === 'fields') sec.fields = sec.fields.filter((x) => x.id !== fieldId);
+}
+
+function cleanItem(p) {
+  return {
+    title: str(p.title, 80),
+    detail: str(p.detail, 120),
+    phone: String(p.phone || '').replace(/[^\d+]/g, '').slice(0, 16),
+    start: validDay(p.start),
+    end: validDay(p.end),
+    note: str(p.note, 1000),
+  };
+}
+
+// En cuentas y tarjetas se guarda solo el final del número: «Popular 4111 1111 1111 1234» → «Popular •••• 1234».
+export function keepLast4(text) {
+  return String(text || '').replace(/\d[\d\s.-]{6,}\d/g, (m) => {
+    const digits = m.replace(/\D/g, '');
+    return digits.length >= 8 ? `•••• ${digits.slice(-4)}` : m;
+  });
+}
+
+function cleanFor(sec, p) {
+  const it = cleanItem(p);
+  if (recordSchema(sec).last4) it.detail = keepLast4(it.detail);
+  return it;
+}
+
+export function addRecordItem(s, secId, p, today, ev) {
+  const sec = recordSection(s, secId);
+  if (!sec || sec.kind !== 'list') return null;
+  const it = cleanFor(sec, p);
+  if (it.title.length < 2) return null;
+  it.id = uid();
+  it.created = today;
+  sec.items.push(it);
+  recordXP(s, sec, RECORD_XP.item, today, ev);
+  checkAchievements(s, today, ev);
+  return it;
+}
+
+export function updateRecordItem(s, secId, itemId, p) {
+  const sec = recordSection(s, secId);
+  const it = sec && sec.kind === 'list' && sec.items.find((x) => x.id === itemId);
+  if (!it) return;
+  const c = cleanFor(sec, { ...it, ...p });
+  if (c.title.length < 2) c.title = it.title;
+  Object.assign(it, c);
+}
+
+export function removeRecordItem(s, secId, itemId) {
+  const sec = recordSection(s, secId);
+  if (sec && sec.kind === 'list') sec.items = sec.items.filter((x) => x.id !== itemId);
+}
+
+export function addRecordSection(s, p) {
+  const title = str(p.title, 40);
+  if (title.length < 2) return null;
+  const kind = p.kind === 'fields' ? 'fields' : 'list';
+  const sec = { id: `x${uid()}`, kind, title, icon: p.icon || 'folder', area: AREA[p.area] ? p.area : null, builtin: false };
+  if (kind === 'fields') sec.fields = [];
+  else { sec.schema = 'generic'; sec.items = []; }
+  s.record.sections.push(sec);
+  return sec;
+}
+
+export function updateRecordSection(s, secId, p) {
+  const sec = recordSection(s, secId);
+  if (!sec) return;
+  if (p.title != null && str(p.title, 40).length > 1) sec.title = str(p.title, 40);
+  if (p.icon) sec.icon = p.icon;
+  if (p.area !== undefined) sec.area = AREA[p.area] ? p.area : null;
+}
+
+export function removeRecordSection(s, secId) {
+  s.record.sections = s.record.sections.filter((x) => x.id !== secId || x.builtin);
+}
+
+// Fechas que avisan: vencimientos de documentos, próximos chequeos y fechas clave.
+export function recordAlerts(s, today, within = 45) {
+  const out = [];
+  if (!s.record) return out;
+  for (const sec of s.record.sections) {
+    if (sec.kind !== 'list' || !recordSchema(sec).alert) continue;
+    for (const it of sec.items) {
+      if (!it.end) continue;
+      const n = diffDays(today, it.end);
+      if (n <= within) out.push({ sec, item: it, inDays: n });
+    }
+  }
+  return out.sort((a, b) => a.inDays - b.inDays);
+}
+
+export function recordProgress(s) {
+  let total = 0;
+  let filled = 0;
+  for (const sec of (s.record ? s.record.sections : [])) {
+    if (sec.kind === 'fields') {
+      total += sec.fields.length;
+      filled += sec.fields.filter((f) => String(f.value || '').trim()).length;
+    } else {
+      total += 1;
+      filled += sec.items.length ? 1 : 0;
+    }
+  }
+  return { total, filled, pct: total ? filled / total : 0 };
+}
+
+const lowerFirst = (t) => (t.length > 1 && t[1] === t[1].toLowerCase() ? t[0].toLowerCase() + t.slice(1) : t);
+export const alertSrc = (secId, it) => `exp:${secId}:${it.id}:${it.end}`;
+// «pending»: está en pendientes · «done»: ya lo atendiste (aunque borres los hechos) · null: falta.
+// Al cambiar la fecha del documento, el aviso vuelve para la fecha nueva.
+export function alertStatus(s, secId, it) {
+  const src = alertSrc(secId, it);
+  const t = s.todos.find((x) => x.src === src);
+  if (t) return t.done ? 'done' : 'pending';
+  return it.handled && it.handled === it.end ? 'done' : null;
+}
+export const hasAlertTodo = (s, secId, it) => alertStatus(s, secId, it) != null;
+
+// Marca (o desmarca) el registro del expediente cuando se completa el pendiente que salió de su aviso.
+function markAlertHandled(s, src, on) {
+  const m = /^exp:([^:]+):([^:]+):(\d{4}-\d{2}-\d{2})$/.exec(src || '');
+  if (!m) return;
+  const sec = recordSection(s, m[1]);
+  const it = sec && sec.kind === 'list' && sec.items.find((x) => x.id === m[2]);
+  if (!it || it.end !== m[3]) return;
+  if (on) it.handled = it.end;
+  else if (it.handled === it.end) it.handled = null;
+}
+
+// Pasa un vencimiento a Pendientes (dos semanas antes, o hoy si ya está cerca).
+export function alertToTodo(s, secId, itemId, today) {
+  const sec = recordSection(s, secId);
+  const it = sec && sec.kind === 'list' && sec.items.find((x) => x.id === itemId);
+  if (!it || !it.end || hasAlertTodo(s, secId, it)) return null;
+  const verb = sec.schema === 'checkups' ? 'Agendar' : sec.schema === 'docs' ? 'Renovar' : 'Atender';
+  const due = diffDays(today, it.end) > 14 ? addDays(it.end, -14) : today;
+  return addTodo(s, { title: `${verb} ${lowerFirst(it.title)}`, cat: sec.area || 'general', due, important: diffDays(today, it.end) <= 14, src: alertSrc(secId, it) }, today);
+}
+
 // ---------- Logros ----------
 
 const sumPages = (s) => s.reads.reduce((a, r) => a + r.pages, 0);
@@ -950,7 +1537,7 @@ export const ACHIEVEMENTS = [
   { id: 'racha30', icon: 'flame', title: 'Un mes entero', desc: 'Racha de 30 días.', test: (s) => s.streak.best >= 30 },
   { id: 'nivel5', icon: 'star', title: 'Aventurero curtido', desc: 'Llega al nivel 5.', test: (s) => playerLevel(s.xp).n >= 5 },
   { id: 'nivel10', icon: 'star', title: 'Leyenda en marcha', desc: 'Llega al nivel 10.', test: (s) => playerLevel(s.xp).n >= 10 },
-  { id: 'capitulo', icon: 'map', title: 'Primer capítulo', desc: 'Completa un capítulo de un camino.', test: (s) => s.campaigns.some((c) => c.chapters[0] && c.chapters[0].tasks.every((t) => t.done)) },
+  { id: 'capitulo', icon: 'map', title: 'Primer capítulo', desc: 'Completa un capítulo de un camino.', test: (s) => s.campaigns.some((c) => c.chapters[0] && c.chapters[0].tasks.length > 0 && c.chapters[0].tasks.every((t) => t.done)) },
   { id: 'jefe', icon: 'sword', title: 'Cazador de jefes', desc: 'Derrota a tu primer jefe.', test: (s) => s.bosses.some((b) => b.status === 'won') },
   { id: 'contador', icon: 'coins', title: 'Contador', desc: 'Registra 10 gastos.', test: (s) => s.money.tx.filter((t) => t.amount < 0).length >= 10 },
   { id: 'posada', icon: 'moon', title: 'Huésped fiel', desc: 'Cierra 7 días en la posada.', test: (s) => Object.keys(s.inn).length >= 7 },
@@ -960,6 +1547,8 @@ export const ACHIEVEMENTS = [
   { id: 'enfoque', icon: 'timer', title: 'Mente de acero', desc: '10 sesiones de enfoque completas.', test: (s) => s.focus.filter((f) => !f.broken).length >= 10 },
   { id: 'plena', icon: 'heart', title: 'Vitalidad plena', desc: 'Llega a 100 de vitalidad.', test: (s) => s.vit >= 100 },
   { id: 'fenix', icon: 'sparkle', title: 'Fénix', desc: 'Sal del modo recuperación.', test: (s) => (s.stats.recovered || 0) >= 1 },
+  { id: 'aldia', icon: 'list', title: 'Al día', desc: 'Completa 20 pendientes.', test: (s) => (s.stats.todos || 0) >= 20 },
+  { id: 'expediente', icon: 'folder', title: 'Expediente en orden', desc: 'Completa la mitad de tu expediente.', test: (s) => !!s.record && recordProgress(s).pct >= 0.5 },
 ];
 
 export function checkAchievements(s, today, ev) {
@@ -987,6 +1576,8 @@ export function nextBestAction(s, today, hour = new Date().getHours()) {
     || (s.profile.classKeys.includes(b.area) - s.profile.classKeys.includes(a.area))
     || (a.cost - b.cost))[0];
   if (pick) return { kind: 'mission', mission: pick };
+  const todo = todosDue(s, today)[0];
+  if (todo) return { kind: 'todo', todo };
   if (left <= 1 && pending.length) return { kind: 'potion' };
   if (hour >= 18 && !s.inn[today]) return { kind: 'inn' };
   const due = duePeople(s, today)[0];
@@ -1004,7 +1595,7 @@ export function weekStats(s, today) {
     const d = s.days[day];
     const done = d ? Object.keys(d.done || {}).length : 0;
     if (d && d.vitEnd != null) vit = d.vitEnd;
-    out.push({ day, done, xp: d ? d.xp : 0, vit: day === today ? s.vit : vit, xpBy: d ? d.xpBy || {} : {} });
+    out.push({ day, done, todos: d ? d.todos || 0 : 0, xp: d ? d.xp : 0, vit: day === today ? s.vit : vit, xpBy: d ? d.xpBy || {} : {} });
   }
   return out;
 }
@@ -1015,9 +1606,18 @@ export function weekXpBy(s, today) {
   return by;
 }
 
-export function suggestedMissions(area, goalId, intensity) {
+export function suggestedMissions(area, goalId, intensity, s = null) {
   const tpl = goalTemplate(area, goalId);
   const list = tpl ? tpl.missions : [];
   const n = (INTENSITIES.find((x) => x.key === intensity) || INTENSITIES[1]).missions;
-  return list.map((m, i) => ({ ...m, picked: i < n }));
+  const steps = s ? dailyGoal(s, 'steps') : DEFAULT_GOALS.steps;
+  return list.map((m, i) => {
+    const out = { ...m, picked: i < n };
+    // Las misiones de pasos usan tu propia meta diaria.
+    if (m.auto && m.auto.metric === 'steps') {
+      out.title = `${steps.toLocaleString('en-US')} pasos`;
+      out.auto = { metric: 'steps', gte: steps };
+    }
+    return out;
+  });
 }
