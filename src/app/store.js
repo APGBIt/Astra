@@ -1,6 +1,6 @@
 // Estado persistente de Astra. Se guarda solo en este navegador.
 import { useEffect, useReducer } from 'preact/hooks';
-import { defaultState, reconcile } from '../game/logic.js';
+import { defaultState, reconcile, ensureRecord } from '../game/logic.js';
 import { dayKey } from './dates.js';
 
 const KEY = 'astra.v1';
@@ -21,9 +21,16 @@ function migrate(s) {
   if (!s || typeof s !== 'object') return d;
   const m = merge(d, s);
   // Listas: si vienen dañadas, se reinician vacías.
-  for (const k of ['missions', 'vitLog', 'campaigns', 'bosses', 'moods', 'people', 'contacts', 'books', 'reads', 'cards', 'practice', 'focus', 'rewards', 'redeemed', 'titles', 'journal']) {
+  for (const k of ['missions', 'vitLog', 'campaigns', 'bosses', 'moods', 'people', 'contacts', 'books', 'reads', 'cards', 'practice', 'focus', 'rewards', 'redeemed', 'titles', 'journal', 'todos', 'todoLists']) {
     if (!Array.isArray(m[k])) m[k] = [];
   }
+  // Pendientes y categorías dañados se descartan uno a uno (no toda la lista).
+  m.todos = m.todos.filter((t) => t && typeof t === 'object' && t.id && t.title);
+  m.todoLists = m.todoLists.filter((l) => l && typeof l === 'object' && l.id && l.name);
+  // Versión 2: pendientes, expediente y metas diarias propias.
+  ensureRecord(m);
+  if (!m.profile.goals || typeof m.profile.goals !== 'object') m.profile.goals = { ...d.profile.goals };
+  m.v = 2;
   if (!Array.isArray(m.money.tx)) m.money.tx = [];
   if (!Array.isArray(m.money.categories) || !m.money.categories.length) m.money.categories = d.money.categories;
   if (!Array.isArray(m.profile.classKeys)) m.profile.classKeys = [];
@@ -40,10 +47,14 @@ try {
 }
 
 function load() {
+  let raw = null;
   try {
-    const raw = localStorage.getItem(KEY);
+    raw = localStorage.getItem(KEY);
     if (raw) return migrate(JSON.parse(raw));
-  } catch { /* sin almacenamiento */ }
+  } catch {
+    // Si los datos guardados no se pueden leer, se guardan aparte antes de empezar de cero, para no perderlos.
+    try { if (raw) localStorage.setItem(`${KEY}.rescate`, raw); } catch { /* sin espacio */ }
+  }
   return defaultState();
 }
 

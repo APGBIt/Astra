@@ -1,11 +1,12 @@
 import { useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
-import { TChip, Avatar, AreaTile, Bolts, money, toast, areaInk, areaColor } from '../ui/kit.jsx';
+import { TChip, Avatar, AreaTile, Bolts, NumberChips, NumberField, money, num, toast, areaInk, areaColor, areaSoft, cuantos, focusOnMount } from '../ui/kit.jsx';
 import { act, useApp, importData } from '../app/store.js';
 import { go, back } from '../app/router.js';
-import { AREAS, AREA, GOALS, DEADLINES, INTENSITIES, SOURCES } from '../game/content.js';
-import { className, startCampaign, suggestedMissions, goalTemplate } from '../game/logic.js';
+import { AREAS, AREA, GOALS, DEADLINES, INTENSITIES, SOURCES, GOAL_PRESETS } from '../game/content.js';
+import { className, startCampaign, suggestedMissions, goalTemplate, fmtHours } from '../game/logic.js';
 import { toNumber } from '../game/parse.js';
+import { addDays, diffDays, fmtDay } from '../app/dates.js';
 
 export function Welcome() {
   const onImport = async (e) => {
@@ -57,9 +58,9 @@ export function Welcome() {
 export function Logo({ size = 64 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" role="img" aria-label="Astra" style={{ flexShrink: 0 }}>
-      <rect width="64" height="64" rx="18" fill="var(--ink)" />
+      <rect width="64" height="64" rx="18" fill="var(--boss)" />
       <path d="M32 12l4.6 13.4L50 30l-13.4 4.6L32 48l-4.6-13.4L14 30l13.4-4.6z" fill="var(--xp)" />
-      <circle cx="47" cy="17" r="3" fill="var(--on-ink)" />
+      <circle cx="47" cy="17" r="3" fill="#FAFAF7" />
     </svg>
   );
 }
@@ -123,10 +124,11 @@ export function Create() {
               <div class="row" role="group" aria-label={a.area} style={{ gap: 4 }}>
                 {[1, 2, 3, 4, 5].map((v) => {
                   const on = v <= ratings[a.key];
+                  const sel = v === ratings[a.key];
                   return (
-                    <button key={v} type="button" aria-label={`${v} de 5`} aria-pressed={v === ratings[a.key] ? 'true' : 'false'}
+                    <button key={v} type="button" aria-label={`${v} de 5`} aria-pressed={sel ? 'true' : 'false'}
                       onClick={() => setRatings({ ...ratings, [a.key]: v })}
-                      style={{ width: 36, height: 40, borderRadius: 10, border: on ? 'none' : '1.5px solid var(--line-2)', background: on ? areaColor(a.key) : 'var(--surface)', color: on ? '#fff' : 'var(--muted)', fontWeight: 700, fontSize: 13 }}>{v}</button>
+                      style={{ width: 36, height: 40, borderRadius: 10, border: on ? 'none' : '1.5px solid var(--line-2)', background: sel ? areaInk(a.key) : on ? areaSoft(a.key) : 'var(--surface)', color: sel ? 'var(--surface)' : on ? areaInk(a.key) : 'var(--muted)', fontWeight: 800, fontSize: 13 }}>{v}</button>
                   );
                 })}
               </div>
@@ -135,8 +137,8 @@ export function Create() {
         </section>
         <div class="stack-sm">
           <span class="label">¿Cuántas horas quieres dormir?</span>
-          <div class="chips">{[6, 7, 8, 9].map((h) => <TChip key={h} on={sleepGoal === h} onClick={() => setSleepGoal(h)}>{h} horas</TChip>)}</div>
-          <span class="small muted">Dormir tu meta llena tu energía del día.</span>
+          <NumberChips value={sleepGoal} onChange={setSleepGoal} presets={GOAL_PRESETS.sleep} format={(v) => (Number.isInteger(v) ? `${v} horas` : fmtHours(v))} unit="horas" step={0.25} min={4} max={12} label="Meta de sueño" sm={false} />
+          <span class="small muted">Dormir tu meta llena tu energía del día. Puedes cambiarla después.</span>
         </div>
         <button type="button" class="btn block" onClick={() => setStep(2)}>Siguiente: tu camino<Icon name="right" size={20} /></button>
       </main>
@@ -225,31 +227,53 @@ export function PathPicker({ paths, onToggle, title = 'Elige tu camino', sub = '
 // ---------- Meta de un camino ----------
 
 export function GoalForm({ area, initial, onDone, cta = 'Empezar el camino' }) {
+  const s = useApp();
+  const today = s.energy.day;
   const a = AREA[area];
   const templates = GOALS[area] || [];
   const [goalId, setGoalId] = useState(initial ? initial.goalId : templates[0].id);
   const [title, setTitle] = useState(initial && initial.goalId === 'custom' ? initial.title : '');
   const [unit, setUnit] = useState(initial && initial.unit ? initial.unit : 'avances');
   const tpl = goalTemplate(area, goalId);
-  const [target, setTarget] = useState(initial ? String(initial.target || '') : tpl && tpl.target ? String(tpl.target) : '');
+  const [target, setTarget] = useState(initial ? Number(initial.target) || 0 : tpl && tpl.target ? tpl.target : 0);
   const [days, setDays] = useState(initial ? initial.days : 90);
+  const [otherDate, setOtherDate] = useState(initial ? !DEADLINES.some((d) => d.days === initial.days) : false);
   const [intensity, setIntensity] = useState(initial ? initial.intensity : 'normal');
-  const [picked, setPicked] = useState(() => (initial ? initial.missions.map((m) => m.title) : suggestedMissions(area, goalId, 'normal').filter((m) => m.picked).map((m) => m.title)));
+  const [picked, setPicked] = useState(() => (initial ? initial.missions.map((m) => m.orig || m.title) : suggestedMissions(area, goalId, 'normal', s).filter((m) => m.picked).map((m) => m.title)));
+  const [names, setNames] = useState(() => (initial ? Object.fromEntries(initial.missions.filter((m) => m.orig).map((m) => [m.orig, m.title])) : {}));
+  const [editName, setEditName] = useState(null);
 
   const choose = (id) => {
     setGoalId(id);
     const t = goalTemplate(area, id);
-    setTarget(t && t.target ? String(t.target) : '');
-    setPicked(suggestedMissions(area, id, intensity).filter((m) => m.picked).map((m) => m.title));
+    setTarget(t && t.target ? t.target : 0);
+    setNames({});
+    setPicked(suggestedMissions(area, id, intensity, s).filter((m) => m.picked).map((m) => m.title));
   };
   const chooseIntensity = (k) => {
     setIntensity(k);
-    setPicked(suggestedMissions(area, goalId, k).filter((m) => m.picked).map((m) => m.title));
+    setPicked(suggestedMissions(area, goalId, k, s).filter((m) => m.picked).map((m) => m.title));
   };
-  const sugg = suggestedMissions(area, goalId, intensity);
-  const targetNum = toNumber(String(target).replace(/[^\d.,]/g, '')) || 0;
+  const sugg = suggestedMissions(area, goalId, intensity, s);
+  const targetNum = Number(target) || 0;
   const valid = targetNum > 0 && (goalId === 'custom' ? title.trim().length > 1 : !!tpl);
   const it = INTENSITIES.find((x) => x.key === intensity);
+  const isMoney = !!(tpl && tpl.money);
+  const step = isMoney ? 1000 : targetNum >= 300 ? 50 : targetNum >= 60 ? 5 : 1;
+
+  // Una misión con su número cambiado («10,000 pasos», «Leer 30 páginas»).
+  const finalMission = (m) => {
+    const name = (names[m.title] || '').trim();
+    const { picked: _p, ...out } = m;
+    if (!name || name === m.title) return out;
+    out.title = name;
+    out.orig = m.title;
+    if (m.auto && m.auto.metric === 'steps') {
+      const n = toNumber((name.match(/(\d[\d.,]*)/) || [])[1] || '');
+      if (n) out.auto = { metric: 'steps', gte: n };
+    }
+    return out;
+  };
 
   const submit = () => {
     if (!valid || (goalId !== 'custom' && !tpl)) return;
@@ -260,7 +284,7 @@ export function GoalForm({ area, initial, onDone, cta = 'Empezar el camino' }) {
       target: targetNum,
       days,
       intensity,
-      missions: sugg.filter((m) => picked.includes(m.title)).map(({ picked: _p, ...m }) => m),
+      missions: sugg.filter((m) => picked.includes(m.title)).map(finalMission),
     });
   };
 
@@ -289,17 +313,22 @@ export function GoalForm({ area, initial, onDone, cta = 'Empezar el camino' }) {
           <div class="field"><label for="gu">¿Cómo la vas a medir?</label><input id="gu" class="input" value={unit} maxLength={20} onInput={(e) => setUnit(e.currentTarget.value)} placeholder="Ej. módulos, kilos, avances" /></div>
         </div>
       )}
-      {(goalId === 'custom' || (tpl && !tpl.target) || (tpl && tpl.target)) && (
-        <div class="field">
-          <label for="gtarget">{goalId === 'custom' ? `¿Cuántos ${unit || 'avances'} para lograrla?` : tpl.targetLabel || `¿Cuántos ${tpl.unit}?`}</label>
-          <input id="gtarget" class="input" inputMode="decimal" value={target} onInput={(e) => setTarget(e.currentTarget.value)} placeholder={tpl && tpl.money ? 'RD$' : 'Número'} />
-          {tpl && tpl.money && targetNum > 0 && <span class="small muted">{money(targetNum)} · será la vida de tu jefe.</span>}
-          {tpl && !tpl.money && <span class="small muted">{SOURCES[tpl.source]}.</span>}
-        </div>
-      )}
+      <div class="field">
+        <label for="gtarget">{goalId === 'custom' ? `${cuantos(unit || 'avances').slice(0, -1)} para lograrla?` : tpl.targetLabel || `${cuantos(tpl.unit)} Pon tu número`}</label>
+        <NumberField id="gtarget" value={targetNum} onChange={setTarget} step={step} min={0} prefix={isMoney ? 'RD$' : ''} unit={isMoney ? '' : goalId === 'custom' ? (unit || 'avances') : tpl.unit} label="Número de tu meta" />
+        {tpl && tpl.target && targetNum !== tpl.target && <button type="button" class="link-btn muted" style={{ alignSelf: 'flex-start' }} onClick={() => setTarget(tpl.target)}><Icon name="undo" size={16} />Volver a la sugerencia: {num(tpl.target)} {tpl.unit}</button>}
+        {tpl && tpl.target && targetNum === tpl.target && <span class="small muted">Sugerido: {num(tpl.target)} {tpl.unit}. Cámbialo con − y + o escribe el tuyo.</span>}
+        {isMoney && targetNum > 0 && <span class="small muted">{money(targetNum)} · será la vida de tu jefe.</span>}
+        {tpl && !tpl.money && <span class="small muted">{SOURCES[tpl.source]}.</span>}
+      </div>
       <div class="stack-sm">
         <span class="label">¿En cuánto tiempo?</span>
-        <div class="chips">{DEADLINES.map((d) => <TChip key={d.days} on={days === d.days} onClick={() => setDays(d.days)}>{d.label}</TChip>)}</div>
+        <div class="chips">
+          {DEADLINES.map((d) => <TChip key={d.days} on={!otherDate && days === d.days} onClick={() => { setOtherDate(false); setDays(d.days); }}>{d.label}</TChip>)}
+          <TChip icon="calendar" on={otherDate} onClick={() => setOtherDate(true)}>{otherDate ? `${days} días` : 'Otra fecha'}</TChip>
+        </div>
+        {otherDate && <input type="date" class="input" aria-label="Fecha límite de la meta" min={addDays(today, 7)} value={addDays(today, days)} onInput={(e) => { const v = e.currentTarget.value; if (v && v > today) setDays(Math.max(1, diffDays(today, v))); }} />}
+        <span class="small muted">Hasta el {fmtDay(addDays(today, days), { weekdayName: false })}.</span>
       </div>
       <div class="stack-sm">
         <span class="label">Intensidad</span>
@@ -311,14 +340,26 @@ export function GoalForm({ area, initial, onDone, cta = 'Empezar el camino' }) {
           <div style={{ padding: '14px 0 4px' }}><span class="eyebrow">Misiones para empezar</span></div>
           {sugg.map((m) => {
             const on = picked.includes(m.title);
+            const shown = names[m.title] || m.title;
             return (
-              <label key={m.title} class="lrow" style={{ cursor: 'pointer' }}>
-                <input type="checkbox" checked={on} onChange={() => setPicked(on ? picked.filter((x) => x !== m.title) : [...picked, m.title])} style={{ width: 22, height: 22, accentColor: 'var(--ink)', margin: 0 }} />
-                <span class="grow semi">{m.title}{m.kind === 'avoid' && <span class="tiny muted"> · evitar</span>}</span>
+              <div key={m.title} class="lrow" style={{ gap: 10 }}>
+                {editName === m.title ? (
+                  <input class="input grow" style={{ minHeight: 44 }} value={shown} maxLength={80} aria-label="Nombre de la misión" ref={focusOnMount} enterKeyHint="done"
+                    onInput={(e) => setNames({ ...names, [m.title]: e.currentTarget.value })}
+                    onBlur={() => { setEditName(null); if ((names[m.title] || '').trim() && names[m.title].trim() !== m.title && !on) setPicked([...picked, m.title]); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
+                ) : (
+                  <label class="row grow" style={{ cursor: 'pointer', gap: 12, minHeight: 44 }}>
+                    <input type="checkbox" checked={on} onChange={() => setPicked(on ? picked.filter((x) => x !== m.title) : [...picked, m.title])} style={{ width: 22, height: 22, accentColor: 'var(--ink)', margin: 0, flexShrink: 0 }} />
+                    <span class="grow semi">{shown}{m.kind === 'avoid' && <span class="tiny muted"> · evitar</span>}</span>
+                  </label>
+                )}
+                {editName !== m.title && <button type="button" class="icon-btn plain" aria-label={`Cambiar el número o el nombre de «${shown}»`} onClick={() => setEditName(m.title)}><Icon name="edit" size={16} /></button>}
                 <Bolts n={m.cost} />
-              </label>
+              </div>
             );
           })}
+          <p class="tiny muted" style={{ padding: '6px 0 12px' }}>Toca el lápiz para poner tu número (por ejemplo, «Leer 30 páginas» o «10,000 pasos»).</p>
         </section>
       )}
       {tpl && (
@@ -327,7 +368,7 @@ export function GoalForm({ area, initial, onDone, cta = 'Empezar el camino' }) {
           {tpl.chapters.map((ch, i) => (
             <div class="row" key={ch.title}><span class="tile sm" style={{ background: 'var(--soft)', fontWeight: 800, fontSize: 13 }}>{i + 1}</span><span class="grow strong">{ch.title}</span><span class="small muted">{ch.tasks.length} tareas</span></div>
           ))}
-          <div class="row"><span class="tile sm" style={{ background: 'var(--ink)', color: 'var(--xp)' }}><Icon name="sword" size={18} /></span><span class="grow strong">{tpl.boss}</span><span class="small muted">Jefe</span></div>
+          <div class="row"><span class="tile sm" style={{ background: 'var(--boss)', color: 'var(--xp)' }}><Icon name="sword" size={18} /></span><span class="grow strong">{tpl.boss}</span><span class="small muted">Jefe</span></div>
         </section>
       )}
       <button type="button" class="btn block" disabled={!valid} onClick={submit}>{cta}<Icon name="right" size={20} /></button>
@@ -365,9 +406,9 @@ export function NewGoal({ query }) {
     <main class="screen no-nav">
       <header class="between-c"><button type="button" class="icon-btn" aria-label="Volver" onClick={() => (query.get('area') ? back('/camino') : setArea(null))}><Icon name="left" /></button></header>
       <GoalForm area={area} onDone={(g) => {
-        act((st, today) => { startCampaign(st, { area, ...g }, today); });
+        const c = act((st, today) => startCampaign(st, { area, ...g }, today));
         toast('Nueva campaña en tu camino', 'map');
-        go('/camino', { replace: true });
+        go(c ? `/camino?c=${c.id}` : '/camino', { replace: true });
       }} />
     </main>
   );

@@ -43,13 +43,16 @@ export function monthName(mk) {
 export function fmtDay(key, { weekdayName = true } = {}) {
   const d = parseDay(key);
   const w = DAYS[d.getDay()];
-  const base = `${d.getDate()} de ${MONTHS[d.getMonth()]}`;
+  const base = `${d.getDate()} de ${MONTHS[d.getMonth()]}${otherYear(d) ? ` de ${d.getFullYear()}` : ''}`;
   return weekdayName ? `${w[0].toUpperCase()}${w.slice(1)} ${base}` : base;
 }
 
+// Fechas de otro año llevan el año («27 may 2027»); las de este año, no.
+const otherYear = (d) => d.getFullYear() !== new Date().getFullYear();
+
 export function fmtShort(key) {
   const d = parseDay(key);
-  return `${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)}`;
+  return `${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)}${otherYear(d) ? ` ${d.getFullYear()}` : ''}`;
 }
 
 export function relDay(key, today) {

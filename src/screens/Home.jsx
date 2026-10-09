@@ -1,6 +1,8 @@
 import { useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
-import { Nav, Segs, Bar, Bolts, Avatar, AreaDot, TChip, Stepper, toast, useHour, areaColor, areaSoft } from '../ui/kit.jsx';
+import { Nav, Segs, Bar, Bolts, Avatar, AreaDot, TChip, Stepper, toast, useHour, areaColor, areaSoft, dueLabel } from '../ui/kit.jsx';
+import { TodoRow, doneText } from './Todos.jsx';
+import { RecordAlertsNote } from './Record.jsx';
 import { act, useApp } from '../app/store.js';
 import { go } from '../app/router.js';
 import { fmtDay } from '../app/dates.js';
@@ -8,7 +10,7 @@ import { AREA, TIPS } from '../game/content.js';
 import {
   playerLevel, className, energyInfo, statuses, dayMissions, isDone, completeMission, undoMission, slipMission,
   missionXP, nextBestAction, activeCampaigns, campaignProgress, currentChapter, logHealth, inRecovery, autoLabel,
-  usePotion, fmtHours, bossHP,
+  usePotion, fmtHours, bossHP, todosDue, pendingTodos, completeTodo, todoCategory,
 } from '../game/logic.js';
 
 export function Home() {
@@ -23,6 +25,8 @@ export function Home() {
   const nba = nextBestAction(s, today, hour);
   const camps = activeCampaigns(s);
   const noSleep = s.health[today]?.sleep == null;
+  const dueTodos = todosDue(s, today);
+  const openTodos = pendingTodos(s).length;
 
   const toggle = (m) => act((st, t, ev) => {
     if (isDone(st, m, t)) undoMission(st, m.id, t);
@@ -57,6 +61,8 @@ export function Home() {
 
         {nba && !(nba.kind === 'sleep') && <BestMove nba={nba} s={s} today={today} />}
 
+        <RecordAlertsNote />
+
         <div class="row" style={{ minHeight: 56, padding: '0 6px 0 0', borderRadius: 20, border: '1.5px solid var(--line-2)', background: 'var(--surface)' }}>
           <a href="#/registrar" class="row grow" style={{ alignSelf: 'stretch', padding: '0 4px 0 18px', textDecoration: 'none', color: 'var(--muted)' }}>
             <span class="grow semi">Cuéntame qué hiciste…</span>
@@ -86,8 +92,9 @@ export function Home() {
         <section class="stack-xs" aria-label="Plan de hoy">
           <div class="between">
             <h2 class="eyebrow">Plan de hoy</h2>
-            <span class="row small strong" style={{ gap: 4, color: planned > en.left ? 'var(--vit-ink)' : 'var(--ene-ink)' }}>
-              usa {planned} de <Icon name="bolt" size={13} fill />{en.left}
+            <span class="row small strong" style={{ gap: 10 }}>
+              <span class="row" style={{ gap: 3, color: planned > en.left ? 'var(--vit-ink)' : 'var(--ene-ink)' }} aria-label={`Tu plan pide ${planned} de energía y tienes ${en.left}`}>pide <Icon name="bolt" size={13} fill />{planned} de {en.left}</span>
+              <a class="link-btn muted" href="#/misiones" style={{ minHeight: 28, fontSize: 13 }}>Todas<Icon name="right" size={14} /></a>
             </span>
           </div>
           {!pending.length && !done.length && (
@@ -105,6 +112,21 @@ export function Home() {
             <p class="small" style={{ color: 'var(--vit-ink)', paddingTop: 6 }}>Tu plan pide más energía de la que tienes. Toma una poción o deja algo para mañana.</p>
           )}
         </section>
+
+        {dueTodos.length > 0 ? (
+          <section class="stack-xs" aria-label="Pendientes para hoy">
+            <div class="between">
+              <h2 class="eyebrow">Pendientes para hoy</h2>
+              <a class="link-btn muted" href="#/pendientes" style={{ minHeight: 28, fontSize: 13 }}>Ver todos · {openTodos}<Icon name="right" size={14} /></a>
+            </div>
+            <div>{dueTodos.slice(0, 5).map((t) => <TodoRow key={t.id} s={s} t={t} today={today} />)}</div>
+            {dueTodos.length > 5 && <a class="link-btn muted" href="#/pendientes">y {dueTodos.length - 5} más para hoy</a>}
+          </section>
+        ) : openTodos > 0 && (
+          <a href="#/pendientes" class="row" style={{ gap: 12, minHeight: 52, padding: '0 16px', borderRadius: 18, border: '1.5px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', textDecoration: 'none' }}>
+            <Icon name="list" size={20} /><span class="grow semi">{openTodos === 1 ? '1 pendiente, nada vence hoy' : `${openTodos} pendientes, nada vence hoy`}</span><Icon name="right" size={18} />
+          </a>
+        )}
 
         {avoid.length > 0 && (
           <section class="stack-xs" aria-label="Evitar hoy">
@@ -179,7 +201,7 @@ function SleepPrompt({ goal }) {
     <section class="card" aria-label="Sueño de anoche">
       <div class="row-top">
         <span class="tile" style={{ background: 'var(--ene-soft)', color: 'var(--ene)' }}><Icon name="moon" /></span>
-        <div class="stack-xs grow"><span class="strong">¿Cuánto dormiste anoche?</span><span class="small muted">Define tu energía de hoy. {goal} h la llenan.</span></div>
+        <div class="stack-xs grow"><span class="strong">¿Cuánto dormiste anoche?</span><span class="small muted">Define tu energía de hoy. {fmtHours(goal)} la llenan.</span></div>
       </div>
       <Stepper value={h} onChange={setH} step={0.5} min={0} max={14} format={fmtHours} label="Horas de sueño" />
       <button type="button" class="btn sm block" onClick={() => {
@@ -203,6 +225,12 @@ function BestMove({ nba, s, today }) {
       ? <a class="btn sm" href={`#${AUTO_ROUTE[m.auto.metric] || '/'}`}><Icon name="plus" size={18} />Registrar</a>
       : <button type="button" class="btn sm" onClick={() => act((st, t, ev) => completeMission(st, m.id, t, ev))}><Icon name="check" size={18} />Hecha</button>;
     if (m.auto) sub = `${autoLabel(m)}. +${missionXP(m)} XP de ${AREA[m.area].attr}.`;
+  } else if (nba.kind === 'todo') {
+    const t = nba.todo;
+    const cat = todoCategory(s, t.cat);
+    title = t.title;
+    sub = `Pendiente de ${cat.name} · ${dueLabel(t.due, today).toLowerCase()}.`;
+    action = <button type="button" class="btn sm" onClick={() => { const r = act((st, d, ev) => completeTodo(st, t.id, d, ev)); if (r) toast(doneText(r), 'check'); }}><Icon name="check" size={18} />Hecho</button>;
   } else if (nba.kind === 'potion') {
     title = 'Tu energía está baja';
     sub = 'Una siesta corta o una pausa sin pantalla te recargan.';

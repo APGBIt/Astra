@@ -89,9 +89,10 @@ writeFileSync('dist/manifest.webmanifest', JSON.stringify({
     { src: 'icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
   ],
   shortcuts: [
+    { name: 'Nuevo pendiente', url: './#/pendientes/nuevo' },
     { name: 'Nueva misión', url: './#/mision/nueva' },
-    { name: 'Escanear recibo', url: './#/recibo' },
     { name: 'Registrar', url: './#/registrar' },
+    { name: 'Escanear recibo', url: './#/recibo' },
   ],
 }, null, 2));
 

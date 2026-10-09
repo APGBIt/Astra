@@ -29,16 +29,20 @@
   ],
   "shortcuts": [
     {
+      "name": "Nuevo pendiente",
+      "url": "./#/pendientes/nuevo"
+    },
+    {
       "name": "Nueva misión",
       "url": "./#/mision/nueva"
     },
     {
-      "name": "Escanear recibo",
-      "url": "./#/recibo"
-    },
-    {
       "name": "Registrar",
       "url": "./#/registrar"
+    },
+    {
+      "name": "Escanear recibo",
+      "url": "./#/recibo"
     }
   ]
 }
