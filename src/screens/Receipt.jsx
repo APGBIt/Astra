@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
-import { TopBar, Bar, money, toast, areaColor } from '../ui/kit.jsx';
+import { TopBar, Bar, money, usd, rateText, toast, areaColor } from '../ui/kit.jsx';
 import { act, useApp } from '../app/store.js';
 import { go, back } from '../app/router.js';
 import { monthKey } from '../app/dates.js';
-import { addTx, monthSummary } from '../game/logic.js';
+import { addTx, monthSummary, fxRate, toDOP, toUSD, catGroups } from '../game/logic.js';
 import { toNumber } from '../game/parse.js';
 import { aiProvider, aiJSON, providerLabel, prepareImage, readQR, receiptPrompt, checkReceipt, aiErrorText } from '../ai/ai.js';
 
@@ -86,10 +86,12 @@ export function Receipt() {
     if (!total) return;
     act((st, t, ev) => addTx(st, {
       type: 'gasto',
-      amount: data.currency === 'USD' ? total : total,
+      amount: total,
+      currency: data.currency === 'USD' ? 'USD' : 'DOP',
+      rate: fxRate(st, data.day || t),
       cat: data.cat,
       merchant: data.merchant,
-      note: data.currency === 'USD' ? 'Monto en US$' : '',
+      note: '',
       day: data.day || t,
       source: 'recibo',
       rnc: data.rnc,
@@ -146,7 +148,7 @@ export function Receipt() {
   const doubt = (k) => data.doubts.has(k);
   const summary = monthSummary(s, monthKey(data.day || today));
   const cat = s.money.categories.find((c) => c.id === data.cat);
-  const after = (summary.byCat[data.cat] || 0) + (Number(data.total) || 0);
+  const after = (summary.byCat[data.cat] || 0) + (data.currency === 'USD' ? toDOP(Number(data.total) || 0, 'USD', fxRate(s, data.day || today)) : (Number(data.total) || 0));
 
   return (
     <main class="screen no-nav">
@@ -157,10 +159,11 @@ export function Receipt() {
           {from && <span class="row tiny strong" style={{ gap: 5, color: 'var(--finanzas-ink)', textTransform: 'uppercase', letterSpacing: 0.5 }}><Icon name={from === 'qr' ? 'qr' : 'sparkle'} size={14} />{from === 'qr' ? 'Leído del código QR' : from === 'ia+qr' ? 'Leído por IA y QR' : 'Leído por IA'}</span>}
           <input class="input" aria-label="Comercio" value={data.merchant} placeholder="Comercio" onInput={(e) => set('merchant', e.currentTarget.value)} style={{ minHeight: 44, fontWeight: 700, background: doubt('comercio') ? 'var(--xp-soft)' : undefined }} />
           <label class="row" style={{ gap: 6 }}>
-            <span class="display-num" style={{ fontSize: 28 }}>RD$</span>
+            <button type="button" class="display-num cur-btn" style={{ fontSize: 26 }} aria-label={`Moneda: ${data.currency === 'USD' ? 'dólares' : 'pesos'}. Cambiar`} onClick={(e) => { e.preventDefault(); set('currency', data.currency === 'USD' ? 'DOP' : 'USD'); }}>{data.currency === 'USD' ? 'US$' : 'RD$'}</button>
             <input aria-label="Total" inputMode="decimal" value={data.total || ''} placeholder="0.00" onInput={(e) => set('total', toNumber(e.currentTarget.value) || 0)}
               style={{ width: '100%', border: 'none', background: doubt('total') ? 'var(--xp-soft)' : 'transparent', borderRadius: 10, fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 800, color: 'var(--ink)', minHeight: 44 }} />
           </label>
+          {Number(data.total) > 0 && <span class="small semi muted tab-num">= {data.currency === 'USD' ? money(toDOP(data.total, 'USD', fxRate(s, data.day || today))) : usd(toUSD(data.total, fxRate(s, data.day || today)))}</span>}
         </div>
       </section>
       {msg && <div class="note tone-vit"><Icon name="info" size={18} /><span>{msg} Puedes llenar los datos a mano.</span></div>}
@@ -173,7 +176,7 @@ export function Receipt() {
         <Field label="ITBIS" doubt={doubt('itbis')}><input inputMode="decimal" value={data.itbis || ''} placeholder="—" onInput={(e) => set('itbis', toNumber(e.currentTarget.value) || 0)} /></Field>
         {data.tip > 0 && <Field label="Propina legal"><input inputMode="decimal" value={data.tip} onInput={(e) => set('tip', toNumber(e.currentTarget.value) || 0)} /></Field>}
         {(data.method || data.last4) && <Field label="Pago" doubt={doubt('metodo_pago') || doubt('tarjeta_ultimos4')}><span class="strong">{data.method}{data.last4 ? ` · ${data.last4}` : ''}</span></Field>}
-        {data.currency === 'USD' && <div class="note tone-xp" style={{ margin: 6 }}><Icon name="info" size={18} /><span>El recibo está en dólares. Se guardará el monto tal cual; conviértelo si lo necesitas.</span></div>}
+        {data.currency === 'USD' && <div class="note" style={{ margin: 6 }}><Icon name="swap" size={18} /><span>El recibo está en dólares. Se guarda en US$ y en pesos a {rateText(fxRate(s, data.day || today))} por US$1.</span></div>}
         {data.items.length > 0 && (
           <>
             <button type="button" class="lrow" style={{ padding: '0 14px', minHeight: 52, fontWeight: 700 }} onClick={() => setShowItems(!showItems)} aria-expanded={showItems ? 'true' : 'false'}>
@@ -187,7 +190,7 @@ export function Receipt() {
         <div class="field">
           <label for="cat">Categoría</label>
           <select id="cat" class="input" value={data.cat} onChange={(e) => set('cat', e.currentTarget.value)}>
-            {s.money.categories.filter((c) => c.id !== 'ahorro').map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {catGroups(s, 'gasto').map((g) => <optgroup key={g.id} label={g.name}>{g.cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</optgroup>)}
           </select>
         </div>
         {cat && cat.budget > 0 ? (

@@ -20,6 +20,22 @@ export function money(n, { sign = false, decimals } = {}) {
   return v < 0 ? `−${s}` : s;
 }
 
+// Dólares: «US$1,543.61».
+export function usd(n, { sign = false, decimals } = {}) {
+  const v = Number(n) || 0;
+  const abs = Math.abs(v);
+  const d = decimals != null ? decimals : 2;
+  const s = `US$${abs.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })}`;
+  if (sign) return `${v < 0 ? '−' : '+'}${s}`;
+  return v < 0 ? `−${s}` : s;
+}
+
+// Monto en su moneda: RD$ o US$.
+export const cur = (n, currency, opts) => (currency === 'USD' ? usd(n, opts) : money(n, opts));
+
+// La tasa con cuatro decimales como la publica el Banco Central: «RD$61.1477».
+export const rateText = (r) => `RD$${(Number(r) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+
 export function num(n) {
   return (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
 }
@@ -55,7 +71,7 @@ export function TopBar({ title, backTo = '/', close = false, right = null, onBac
   );
 }
 
-// La barra de abajo. El botón flotante cambia según la pantalla (misión nueva o pendiente nuevo).
+// La barra de abajo. El botón flotante cambia según la pantalla (misión nueva, pendiente nuevo o movimiento).
 export function Nav({ active, fab = { href: '/mision/nueva', label: 'Nueva misión' } }) {
   const s = useApp();
   const badge = todosDue(s, s.energy.day).length;
@@ -74,7 +90,9 @@ export function Nav({ active, fab = { href: '/mision/nueva', label: 'Nueva misi�
         <Tab to="/areas" id="areas" icon="grid" text="Áreas" />
         <Tab to="/personaje" id="personaje" icon="user" text="Personaje" />
       </nav>
-      {fab && <a class="fab" href={`#${fab.href}`} aria-label={fab.label}><Icon name="plus" size={28} stroke={2.4} /></a>}
+      {fab && (fab.onClick
+        ? <button type="button" class="fab" aria-label={fab.label} onClick={fab.onClick}><Icon name="plus" size={28} stroke={2.4} /></button>
+        : <a class="fab" href={`#${fab.href}`} aria-label={fab.label}><Icon name="plus" size={28} stroke={2.4} /></a>)}
     </>
   );
 }
@@ -349,11 +367,12 @@ export function Sheet({ onClose, label, children }) {
     const auto = el && el.querySelector('[autofocus]');
     if (auto) auto.focus();
     else if (el) el.focus({ preventScroll: true });
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    el && el.addEventListener('keydown', onKey);
+    // Escape cierra la hoja aunque el foco se haya perdido (por ejemplo, si el botón tocado desapareció).
+    const onKey = (e) => { if (e.key === 'Escape' && !document.querySelector('[role="alertdialog"]')) onClose(); };
+    document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
     return () => {
-      el && el.removeEventListener('keydown', onKey);
+      document.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
       if (prev && prev.focus) prev.focus();
     };

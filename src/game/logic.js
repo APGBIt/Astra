@@ -5,7 +5,9 @@ import {
   AREA, AREA_KEYS, GOALS, CUSTOM_CHAPTERS, TALENTS, TALENT_LEVELS, POTIONS, SHOP_ITEMS,
   CATEGORIES, DEFAULT_REWARDS, INTENSITIES, MOOD_QUADS, INFLUENCES, DEFAULT_GOALS,
   TODO_GENERAL, TODO_XP, TODO_GOLD, RECORD_SECTIONS, RECORD_SCHEMAS, RECORD_XP,
+  CATEGORY_GROUPS, DEFAULT_ACCOUNTS, FX_DEFAULT,
 } from './content.js';
+import { norm, guessCategory, guessIncome } from './parse.js';
 
 export const ENERGY_CAP = 10;
 export const STEPS_GOAL = DEFAULT_GOALS.steps;
@@ -40,10 +42,11 @@ export function setDailyGoal(s, key, value, today = null) {
 }
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
+const validDay = (d) => (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null);
 
 export function defaultState(today = dayKey()) {
   return {
-    v: 2,
+    v: 3,
     profile: { name: '', emblem: 'star', onboarded: false, created: today, classKeys: [], sleepGoal: 7, selfRating: {}, goals: { ...DEFAULT_GOALS } },
     settings: { theme: 'auto', aiMode: 'auto', aiKey: '', aiModel: 'claude-sonnet-5-5', serverUrl: '', serverToken: '', lastBackup: null, hideNumbers: true },
     xp: 0,
@@ -70,7 +73,7 @@ export function defaultState(today = dayKey()) {
     cards: [],
     practice: [],
     focus: [],
-    money: { categories: CATEGORIES.map((c) => ({ ...c })), tx: [] },
+    money: defaultMoney(),
     rewards: DEFAULT_REWARDS.map((r) => ({ id: uid(), ...r })),
     redeemed: [],
     achievements: {},
@@ -1014,33 +1017,312 @@ export function saveInn(s, p, today, ev) {
 }
 
 // ---------- Finanzas ----------
+// Cada movimiento guarda su moneda (RD$ o US$), el monto en esa moneda (`orig`) y la tasa del día
+// (pesos por US$1). `amount` es siempre el monto en pesos, con signo: + ingreso, − gasto o salida.
+// Así los totales suman en pesos y cada movimiento muestra también su equivalente en la otra moneda.
 
-export function addTx(s, p, today, ev) {
-  const abs = Math.abs(Math.round((Number(p.amount) || 0) * 100) / 100);
-  if (!abs) return null;
-  const isIncome = p.type === 'ingreso';
-  const cat = isIncome ? 'ingreso' : (s.money.categories.some((c) => c.id === p.cat) ? p.cat : 'otros');
-  const tx = {
-    id: uid(),
-    day: p.day || today,
-    amount: isIncome ? abs : -abs,
-    cat,
-    merchant: String(p.merchant || '').slice(0, 60),
-    note: String(p.note || '').slice(0, 200),
-    source: p.source || 'manual',
-    rnc: p.rnc || '',
-    ncf: p.ncf || '',
-    itbis: Number(p.itbis) || 0,
+const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+const r4 = (n) => Math.round((Number(n) || 0) * 10000) / 10000;
+const okRate = (r) => Number.isFinite(Number(r)) && Number(r) > 20 && Number(r) < 250;
+export const TX_KINDS = ['gasto', 'ingreso', 'transfer'];
+
+export function defaultMoney() {
+  return {
+    categories: CATEGORIES.map((c) => ({ ...c })),
+    tx: [],
+    accounts: DEFAULT_ACCOUNTS.map((a) => ({ ...a })),
+    rules: {},
+    fx: { rate: FX_DEFAULT.rate, day: FX_DEFAULT.day, source: FX_DEFAULT.source, auto: true, manual: null, history: { [FX_DEFAULT.day]: FX_DEFAULT.rate }, fetched: null },
+    lastImport: null,
   };
+}
+
+// Pone al día los datos de dinero guardados por versiones anteriores (sin perder nada).
+export function ensureMoney(s) {
+  const d = defaultMoney();
+  if (!s.money || typeof s.money !== 'object') s.money = d;
+  const m = s.money;
+  // Categorías: las de la app con su nombre nuevo (y tu presupuesto); las tuyas se quedan.
+  const old = Array.isArray(m.categories) ? m.categories.filter((c) => c && typeof c === 'object' && c.id) : [];
+  const byId = Object.fromEntries(old.map((c) => [c.id, c]));
+  const builtin = CATEGORIES.map((c) => {
+    const o = byId[c.id];
+    return { ...c, budget: o ? Math.max(0, Math.round(Number(o.budget) || 0)) : 0, name: o && o.renamed ? String(o.name).slice(0, 40) : c.name, renamed: !!(o && o.renamed), hidden: !!(o && o.hidden) };
+  });
+  const ids = new Set(CATEGORIES.map((c) => c.id));
+  const custom = old.filter((c) => !ids.has(c.id)).map((c) => ({
+    id: c.id, name: String(c.name || 'Sin nombre').slice(0, 40), group: CATEGORY_GROUPS.some((g) => g.id === c.group) ? c.group : 'otros',
+    icon: c.icon || 'tag', type: TX_KINDS.includes(c.type) ? c.type : 'gasto', budget: Math.max(0, Math.round(Number(c.budget) || 0)), custom: true, hidden: !!c.hidden,
+  }));
+  m.categories = [...builtin, ...custom];
+  if (!Array.isArray(m.accounts) || !m.accounts.length) m.accounts = d.accounts;
+  m.accounts = m.accounts.filter((a) => a && typeof a === 'object' && a.id && a.name);
+  if (!m.rules || typeof m.rules !== 'object' || Array.isArray(m.rules)) m.rules = {};
+  if (!m.fx || typeof m.fx !== 'object') m.fx = d.fx;
+  m.fx = { ...d.fx, ...m.fx, history: { ...d.fx.history, ...(m.fx.history && typeof m.fx.history === 'object' ? m.fx.history : {}) } };
+  if (!okRate(m.fx.rate)) { m.fx.rate = d.fx.rate; m.fx.day = d.fx.day; }
+  if (m.fx.manual != null && !okRate(m.fx.manual)) m.fx.manual = null;
+  if (!Array.isArray(m.tx)) m.tx = [];
+  m.tx = m.tx.filter((t) => t && typeof t === 'object' && t.id && Number.isFinite(Number(t.amount)));
+  for (const t of m.tx) {
+    if (!t.currency) {
+      // La 1.x guardaba los recibos en dólares sin convertir: se pasan a pesos con la tasa de referencia.
+      if (t.note === 'Monto en US$') {
+        t.currency = 'USD';
+        t.orig = r2(Math.abs(t.amount));
+        t.rate = fxRate(s, t.day);
+        t.amount = -r2(t.orig * t.rate);
+        t.note = '';
+      } else t.currency = 'DOP';
+    }
+    if (!TX_KINDS.includes(t.kind)) t.kind = t.amount > 0 ? 'ingreso' : 'gasto';
+    if (t.orig == null) t.orig = r2(Math.abs(t.amount));
+    if (t.kind === 'ingreso' && !m.categories.some((c) => c.id === t.cat && c.type === 'ingreso')) t.cat = 'ingreso';
+  }
+  if (m.lastImport && (typeof m.lastImport !== 'object' || !m.lastImport.batch)) m.lastImport = null;
+  return m;
+}
+
+// ----- Tasa del dólar -----
+
+// Pesos por US$1 para un día: tu tasa propia si la pusiste; si no, la de ese día (o la más cercana
+// anterior que la app conozca); si no, la más reciente.
+export function fxRate(s, day = null) {
+  const fx = (s.money && s.money.fx) || {};
+  if (okRate(fx.manual)) return Number(fx.manual);
+  const h = fx.history || {};
+  if (day && okRate(h[day])) return Number(h[day]);
+  if (day) {
+    const prev = Object.keys(h).filter((k) => k <= day && okRate(h[k])).sort().pop();
+    if (prev && diffDays(prev, day) <= 10) return Number(h[prev]);
+  }
+  return okRate(fx.rate) ? Number(fx.rate) : FX_DEFAULT.rate;
+}
+
+// Anota la tasa de un día. Si es la más nueva, pasa a ser la tasa de hoy.
+export function recordRate(s, day, rate, source = '') {
+  if (!okRate(rate) || !validDay(day)) return false;
+  const fx = s.money.fx;
+  fx.history = { ...(fx.history || {}), [day]: r4(rate) };
+  const keys = Object.keys(fx.history).sort();
+  if (keys.length > 400) for (const k of keys.slice(0, keys.length - 400)) delete fx.history[k];
+  if (!fx.day || day >= fx.day) { fx.rate = r4(rate); fx.day = day; if (source) fx.source = source; }
+  return true;
+}
+
+export function setManualRate(s, rate) {
+  s.money.fx.manual = rate == null || rate === '' ? null : okRate(rate) ? r4(rate) : s.money.fx.manual;
+}
+
+export const fxIsManual = (s) => okRate(s.money.fx && s.money.fx.manual);
+
+export const toDOP = (amount, currency, rate) => r2(currency === 'USD' ? Number(amount) * Number(rate) : Number(amount));
+export const toUSD = (dop, rate) => r2(Number(dop) / Number(rate));
+
+// ----- Lectura de un movimiento -----
+
+export const txKind = (t) => (TX_KINDS.includes(t.kind) ? t.kind : t.amount > 0 ? 'ingreso' : 'gasto');
+export const txCur = (t) => (t.currency === 'USD' ? 'USD' : 'DOP');
+export const txOrig = (t) => (t.orig != null ? Number(t.orig) : Math.abs(Number(t.amount) || 0));
+export const txDOP = (t) => Math.abs(Number(t.amount) || 0);
+export const txRate = (s, t) => (okRate(t.rate) ? Number(t.rate) : fxRate(s, t.day));
+// Equivalente en dólares: el monto original si fue en US$; si fue en pesos, con la tasa de su día.
+export const txUSD = (s, t) => (txCur(t) === 'USD' ? txOrig(t) : r2(txDOP(t) / txRate(s, t)));
+
+// ----- Categorías -----
+
+const FALLBACK_CAT = { gasto: 'otros', ingreso: 'ingreso', transfer: 'entre_cuentas' };
+
+export function catOf(s, id) {
+  const c = s.money.categories.find((x) => x.id === id);
+  if (c) return c;
+  if (id === 'ingreso') return { id: 'ingreso', name: 'Otros ingresos', icon: 'coins', type: 'ingreso', group: 'ingresos' };
+  return { id: id || 'otros', name: 'Otros gastos', icon: 'dots', type: 'gasto', group: 'otros' };
+}
+export const catName = (s, id) => catOf(s, id).name;
+export const catsOfType = (s, type = 'gasto') => s.money.categories.filter((c) => c.type === type && !c.hidden);
+
+// Categorías de un tipo agrupadas por familia, en el orden de la app.
+export function catGroups(s, type = 'gasto') {
+  const list = catsOfType(s, type);
+  return CATEGORY_GROUPS.map((g) => ({ ...g, cats: list.filter((c) => c.group === g.id) })).filter((g) => g.cats.length);
+}
+
+export function addCategory(s, p) {
+  const name = String(p.name || '').trim().slice(0, 40);
+  if (name.length < 2) return null;
+  const type = TX_KINDS.includes(p.type) ? p.type : 'gasto';
+  const dup = s.money.categories.find((c) => norm(c.name) === norm(name) && c.type === type);
+  if (dup) { dup.hidden = false; return dup; }
+  const group = CATEGORY_GROUPS.some((g) => g.id === p.group) ? p.group : type === 'ingreso' ? 'ingresos' : 'otros';
+  const c = { id: `c${uid()}`, name, group, icon: p.icon || 'tag', type, budget: 0, custom: true };
+  s.money.categories.push(c);
+  return c;
+}
+
+export function updateCategory(s, id, p) {
+  const c = s.money.categories.find((x) => x.id === id);
+  if (!c) return null;
+  if (p.name != null && String(p.name).trim().length >= 2) {
+    const name = String(p.name).trim().slice(0, 40);
+    if (name !== c.name) { c.name = name; if (!c.custom) c.renamed = true; }
+  }
+  if (p.icon) c.icon = p.icon;
+  if (p.group && c.custom && CATEGORY_GROUPS.some((g) => g.id === p.group)) c.group = p.group;
+  if (p.hidden != null) c.hidden = !!p.hidden;
+  return c;
+}
+
+// Solo las tuyas se borran. Sus movimientos pasan a «Otros».
+export function removeCategory(s, id) {
+  const c = s.money.categories.find((x) => x.id === id);
+  if (!c || !c.custom) return false;
+  const to = FALLBACK_CAT[c.type] || 'otros';
+  for (const t of s.money.tx) if (t.cat === id) t.cat = to;
+  for (const k of Object.keys(s.money.rules)) if (s.money.rules[k] === id) delete s.money.rules[k];
+  s.money.categories = s.money.categories.filter((x) => x.id !== id);
+  return true;
+}
+
+export function setBudget(s, catId, amount) {
+  const c = s.money.categories.find((x) => x.id === catId);
+  if (c && c.type === 'gasto') c.budget = Math.max(0, Math.round(Number(amount) || 0));
+}
+
+// ----- Comercio → categoría (lo que aprendes al corregir) -----
+
+export function merchantKey(m) {
+  return norm(m).replace(/#?\d+/g, ' ').replace(/[^a-z& ]+/g, ' ').replace(/\s+/g, ' ').trim().split(' ').slice(0, 3).join(' ');
+}
+export function ruleFor(s, merchant) {
+  const k = merchantKey(merchant);
+  return k && s.money.rules[k] && s.money.categories.some((c) => c.id === s.money.rules[k]) ? s.money.rules[k] : null;
+}
+export function learnRule(s, merchant, cat) {
+  const k = merchantKey(merchant);
+  if (!k || k.length < 3 || !s.money.categories.some((c) => c.id === cat)) return;
+  s.money.rules[k] = cat;
+  const keys = Object.keys(s.money.rules);
+  if (keys.length > 400) delete s.money.rules[keys[0]];
+}
+
+// Categoría probable: primero lo que aprendiste; después, las palabras del comercio o la nota.
+export function guessTxCat(s, { merchant = '', text = '', type = 'gasto' } = {}) {
+  const r = ruleFor(s, merchant);
+  if (r && catOf(s, r).type === type) return r;
+  if (type === 'ingreso') return guessIncome(`${merchant} ${text}`);
+  if (type === 'transfer') return 'entre_cuentas';
+  return guessCategory(`${merchant} ${text}`);
+}
+
+// ----- Cuentas y tarjetas -----
+
+export const accountOf = (s, id) => (id ? s.money.accounts.find((a) => a.id === id) || null : null);
+export const accountLabel = (a) => (a ? `${a.name}${a.last4 ? ` ·${a.last4}` : ''}` : '');
+const last4Of = (v) => String(v || '').replace(/\D/g, '').slice(-4);
+
+export function addAccount(s, p) {
+  const name = String(p.name || '').trim().slice(0, 40);
+  if (name.length < 2) return null;
+  const last4 = last4Of(p.last4);
+  const bank = String(p.bank || '').trim().slice(0, 30);
+  const same = s.money.accounts.find((a) => (last4 && a.last4 === last4 && norm(a.bank) === norm(bank)) || (!last4 && norm(a.name) === norm(name)));
+  if (same) return same;
+  const kind = ['tarjeta', 'debito', 'cuenta', 'efectivo'].includes(p.kind) ? p.kind : 'cuenta';
+  const a = { id: p.id && !accountOf(s, p.id) ? String(p.id).slice(0, 40) : `a${uid()}`, name, kind, bank, last4 };
+  s.money.accounts.push(a);
+  return a;
+}
+
+export function updateAccount(s, id, p) {
+  const a = accountOf(s, id);
+  if (!a) return null;
+  if (p.name != null && String(p.name).trim().length >= 2) a.name = String(p.name).trim().slice(0, 40);
+  if (p.kind) a.kind = p.kind;
+  if (p.bank != null) a.bank = String(p.bank).trim().slice(0, 30);
+  if (p.last4 != null) a.last4 = last4Of(p.last4);
+  return a;
+}
+
+export function removeAccount(s, id) {
+  s.money.accounts = s.money.accounts.filter((a) => a.id !== id);
+  for (const t of s.money.tx) if (t.account === id) t.account = '';
+}
+
+// ----- Registrar, corregir y borrar -----
+
+function buildTx(s, p, prev = null) {
+  const kind = TX_KINDS.includes(p.type) ? p.type : prev ? prev.kind : 'gasto';
+  const currency = p.currency === 'USD' ? 'USD' : 'DOP';
+  const day = validDay(p.day) || (prev && prev.day) || dayKey();
+  const orig = r2(Math.abs(Number(p.amount) || 0));
+  const rate = okRate(p.rate) ? r4(p.rate) : fxRate(s, day);
+  const dop = toDOP(orig, currency, rate);
+  const valid = s.money.categories.some((c) => c.id === p.cat && c.type === kind);
+  const cat = valid ? p.cat : kind === 'gasto' ? guessTxCat(s, { merchant: p.merchant, text: p.note, type: 'gasto' }) : FALLBACK_CAT[kind];
+  const account = p.account && accountOf(s, p.account) ? p.account : '';
+  return {
+    id: prev ? prev.id : uid(),
+    day,
+    time: /^\d{1,2}:\d{2}$/.test(p.time || '') ? p.time : '',
+    kind,
+    amount: kind === 'ingreso' ? dop : -dop,
+    currency,
+    orig,
+    rate,
+    cat,
+    merchant: String(p.merchant || '').trim().slice(0, 60),
+    note: String(p.note || '').slice(0, 200),
+    account,
+    tag: String(p.tag || '').trim().slice(0, 30),
+    source: p.source || (prev && prev.source) || 'manual',
+    ref: String(p.ref || (prev && prev.ref) || '').slice(0, 80),
+    batch: (prev && prev.batch) || p.batch || '',
+    rnc: p.rnc != null ? p.rnc : prev ? prev.rnc : '',
+    ncf: p.ncf != null ? p.ncf : prev ? prev.ncf : '',
+    itbis: Number(p.itbis != null ? p.itbis : prev ? prev.itbis : 0) || 0,
+    created: prev ? prev.created : Date.now(),
+  };
+}
+
+const sortTx = (s) => s.money.tx.sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : (b.time || '') < (a.time || '') ? -1 : (b.time || '') > (a.time || '') ? 1 : (b.created || 0) - (a.created || 0)));
+
+// `p`: { type: gasto|ingreso|transfer, amount (en su moneda), currency: DOP|USD, rate, cat, merchant, note,
+//        day, time, account, tag, source, ref, batch, rnc, ncf, itbis }
+export function addTx(s, p, today, ev) {
+  if (!(Math.abs(Number(p.amount) || 0) > 0)) return null;
+  const tx = buildTx(s, { ...p, day: validDay(p.day) || today });
+  if (!tx.orig) return null;
   s.money.tx.unshift(tx);
-  s.money.tx.sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0));
+  sortTx(s);
+  if (tx.kind === 'transfer') return tx;
   const d = getDay(s, today);
   d.txXp = (d.txXp || 0) + 1;
   if (d.txXp <= 3) gainXP(s, 'finanzas', 5, today, ev);
-  if (cat === 'deuda') bossFeed(s, 'debtPay', abs, today, ev, { note: tx.merchant ? `Pago: ${tx.merchant}` : '' });
-  if (cat === 'ahorro') bossFeed(s, 'saving', abs, today, ev, { note: tx.merchant ? `Ahorro: ${tx.merchant}` : '' });
+  const abs = txDOP(tx);
+  if (tx.kind === 'gasto' && tx.cat === 'deuda') bossFeed(s, 'debtPay', abs, today, ev, { note: tx.merchant ? `Pago: ${tx.merchant}` : '' });
+  if (tx.kind === 'gasto' && tx.cat === 'ahorro') bossFeed(s, 'saving', abs, today, ev, { note: tx.merchant ? `Ahorro: ${tx.merchant}` : '' });
   autoCheck(s, today, ev);
   checkAchievements(s, today, ev);
+  return tx;
+}
+
+// Corrige un movimiento. Si cambias la categoría de un comercio, la app la recuerda para la próxima.
+export function updateTx(s, id, p, { learn = true } = {}) {
+  const i = s.money.tx.findIndex((t) => t.id === id);
+  if (i < 0) return null;
+  const prev = s.money.tx[i];
+  const merged = {
+    type: p.type || prev.kind, amount: p.amount != null ? p.amount : txOrig(prev), currency: p.currency || txCur(prev),
+    rate: p.rate != null ? p.rate : prev.rate, cat: p.cat || prev.cat, merchant: p.merchant != null ? p.merchant : prev.merchant,
+    note: p.note != null ? p.note : prev.note, day: p.day || prev.day, time: p.time != null ? p.time : prev.time,
+    account: p.account != null ? p.account : prev.account, tag: p.tag != null ? p.tag : prev.tag,
+  };
+  if (!(Math.abs(Number(merged.amount) || 0) > 0)) return null;
+  const tx = buildTx(s, merged, prev);
+  s.money.tx[i] = tx;
+  sortTx(s);
+  if (learn && tx.merchant && tx.cat !== prev.cat && tx.kind === 'gasto') learnRule(s, tx.merchant, tx.cat);
   return tx;
 }
 
@@ -1048,26 +1330,130 @@ export function removeTx(s, id) {
   s.money.tx = s.money.tx.filter((t) => t.id !== id);
 }
 
+// ----- Resumen del mes -----
+
 export function monthSummary(s, mk) {
   const txs = s.money.tx.filter((t) => monthKey(t.day) === mk);
-  const income = txs.filter((t) => t.amount > 0).reduce((a, t) => a + t.amount, 0);
-  const byCat = {};
-  for (const t of txs) if (t.amount < 0) byCat[t.cat] = (byCat[t.cat] || 0) - t.amount;
-  const spent = Object.values(byCat).reduce((a, b) => a + b, 0);
-  const assigned = s.money.categories.reduce((a, c) => a + (Number(c.budget) || 0), 0);
-  return { income, spent, byCat, assigned, unassigned: income - assigned, count: txs.length, txs };
+  let income = 0; let incomeUSD = 0; let spent = 0; let spentUSD = 0; let moved = 0;
+  const byCat = {}; const byCatUSD = {}; const paidIn = { DOP: 0, USD: 0 }; const byTag = {}; const byTagUSD = {};
+  for (const t of txs) {
+    const k = txKind(t);
+    if (k === 'transfer') { moved += txDOP(t); continue; }
+    if (k === 'ingreso') { income += txDOP(t); incomeUSD += txUSD(s, t); continue; }
+    spent += txDOP(t);
+    spentUSD += txUSD(s, t);
+    byCat[t.cat] = (byCat[t.cat] || 0) + txDOP(t);
+    byCatUSD[t.cat] = (byCatUSD[t.cat] || 0) + txUSD(s, t);
+    paidIn[txCur(t)] += txOrig(t);
+    if (t.tag) { byTag[t.tag] = (byTag[t.tag] || 0) + txDOP(t); byTagUSD[t.tag] = (byTagUSD[t.tag] || 0) + txUSD(s, t); }
+  }
+  const assigned = s.money.categories.filter((c) => c.type === 'gasto').reduce((a, c) => a + (Number(c.budget) || 0), 0);
+  return {
+    income: r2(income), incomeUSD: r2(incomeUSD), spent: r2(spent), spentUSD: r2(spentUSD), moved: r2(moved),
+    byCat, byCatUSD, paidIn, byTag, byTagUSD, assigned, unassigned: r2(income - assigned), count: txs.length, txs,
+  };
 }
 
-export function setBudget(s, catId, amount) {
-  const c = s.money.categories.find((x) => x.id === catId);
-  if (c) c.budget = Math.max(0, Math.round(Number(amount) || 0));
+// Etiquetas usadas (viajes, proyectos), de la más reciente a la más vieja.
+export function txTags(s) {
+  const seen = [];
+  for (const t of s.money.tx) if (t.tag && !seen.includes(t.tag)) seen.push(t.tag);
+  return seen.slice(0, 12);
 }
 
-export const catName = (s, id) => (id === 'ingreso' ? 'Ingreso' : (s.money.categories.find((c) => c.id === id) || { name: 'Otros' }).name);
+export function tagTotal(s, tag) {
+  let dop = 0; let usd = 0; let n = 0;
+  for (const t of s.money.tx) if (t.tag === tag && txKind(t) === 'gasto') { dop += txDOP(t); usd += txUSD(s, t); n += 1; }
+  return { dop: r2(dop), usd: r2(usd), n };
+}
+
+// ----- Importar varios movimientos (avisos del banco, archivo o enlace) -----
+
+// ¿Ya está? Mismo número de referencia, o mismo día, moneda, monto y comercio.
+// El comercio se compara «a lo largo»: «WENDYS 12 PLAZA» y «Wendy's Plaza» son el mismo.
+const looseName = (m) => norm(m).replace(/[^a-z]/g, '').slice(0, 6);
+export function findDuplicate(s, it, pool = s.money.tx) {
+  const ref = String(it.ref || '');
+  const cur = it.currency === 'USD' ? 'USD' : 'DOP';
+  const amt = r2(Math.abs(Number(it.amount) || 0));
+  const mk = looseName(it.merchant || '');
+  return pool.find((t) => (ref && t.ref === ref)
+    || (t.day === it.day && txCur(t) === cur && Math.abs(txOrig(t) - amt) < 0.005
+      && ((it.time && t.time && it.time === t.time) || !mk || !looseName(t.merchant) || looseName(t.merchant) === mk))) || null;
+}
+
+// Busca una cuenta conocida (por banco y últimos 4) o la crea.
+export function resolveAccount(s, desc) {
+  if (!desc) return '';
+  if (typeof desc === 'string') return accountOf(s, desc) ? desc : '';
+  const last4 = last4Of(desc.last4);
+  const hit = s.money.accounts.find((a) => (desc.id && a.id === desc.id) || (last4 && a.last4 === last4 && (!desc.bank || !a.bank || norm(a.bank) === norm(desc.bank))));
+  if (hit) return hit.id;
+  const a = addAccount(s, desc);
+  return a ? a.id : '';
+}
+
+// `pack`: { label, accounts: [...], rates: { día: tasa }, items: [{ on, kind, amount, currency, rate, day, time, merchant, cat, account, tag, note, ref }] }
+export function importTxs(s, pack, today, ev) {
+  const batch = `b${uid()}`;
+  const accMap = {};
+  const before = new Set(s.money.accounts.map((a) => a.id));
+  for (const a of pack.accounts || []) {
+    const id = resolveAccount(s, a);
+    if (a.id) accMap[a.id] = id;
+  }
+  for (const [day, rate] of Object.entries(pack.rates || {})) {
+    if (!(s.money.fx.history && okRate(s.money.fx.history[day]))) recordRate(s, day, rate, pack.rateSource || 'Tasa oficial DGII');
+  }
+  let added = 0; let skipped = 0;
+  for (const it of pack.items || []) {
+    if (it.on === false) continue;
+    if (findDuplicate(s, it)) { skipped += 1; continue; }
+    const account = typeof it.account === 'string' ? accMap[it.account] || (accountOf(s, it.account) ? it.account : '') : resolveAccount(s, it.account);
+    const tx = addTx(s, {
+      type: it.kind, amount: it.amount, currency: it.currency, rate: it.rate || (pack.rates && pack.rates[it.day]), cat: it.cat, merchant: it.merchant, note: it.note,
+      day: it.day, time: it.time, account, tag: it.tag, ref: it.ref, batch, source: it.source || pack.source || 'importado',
+    }, today, ev);
+    if (tx) added += 1;
+  }
+  // Las cuentas que trajo el paquete y que no se usaron no se quedan.
+  const used = new Set(s.money.tx.map((t) => t.account));
+  const created = s.money.accounts.filter((a) => !before.has(a.id));
+  s.money.accounts = s.money.accounts.filter((a) => before.has(a.id) || used.has(a.id));
+  if (added) s.money.lastImport = { batch, label: String(pack.label || 'Movimientos importados').slice(0, 80), n: added, day: today, accounts: created.filter((a) => used.has(a.id)).map((a) => a.id) };
+  return { batch, added, skipped };
+}
+
+export function undoImport(s, batch) {
+  const before = s.money.tx.length;
+  s.money.tx = s.money.tx.filter((t) => t.batch !== batch);
+  if (s.money.lastImport && s.money.lastImport.batch === batch) {
+    // Las cuentas que creó esa importación se quitan si ya no tienen movimientos.
+    const made = new Set(s.money.lastImport.accounts || []);
+    const used = new Set(s.money.tx.map((t) => t.account));
+    s.money.accounts = s.money.accounts.filter((a) => !made.has(a.id) || used.has(a.id));
+    s.money.lastImport = null;
+  }
+  return before - s.money.tx.length;
+}
+
+// Las categorías que más usas (para elegir rápido).
+export function frequentCats(s, type = 'gasto', n = 6) {
+  const count = {};
+  for (const t of s.money.tx.slice(0, 300)) if (txKind(t) === type) count[t.cat] = (count[t.cat] || 0) + 1;
+  const base = type === 'gasto' ? ['super', 'comida', 'combustible', 'transporte', 'servicios', 'salud'] : type === 'ingreso' ? ['salario', 'honorarios', 'ventas', 'remesas', 'ingreso'] : ['pago_tarjeta', 'entre_cuentas', 'retiro'];
+  const ids = [...Object.keys(count).sort((a, b) => count[b] - count[a]), ...base];
+  const out = [];
+  for (const id of ids) {
+    const c = s.money.categories.find((x) => x.id === id && x.type === type && !x.hidden);
+    if (c && !out.includes(c)) out.push(c);
+    if (out.length >= n) break;
+  }
+  return out;
+}
 
 // ---------- Pendientes ----------
 
-const validDay = (d) => (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null);
 
 export function todoCategories(s) {
   return [
@@ -1539,7 +1925,7 @@ export const ACHIEVEMENTS = [
   { id: 'nivel10', icon: 'star', title: 'Leyenda en marcha', desc: 'Llega al nivel 10.', test: (s) => playerLevel(s.xp).n >= 10 },
   { id: 'capitulo', icon: 'map', title: 'Primer capítulo', desc: 'Completa un capítulo de un camino.', test: (s) => s.campaigns.some((c) => c.chapters[0] && c.chapters[0].tasks.length > 0 && c.chapters[0].tasks.every((t) => t.done)) },
   { id: 'jefe', icon: 'sword', title: 'Cazador de jefes', desc: 'Derrota a tu primer jefe.', test: (s) => s.bosses.some((b) => b.status === 'won') },
-  { id: 'contador', icon: 'coins', title: 'Contador', desc: 'Registra 10 gastos.', test: (s) => s.money.tx.filter((t) => t.amount < 0).length >= 10 },
+  { id: 'contador', icon: 'coins', title: 'Contador', desc: 'Registra 10 gastos.', test: (s) => s.money.tx.filter((t) => txKind(t) === 'gasto').length >= 10 },
   { id: 'posada', icon: 'moon', title: 'Huésped fiel', desc: 'Cierra 7 días en la posada.', test: (s) => Object.keys(s.inn).length >= 7 },
   { id: 'animo', icon: 'face', title: 'Mirada interior', desc: '10 check-ins de ánimo.', test: (s) => s.moods.length >= 10 },
   { id: 'vinculo', icon: 'people', title: 'Presente', desc: '10 contactos con tu gente.', test: (s) => s.contacts.length >= 10 },

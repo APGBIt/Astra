@@ -1,6 +1,6 @@
 import { useState, useRef } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
-import { Sheet, SheetHead, money, toast, areaColor, areaSoft, dueLabel } from '../ui/kit.jsx';
+import { Sheet, SheetHead, money, cur, toast, areaColor, areaSoft, dueLabel } from '../ui/kit.jsx';
 import { canDictate, dictate } from '../ui/dictate.js';
 import { act, useApp } from '../app/store.js';
 import { back, go } from '../app/router.js';
@@ -23,7 +23,7 @@ const SHORTCUTS = [
 
 export function describeItem(s, it) {
   switch (it.kind) {
-    case 'tx': return { icon: 'coins', area: 'finanzas', title: `${it.type === 'ingreso' ? 'Ingreso' : 'Gasto'} · ${money(it.amount)}`, sub: it.type === 'ingreso' ? 'Ingreso del mes' : `${catName(s, it.cat)}${it.merchant ? ` · ${it.merchant}` : ''}` };
+    case 'tx': return { icon: 'coins', area: 'finanzas', title: `${it.type === 'ingreso' ? 'Ingreso' : 'Gasto'} · ${cur(it.amount, it.currency)}`, sub: `${catName(s, it.cat)}${it.merchant ? ` · ${it.merchant}` : ''}` };
     case 'health': {
       const map = { steps: ['Pasos', `${Number(it.value).toLocaleString('en-US')} pasos`], sleep: ['Sueño', fmtHours(it.value)], water: ['Agua', `${it.value} vasos`], exercise: ['Ejercicio', `${it.value} minutos`] };
       const [t, v] = map[it.field];
@@ -48,7 +48,7 @@ export function applyItems(st, items, today, ev) {
   for (const it of items) {
     n += 1;
     switch (it.kind) {
-      case 'tx': addTx(st, { type: it.type, amount: it.amount, cat: it.cat, merchant: it.merchant ? it.merchant[0].toUpperCase() + it.merchant.slice(1) : '', source: 'voz' }, today, ev); break;
+      case 'tx': addTx(st, { type: it.type, amount: it.amount, currency: it.currency, cat: it.cat, merchant: it.merchant ? it.merchant[0].toUpperCase() + it.merchant.slice(1) : '', source: 'voz' }, today, ev); break;
       case 'health': logHealth(st, today, { [it.field]: it.field === 'exercise' ? (st.health[today]?.exercise || 0) + it.value : it.value }, today, ev); break;
       case 'pages': {
         let b = st.books.find((x) => !x.done);
@@ -115,6 +115,7 @@ export function Capture() {
           return { ...it, personId: person ? person.id : null, name: person ? person.name : it.name };
         }
         if (it.kind === 'mood') return { ...it, quad: Math.max(0, Math.min(3, Number(it.quad) || 0)) };
+        if (it.kind === 'tx') return { ...it, type: it.type === 'ingreso' ? 'ingreso' : 'gasto', amount: Math.abs(Number(it.amount) || 0), currency: it.currency === 'USD' ? 'USD' : 'DOP' };
         if (it.kind === 'todo') return { ...it, title: String(it.title || '').slice(0, 120), due: /^\d{4}-\d{2}-\d{2}$/.test(it.due || '') ? it.due : null, cat: it.cat || 'general', important: !!it.important, repeat: ['semana', 'mes', 'ano'].includes(it.repeat) ? it.repeat : null };
         return it;
       }).filter((it) => ['tx', 'health', 'pages', 'contact', 'mood', 'focus', 'note', 'calm', 'todo'].includes(it.kind) && (it.kind !== 'todo' || it.title));

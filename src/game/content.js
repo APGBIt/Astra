@@ -326,32 +326,137 @@ export const INFLUENCES = [
 
 export const CIRCLES = ['Familia', 'Amistad', 'Pareja', 'Trabajo', 'Otro'];
 
-export const CATEGORIES = [
-  { id: 'super', name: 'Supermercado', budget: 0 },
-  { id: 'transporte', name: 'Transporte', budget: 0 },
-  { id: 'comida', name: 'Comida fuera', budget: 0 },
-  { id: 'servicios', name: 'Servicios', budget: 0 },
-  { id: 'hogar', name: 'Hogar', budget: 0 },
-  { id: 'salud', name: 'Salud', budget: 0 },
-  { id: 'educacion', name: 'Educación', budget: 0 },
-  { id: 'ocio', name: 'Ocio', budget: 0 },
-  { id: 'deuda', name: 'Pago de deuda', budget: 0 },
-  { id: 'ahorro', name: 'Ahorro', budget: 0 },
-  { id: 'otros', name: 'Otros', budget: 0 },
+// ---------- Finanzas ----------
+
+// Familias de categorías: ordenan los selectores y el presupuesto.
+export const CATEGORY_GROUPS = [
+  { id: 'comida', name: 'Comida' },
+  { id: 'transporte', name: 'Transporte' },
+  { id: 'casa', name: 'Casa' },
+  { id: 'personal', name: 'Personal' },
+  { id: 'ocio', name: 'Ocio y compras' },
+  { id: 'familia', name: 'Familia y otros' },
+  { id: 'dinero', name: 'Dinero' },
+  { id: 'otros', name: 'Otros' },
+  { id: 'ingresos', name: 'Ingresos' },
+  { id: 'movimientos', name: 'Entre tus cuentas' },
 ];
 
-// Palabras que sugieren la categoría de un gasto (sin tildes, en minúscula).
+// `type`: gasto (cuenta en el presupuesto), ingreso o transfer (mover dinero entre tus cuentas o
+// pagar una tarjeta: no es un gasto nuevo, porque las compras ya se cuentan una por una).
+// Los ids de la versión 1 se conservan (super, transporte, comida, servicios, hogar, salud, educacion,
+// ocio, deuda, ahorro, otros) para que los movimientos viejos sigan en su lugar.
+export const CATEGORIES = [
+  { id: 'super', name: 'Supermercado y colmado', group: 'comida', icon: 'cart', type: 'gasto', budget: 0 },
+  { id: 'comida', name: 'Restaurantes y comida fuera', group: 'comida', icon: 'utensils', type: 'gasto', budget: 0 },
+  { id: 'combustible', name: 'Combustible', group: 'transporte', icon: 'fuel', type: 'gasto', budget: 0 },
+  { id: 'transporte', name: 'Taxi, Uber y pasajes', group: 'transporte', icon: 'bus', type: 'gasto', budget: 0 },
+  { id: 'peajes', name: 'Peajes y parqueos', group: 'transporte', icon: 'parking', type: 'gasto', budget: 0 },
+  { id: 'vehiculo', name: 'Vehículo: taller y repuestos', group: 'transporte', icon: 'wrench', type: 'gasto', budget: 0 },
+  { id: 'vivienda', name: 'Alquiler o hipoteca', group: 'casa', icon: 'home', type: 'gasto', budget: 0 },
+  { id: 'servicios', name: 'Luz, agua y gas', group: 'casa', icon: 'bolt', type: 'gasto', budget: 0 },
+  { id: 'telecom', name: 'Internet, cable y celular', group: 'casa', icon: 'wifi', type: 'gasto', budget: 0 },
+  { id: 'hogar', name: 'Hogar y mantenimiento', group: 'casa', icon: 'sofa', type: 'gasto', budget: 0 },
+  { id: 'domestico', name: 'Ayuda doméstica', group: 'casa', icon: 'broom', type: 'gasto', budget: 0 },
+  { id: 'ropa', name: 'Ropa y calzado', group: 'personal', icon: 'shirt', type: 'gasto', budget: 0 },
+  { id: 'cuidado', name: 'Cuidado personal', group: 'personal', icon: 'scissors', type: 'gasto', budget: 0 },
+  { id: 'salud', name: 'Salud y farmacia', group: 'personal', icon: 'pill', type: 'gasto', budget: 0 },
+  { id: 'deporte', name: 'Deporte y gimnasio', group: 'personal', icon: 'dumbbell', type: 'gasto', budget: 0 },
+  { id: 'educacion', name: 'Educación', group: 'personal', icon: 'cap', type: 'gasto', budget: 0 },
+  { id: 'ocio', name: 'Entretenimiento y salidas', group: 'ocio', icon: 'ticket', type: 'gasto', budget: 0 },
+  { id: 'viajes', name: 'Viajes y hospedaje', group: 'ocio', icon: 'plane', type: 'gasto', budget: 0 },
+  { id: 'compras', name: 'Tiendas y compras varias', group: 'ocio', icon: 'bag', type: 'gasto', budget: 0 },
+  { id: 'tecnologia', name: 'Tecnología', group: 'ocio', icon: 'laptop', type: 'gasto', budget: 0 },
+  { id: 'suscripciones', name: 'Suscripciones y apps', group: 'ocio', icon: 'play', type: 'gasto', budget: 0 },
+  { id: 'regalos', name: 'Regalos y celebraciones', group: 'ocio', icon: 'gift', type: 'gasto', budget: 0 },
+  { id: 'familia', name: 'Apoyo familiar', group: 'familia', icon: 'people', type: 'gasto', budget: 0 },
+  { id: 'mascotas', name: 'Mascotas', group: 'familia', icon: 'paw', type: 'gasto', budget: 0 },
+  { id: 'donaciones', name: 'Donaciones', group: 'familia', icon: 'heart', type: 'gasto', budget: 0 },
+  { id: 'terceros', name: 'Transferencias a terceros', group: 'familia', icon: 'send', type: 'gasto', budget: 0 },
+  { id: 'deuda', name: 'Pago de deuda', group: 'dinero', icon: 'card', type: 'gasto', budget: 0 },
+  { id: 'ahorro', name: 'Ahorro e inversión', group: 'dinero', icon: 'piggy', type: 'gasto', budget: 0 },
+  { id: 'seguros', name: 'Seguros', group: 'dinero', icon: 'shield', type: 'gasto', budget: 0 },
+  { id: 'impuestos', name: 'Impuestos y trámites', group: 'dinero', icon: 'receipt', type: 'gasto', budget: 0 },
+  { id: 'comisiones', name: 'Comisiones e impuestos del banco', group: 'dinero', icon: 'percent', type: 'gasto', budget: 0 },
+  { id: 'trabajo', name: 'Trabajo y negocio', group: 'dinero', icon: 'briefcase', type: 'gasto', budget: 0 },
+  { id: 'otros', name: 'Otros gastos', group: 'otros', icon: 'dots', type: 'gasto', budget: 0 },
+  { id: 'salario', name: 'Salario', group: 'ingresos', icon: 'briefcase', type: 'ingreso', budget: 0 },
+  { id: 'honorarios', name: 'Honorarios y trabajos extra', group: 'ingresos', icon: 'edit', type: 'ingreso', budget: 0 },
+  { id: 'ventas', name: 'Ventas y negocio', group: 'ingresos', icon: 'bag', type: 'ingreso', budget: 0 },
+  { id: 'remesas', name: 'Remesas y dinero recibido', group: 'ingresos', icon: 'download', type: 'ingreso', budget: 0 },
+  { id: 'intereses', name: 'Intereses y rendimientos', group: 'ingresos', icon: 'chart', type: 'ingreso', budget: 0 },
+  { id: 'reembolsos', name: 'Reembolsos y devoluciones', group: 'ingresos', icon: 'undo', type: 'ingreso', budget: 0 },
+  { id: 'ingreso', name: 'Otros ingresos', group: 'ingresos', icon: 'coins', type: 'ingreso', budget: 0 },
+  { id: 'pago_tarjeta', name: 'Pago de tarjeta', group: 'movimientos', icon: 'card', type: 'transfer', budget: 0 },
+  { id: 'entre_cuentas', name: 'Entre tus cuentas', group: 'movimientos', icon: 'swap', type: 'transfer', budget: 0 },
+  { id: 'retiro', name: 'Retiro de efectivo', group: 'movimientos', icon: 'cash', type: 'transfer', budget: 0 },
+];
+
+// Íconos para las categorías que crees.
+export const CATEGORY_ICONS = ['tag', 'cart', 'utensils', 'home', 'car', 'heart', 'gift', 'people', 'bag', 'briefcase', 'cap', 'plane', 'paw', 'shirt', 'laptop', 'coins'];
+
+// Palabras que sugieren la categoría de un gasto (sin tildes, en minúscula). Gana la coincidencia más larga.
+// Con «~» delante se busca dentro de la palabra («CENTROPARKINGMAQ» contiene «parking»).
 export const CATEGORY_WORDS = {
-  super: ['super', 'supermercado', 'colmado', 'mercado', 'bravo', 'sirena', 'nacional', 'jumbo', 'ole', 'compras de la casa'],
-  transporte: ['gasolina', 'combustible', 'uber', 'taxi', 'guagua', 'metro', 'peaje', 'parqueo', 'carro', 'estacion', 'bomba', 'didi', 'indrive'],
-  comida: ['restaurante', 'comida', 'almuerzo', 'cena', 'desayuno', 'pizza', 'pica pollo', 'cafe', 'delivery', 'pedidosya', 'burger', 'helado'],
-  servicios: ['luz', 'edeeste', 'edesur', 'edenorte', 'internet', 'telefono', 'claro', 'altice', 'agua', 'cable', 'netflix', 'spotify', 'suscripcion'],
-  hogar: ['ferreteria', 'mueble', 'limpieza', 'alquiler', 'renta', 'hogar'],
-  salud: ['farmacia', 'medico', 'doctor', 'clinica', 'laboratorio', 'medicina', 'seguro medico', 'dentista'],
-  educacion: ['libro', 'curso', 'colegio', 'universidad', 'matricula', 'utiles'],
-  ocio: ['cine', 'salida', 'fiesta', 'bar', 'juego', 'viaje', 'playa', 'concierto'],
-  deuda: ['tarjeta', 'prestamo', 'deuda', 'cuota', 'abono'],
-  ahorro: ['ahorro', 'ahorre', 'inversion', 'certificado'],
+  super: ['super', 'supermercado', 'colmado', 'mercado', 'bravo', 'sirena', 'nacional', 'jumbo', 'ole', 'plaza lama', 'pricesmart', 'carrefour', 'minimarket', 'mini market', 'market', 'supermarket', 'bodega', 'walmart', 'costco', 'econo', 'compras de la casa', 'frutas', 'carniceria', 'pescaderia', 'aprezio'],
+  comida: ['restaurante', 'restaurant', 'rest', 'comida', 'almuerzo', 'cena', 'desayuno', 'pizza', 'pica pollo', 'cafe', 'coffee', 'cafeteria', 'delivery', 'pedidosya', 'uber eats', 'burger', 'helado', 'bbq', 'grill', 'bakery', 'panaderia', 'reposteria', 'wendys', 'wendy', 'mcdonald', 'burger king', 'kfc', 'chilis', 'dominos', 'papa john', 'subway', 'starbucks', 'taco', 'sushi', 'chimi', 'friteria', 'pollo', 'bistro', 'kitchen', 'diner', 'food', 'cocina', 'empanada'],
+  combustible: ['gasolina', 'combustible', 'gas station', 'gasolinera', 'fuel', 'estacion', 'bomba', 'shell', 'texaco', 'esso', 'mobil', 'gulf', 'puma', 'sunix', 'diesel', 'gasoil'],
+  transporte: ['uber', 'taxi', 'guagua', 'metro', 'teleferico', 'didi', 'indrive', 'cabify', 'lyft', 'pasaje', 'autobus', 'caribe tours', 'metro tours', 'motoconcho', 'omsa', 'transporte'],
+  peajes: ['peaje', 'paso rapido', 'parqueo', 'parking', '~parking', 'estacionamiento', 'autoexpreso', 'valet'],
+  vehiculo: ['taller', 'repuesto', 'gomas', 'goma', 'neumatico', 'lavado', 'car wash', 'mecanico', 'cambio de aceite', 'alineacion', 'auto parts', 'autozone', 'gomero', 'grua'],
+  vivienda: ['alquiler', 'renta de la casa', 'hipoteca', 'condominio', 'mantenimiento del edificio'],
+  servicios: ['luz', 'edeeste', 'edesur', 'edenorte', 'electricidad', 'agua', 'caasd', 'coraasan', 'inapa', 'gas propano', 'glp', 'tropigas', 'basura', 'factura de luz'],
+  telecom: ['internet', 'telefono', 'celular', 'claro', 'altice', 'viva', 'wind telecom', 'cable', 'recarga', 'wifi', 'plan de datos'],
+  hogar: ['ferreteria', 'mueble', 'limpieza', 'home depot', 'ikea', 'lavanderia', 'cerrajero', 'plomero', 'electricista', 'utensilios', 'decoracion', 'casa cuesta', 'ochoa', 'hogar', 'pintura'],
+  domestico: ['empleada', 'domestica', 'nana', 'nanny', 'jardinero', 'conserje', 'limpiadora', 'muchacha'],
+  ropa: ['ropa', 'zapato', 'zapatos', 'calzado', 'tenis', 'burlington', 'tj maxx', 't j maxx', 'marshalls', 'ross', 'zara', 'h&m', 'tommy', 'hilfiger', 'nike', 'adidas', 'forever 21', 'old navy', 'gap', 'levis', 'carters', 'payless', 'bershka', 'pull and bear', 'macys', 'kohls', 'mango', 'shein', 'boutique'],
+  cuidado: ['salon', 'peluqueria', 'barberia', 'barber', 'unas', 'manicure', 'pedicure', 'spa', 'cosmetico', 'maquillaje', 'perfume', 'sephora', 'ulta', 'cejas'],
+  salud: ['farmacia', 'medico', 'doctor', 'clinica', 'laboratorio', 'medicina', 'dentista', 'odontolog', 'hospital', 'optica', 'cvs', 'walgreens', 'analisis', 'consulta', 'psicolog', 'pharmacy', 'farmacity'],
+  deporte: ['gimnasio', 'gym', 'smart fit', 'body shop', 'crossfit', 'deporte', 'yoga', 'pilates', 'entrenador'],
+  educacion: ['libro', 'libreria', 'curso', 'colegio', 'universidad', 'matricula', 'utiles', 'escuela', 'inscripcion', 'diplomado', 'maestria', 'udemy', 'coursera', 'pucmm', 'intec', 'unibe', 'uasd', 'apec', 'unphu'],
+  ocio: ['cine', 'cinema', 'caribbean cinemas', 'palacio del cine', 'salida', 'fiesta', 'bar', 'discoteca', 'juego', 'concierto', 'teatro', 'boleta', 'boletas', 'entradas', 'ticket', 'parque', 'museo', 'bowling', 'trampolin', 'trampoline', 'excursion', 'karaoke', 'playa'],
+  viajes: ['viaje', 'hotel', 'airbnb', 'hostal', 'resort', 'vuelo', 'aerolinea', 'airline', 'airlines', 'jetblue', 'american airlines', 'arajet', 'avianca', 'copa airlines', 'spirit airlines', 'delta air', 'united airlines', 'rent a car', 'rental', 'hertz', 'avis', 'enterprise', 'booking', 'expedia', 'aeropuerto', 'equipaje', 'hospedaje'],
+  compras: ['amazon', 'aliexpress', 'temu', 'ebay', 'tienda', 'store', 'stores', 'plaza', 'mall', 'departamento', 'target', 'outlet', 'dollar', 'five below'],
+  tecnologia: ['apple store', 'best buy', 'ofimatica', 'computadora', 'laptop', 'electronica', 'tecnologia', 'cargador', 'audifonos', 'samsung', 'tablet', 'impresora'],
+  suscripciones: ['netflix', 'spotify', 'disney', 'hbo', 'hbo max', 'prime video', 'amazon prime', 'youtube premium', 'apple.com', 'icloud', 'google one', 'google storage', 'chatgpt', 'openai', 'claude', 'anthropic', 'microsoft', 'office 365', 'adobe', 'canva', 'suscripcion', 'membresia', 'paramount', 'crunchyroll'],
+  regalos: ['regalo', 'cumpleanos', 'boda', 'baby shower', 'flores', 'floristeria', 'celebracion', 'aniversario'],
+  familia: ['mami', 'mama', 'papi', 'papa', 'abuela', 'abuelo', 'hijo', 'hija', 'familia', 'hermano', 'hermana', 'tia', 'tio', 'pension alimenticia', 'manutencion', 'sobrino', 'sobrina'],
+  mascotas: ['veterinaria', 'veterinario', 'mascota', 'perro', 'gato', 'petsmart', 'pet ', 'grooming', 'alimento para perro'],
+  donaciones: ['donacion', 'diezmo', 'ofrenda', 'iglesia', 'caridad', 'fundacion'],
+  terceros: ['transferencia a tercero', 'transferencia', 'envio de dinero'],
+  deuda: ['prestamo', 'deuda', 'cuota', 'abono', 'financiamiento', 'financiera'],
+  ahorro: ['ahorro', 'ahorre', 'inversion', 'certificado', 'fondo de inversion', 'aporte voluntario'],
+  seguros: ['seguro', 'poliza', 'mapfre', 'universal', 'humano', 'senasa', 'ars', 'palic', 'seguros reservas', 'la colonial', 'sura'],
+  impuestos: ['dgii', 'marbete', 'pasaporte', 'licencia', 'cedula', 'tramite', 'notario', 'legalizacion', 'multa', 'amet', 'intrant', 'impuesto sobre la renta', 'ipi'],
+  comisiones: ['comision', 'cargo por servicio', 'cargo bancario', 'membresia de tarjeta', 'cargo por mora', 'impuesto 0.15', 'impuesto de transferencia', 'retencion', 'cargo anual'],
+  trabajo: ['oficina', 'papeleria', 'coworking', 'imprenta', 'negocio', 'proveedor', 'materiales'],
+};
+
+// Lo mismo para ingresos.
+export const INCOME_WORDS = {
+  salario: ['salario', 'sueldo', 'nomina', 'quincena', 'pago de nomina', 'mesada'],
+  honorarios: ['honorario', 'honorarios', 'freelance', 'consultoria', 'chiripa', 'trabajo extra', 'servicio profesional'],
+  ventas: ['venta', 'vendi', 'cliente', 'negocio', 'ventas'],
+  remesas: ['remesa', 'western union', 'envio recibido', 'transferencia recibida', 'me enviaron', 'caribe express', 'vimenca'],
+  intereses: ['interes', 'intereses', 'dividendo', 'rendimiento', 'cupon'],
+  reembolsos: ['reembolso', 'devolucion', 'reverso', 'reintegro', 'cashback'],
+};
+
+// Formas de pagar o de guardar el dinero.
+export const ACCOUNT_KINDS = [
+  { key: 'tarjeta', label: 'Tarjeta de crédito', icon: 'card' },
+  { key: 'debito', label: 'Tarjeta de débito', icon: 'card' },
+  { key: 'cuenta', label: 'Cuenta de banco', icon: 'bank' },
+  { key: 'efectivo', label: 'Efectivo', icon: 'cash' },
+];
+export const DEFAULT_ACCOUNTS = [{ id: 'efectivo', name: 'Efectivo', kind: 'efectivo', bank: '', last4: '' }];
+
+// Tasa del dólar cuando todavía no hay conexión: la oficial (DGII / Banco Central) del 15 de octubre de 2026.
+// Con internet, la app la actualiza sola una vez al día.
+export const FX_DEFAULT = { rate: 61.1477, day: '2026-10-15', source: 'Tasa oficial DGII' };
+export const CURRENCIES = {
+  DOP: { code: 'DOP', symbol: 'RD$', name: 'pesos', short: 'RD$' },
+  USD: { code: 'USD', symbol: 'US$', name: 'dólares', short: 'US$' },
 };
 
 // Palabras que sugieren el atributo de una misión (sin tildes, en minúscula).

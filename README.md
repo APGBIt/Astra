@@ -2,6 +2,14 @@
 
 Tu vida en modo juego de rol. App web instalable (y futura APK) para crecer en seis áreas de la vida con barras de vitalidad y energía, caminos, misiones y jefes.
 
+## Novedades de la versión 1.2 (Finanzas)
+
+- **Dólares y pesos**: cada movimiento se registra en RD$ o US$ y se ve en las dos monedas. La tasa del día se guarda con el movimiento (la conversión no cambia después) y se actualiza sola una vez al día con internet; también puedes poner tu propia tasa. Incluye un convertidor.
+- **43 categorías** agrupadas por familia (comida, transporte, casa, personal, ocio y compras, familia, dinero), 7 de ingresos y 3 para mover dinero entre tus cuentas sin que cuente como gasto (pagos de tarjeta, transferencias propias, retiros). Puedes crear las tuyas, renombrarlas u ocultarlas. Al corregir la categoría de un comercio, la app la recuerda.
+- **Avisos del banco**: pega uno o varios correos o SMS (APAP, Banreservas y la mayoría de los bancos). Se detectan monto, moneda, comercio, fecha, hora, tarjeta o cuenta, pagos de tarjeta, transferencias a terceros o entre tus cuentas, transacciones declinadas y el impuesto a las transferencias.
+- **Importar movimientos** de un archivo o de un enlace, con vista previa: eliges la categoría de cada uno, se saltan los repetidos y se puede deshacer.
+- **Cuentas y tarjetas** (solo con los últimos 4 números), **etiquetas** para viajes o proyectos, gráfica de **dónde se fue tu dinero**, filtros y búsqueda en los movimientos, editar cualquier movimiento, presupuestos por familia y **exportar el mes** a CSV para Excel.
+
 ## Novedades de la versión 1.1
 
 - **Pendientes**: una lista general con todo lo que tienes que hacer, agrupada por fecha o por categoría. Cada pendiente va a cualquier categoría: General, las seis áreas o las tuyas (Casa, Trámites, Maestría…), y sube el atributo que elijas. Se escriben en una línea («Pagar el marbete el viernes #carro !»): la fecha, la importancia, la categoría y la repetición («el 20 de cada mes») se detectan solas. Se pueden posponer (sin mover la serie si se repiten) y pasar los vencidos a hoy. Cada área muestra y agrega sus pendientes.
@@ -27,6 +35,8 @@ Tu vida en modo juego de rol. App web instalable (y futura APK) para crecer en s
 ## Privacidad
 
 No hay cuentas ni servidores propios. Todo se guarda en el navegador, también el expediente. La IA es opcional y solo recibe la foto de un recibo o el texto que decides enviar. La foto no se guarda. La copia de seguridad incluye el expediente: guárdala en un lugar seguro.
+
+La tasa del dólar se pide una vez al día a una fuente pública (currency-api por jsDelivr, con ExchangeRate-API de respaldo): solo se pide la tasa, sin enviar ningún dato tuyo. Se puede apagar en Finanzas → Dólares y pesos. Los enlaces para importar movimientos llevan los datos después del «#», que el navegador no envía a ningún servidor.
 
 ## Lectura de recibos con IA
 
