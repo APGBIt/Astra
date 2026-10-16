@@ -56,7 +56,7 @@ test('alerta de consumo del banco', () => {
   const a = parseBankAlert('Consumo aprobado con su tarjeta ****4417 por RD$ 1,500.00 en ESTACION TEXACO el 27/09/2026');
   assert.equal(a.amount, 1500);
   assert.equal(a.type, 'gasto');
-  assert.equal(a.cat, 'transporte');
+  assert.equal(a.cat, 'combustible');
   assert.equal(a.day, '2026-09-27');
 });
 
@@ -140,4 +140,130 @@ test('fechas: sin falsos positivos con calles, nombres, fracciones ni palabras q
   assert.equal(parseTodo('Llamar a mamá !', T).important, true);
   assert.equal(parseCapture('Debo 500 pesos a Juan', { today: T }).some((i) => i.kind === 'todo'), false);
   assert.equal(parseCapture('Debo ir al médico el jueves', { today: T })[0].due, '2026-10-15');
+});
+
+// ---------- Avisos del banco (formatos de APAP y Banreservas, con datos de prueba) ----------
+import { parseBankAlerts, currencyIn, prettyMerchant, guessIncome } from '../src/game/parse.js';
+
+const APAP_CONSUMO = `Hola PEREZ/JUAN, Tu tarjeta de Crédito titular-Visa Familiar APAP terminada en 1234 presenta una transacción, con el siguiente detalle:
+Detalle de la transacción
+Fecha:	11/10/2026
+Hora:	19:8
+Moneda:	USD dólar estadounidense
+Monto:	23.50
+Comercio:	MINIMARKET LA ESQUINA #12
+Estado:	APROBADA
+Balance disponible:	US$1,183.12`;
+const APAP_PAGO = `| Hola PEREZ/JUAN, Tu titular Visa Familiar terminada en 1234 ha recibido un pago con el siguiente detalle: |
+| Fecha: | 10/10/2026 |
+| Hora: | 10:47 |
+| Moneda: | RD pesos dominicanos |
+| Monto: | 15,000.00 |
+| Estado: | Transacción Aprobada |
+Realiza los pagos de tu Tarjeta de Crédito APAP`;
+const APAP_DECLINADA = `| Hola PEREZ/JUAN, Tu tarjeta Visa Familiar APAP terminada en 1234 presenta una transacción declinada, con el siguiente detalle: |
+| Fecha: | 16/10/2026 |
+| Hora: | 11 :3 |
+| Moneda: | USD dólar estadounidense |
+| Monto: | 200.00 |
+| Comercio: | AUTO RENTAL |
+| Estado: | Fondos Insuficientes |`;
+const BR_TERCERO = `Comprobante de Pago - Banreservas
+¡Transacción realizada!
+Te notificamos que la siguiente transacción fue realizada desde tu App Banreservas:
+Monto:
+DOP 8,000.00
+para mami
+Transacción:
+Transferencia a Tercero
+Origen:
+JUAN PEREZ, Cuenta de ahorro DOP ** - 5555
+Destino:
+SR PEDRO PEREZ, Cuenta de ahorro DOP ** - 9999
+Fecha de transacción:
+11 de Octubre de 2026 - 2:00 PM
+Impuestos:
+16.00
+Número de transacción:
+100000000001`;
+const BR_PROPIA = `| ¡Transacción realizada! |
+| Monto: |
+| DOP 8,000.00 |
+| #concept# |
+| | Transacción: |
+| Transferencia ACH |
+| | Origen: |
+| JUAN PEREZ, CuentaAhorro DOP ** - 5555 |
+| | Destino: |
+| JUAN PEREZ, CuentaAhorro DOP ** - 7777 |
+| | Fecha de transacción: |
+| 14 de Octubre de 2026 - 7:49 PM |
+| | Impuestos: |
+| #tax# |
+| | Número de transacción: |
+| 100000000002 |`;
+
+test('aviso de APAP: consumo en dólares con tarjeta y comercio', () => {
+  const [a] = parseBankAlerts(APAP_CONSUMO);
+  assert.equal(a.kind, 'gasto');
+  assert.equal(a.currency, 'USD');
+  assert.equal(a.amount, 23.5);
+  assert.equal(a.day, '2026-10-11');
+  assert.equal(a.time, '19:08');
+  assert.equal(a.merchant, 'Minimarket la Esquina');
+  assert.equal(a.cat, 'super');
+  assert.equal(a.account.last4, '1234');
+  assert.equal(a.account.bank, 'APAP');
+});
+
+test('aviso de APAP: un pago a la tarjeta no es gasto y una declinada no se cobra', () => {
+  const [p] = parseBankAlerts(APAP_PAGO);
+  assert.equal(p.kind, 'transfer');
+  assert.equal(p.cat, 'pago_tarjeta');
+  assert.equal(p.currency, 'DOP');
+  assert.equal(p.amount, 15000);
+  const [d] = parseBankAlerts(APAP_DECLINADA);
+  assert.equal(d.kind, 'declined');
+  assert.equal(d.time, '11:03');
+});
+
+test('aviso de Banreservas: transferencia a un familiar con su impuesto aparte', () => {
+  const list = parseBankAlerts(BR_TERCERO);
+  assert.equal(list.length, 2);
+  assert.equal(list[0].kind, 'gasto');
+  assert.equal(list[0].cat, 'familia');
+  assert.equal(list[0].merchant, 'Pedro Perez');
+  assert.equal(list[0].day, '2026-10-11');
+  assert.equal(list[0].time, '14:00');
+  assert.equal(list[0].ref, '100000000001');
+  assert.equal(list[0].account.last4, '5555');
+  assert.equal(list[1].cat, 'comisiones');
+  assert.equal(list[1].amount, 16);
+});
+
+test('aviso de Banreservas: entre tus cuentas, y avisos repetidos se cuentan una vez', () => {
+  const [t] = parseBankAlerts(BR_PROPIA);
+  assert.equal(t.kind, 'transfer');
+  assert.equal(t.cat, 'entre_cuentas');
+  assert.equal(t.time, '19:49');
+  const many = parseBankAlerts([APAP_CONSUMO, BR_TERCERO, BR_TERCERO, BR_PROPIA, APAP_DECLINADA].join('\n\n'));
+  assert.equal(many.filter((x) => x.ref === '100000000001').length, 1);
+  assert.deepEqual(many.map((x) => x.kind), ['gasto', 'gasto', 'gasto', 'transfer', 'declined']);
+});
+
+test('dólares en el registro rápido y categorías nuevas', () => {
+  const [g] = parseCapture('Gasté 20 dólares en gasolina');
+  assert.equal(g.currency, 'USD');
+  assert.equal(g.amount, 20);
+  assert.equal(g.cat, 'combustible');
+  assert.equal(currencyIn('US$ 15'), 'USD');
+  assert.equal(currencyIn('RD$ 15'), 'DOP');
+  assert.equal(guessCategory('BURLINGTON STORE 101'), 'ropa');
+  assert.equal(guessCategory('CENTROPARKINGMAQ'), 'peajes');
+  assert.equal(guessCategory('CARIBBEAN CINEMAS'), 'ocio');
+  assert.equal(guessCategory('NETFLIX.COM'), 'suscripciones');
+  assert.equal(guessCategory('WENDYS 12 PLAZA CENTRAL'), 'comida');
+  assert.equal(guessIncome('quincena de octubre'), 'salario');
+  assert.equal(prettyMerchant('WENDYS 12 PLAZA CENTRAL'), 'Wendys Plaza Central');
+  assert.equal(prettyMerchant('EL VERDE BBQ'), 'El Verde BBQ');
 });

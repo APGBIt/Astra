@@ -1,5 +1,5 @@
 // Astra · entender texto en español sin conexión: frases del día, misiones nuevas y alertas del banco.
-import { AREA_WORDS, CATEGORY_WORDS, MOOD_QUADS } from './content.js';
+import { AREA_WORDS, CATEGORY_WORDS, INCOME_WORDS, MOOD_QUADS } from './content.js';
 
 export function norm(t) {
   return String(t || '')
@@ -42,15 +42,33 @@ function minutesIn(t) {
   return total || null;
 }
 
-export function guessCategory(text) {
+const esc = (w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// Gana la palabra más larga que aparezca. «~palabra» se busca también dentro de otra palabra.
+function bestWord(text, table) {
   const t = norm(text);
   let best = null;
-  for (const [cat, words] of Object.entries(CATEGORY_WORDS)) {
-    for (const w of words) {
-      if (new RegExp(`\\b${w}`).test(t) && (!best || w.length > best.len)) best = { cat, len: w.length };
+  for (const [cat, words] of Object.entries(table)) {
+    for (const raw of words) {
+      const inside = raw.startsWith('~');
+      const w = inside ? raw.slice(1) : raw;
+      const hit = inside ? t.includes(w) : new RegExp(`\\b${esc(w)}`).test(t);
+      if (hit && (!best || w.length > best.len)) best = { cat, len: w.length };
     }
   }
-  return best ? best.cat : 'otros';
+  return best ? best.cat : null;
+}
+
+export function guessCategory(text) {
+  return bestWord(text, CATEGORY_WORDS) || 'otros';
+}
+
+export function guessIncome(text) {
+  return bestWord(text, INCOME_WORDS) || 'ingreso';
+}
+
+// «US$», «USD», «dólares» → dólares; lo demás, pesos.
+export function currencyIn(text) {
+  return /(us\$|\busd\b|\bd[oó]lar|\bdollars?\b|\bu\$s\b)/i.test(String(text || '')) ? 'USD' : 'DOP';
 }
 
 export function guessArea(text) {
@@ -153,18 +171,20 @@ export function parseCapture(text, ctx = {}) {
     }
     const amount = parseAmount(t);
     // Dinero
+    const currency = currencyIn(c);
     if (amount && /(gast|pagu|pague|pago|compr|consum|invit)/.test(t)) {
       const merchant = (c.match(/\ben\s+(?:el|la|los|las|un|una)?\s*([^,.;]+)$/i) || [])[1] || '';
+      // «Pagué 5,000 a la tarjeta» cuenta como pago de deuda (y golpea al jefe «Libre de deudas»).
       const cat = /(tarjeta|prestamo|deuda|cuota|abono)/.test(t) ? 'deuda' : guessCategory(t);
-      items.push({ kind: 'tx', type: 'gasto', amount, cat, merchant: merchant.trim().slice(0, 40), text: c });
+      items.push({ kind: 'tx', type: 'gasto', amount, currency, cat, merchant: merchant.trim().slice(0, 40), text: c });
       continue;
     }
     if (amount && /(ahorr|guarde|aparte)/.test(t)) {
-      items.push({ kind: 'tx', type: 'gasto', amount, cat: 'ahorro', merchant: '', text: c });
+      items.push({ kind: 'tx', type: 'gasto', amount, currency, cat: 'ahorro', merchant: '', text: c });
       continue;
     }
     if (amount && /(cobr|recib|me pagaron|ingres|vend|gane|quincena|sueldo|salario)/.test(t)) {
-      items.push({ kind: 'tx', type: 'ingreso', amount, cat: 'ingreso', merchant: '', text: c });
+      items.push({ kind: 'tx', type: 'ingreso', amount, currency, cat: guessIncome(t), merchant: '', text: c });
       continue;
     }
     // Salud
@@ -367,35 +387,207 @@ function localToday() {
   return dkey(d.getFullYear(), d.getMonth() + 1, d.getDate());
 }
 
-// Alertas de consumo que envían los bancos por correo o SMS (texto pegado).
-export function parseBankAlert(text) {
-  const raw = String(text || '');
-  const t = norm(raw);
-  const amt = raw.match(/(?:RD\$|DOP|US\$|USD|\$)\s*([\d.,]+)/i) || raw.match(/monto[:\s]+([\d.,]+)/i);
-  const amount = amt ? toNumber(amt[1]) : parseAmount(raw);
-  if (!amount) return null;
-  const usd = /(us\$|usd)/i.test(amt ? amt[0] : '');
-  let merchant = '';
-  const m1 = raw.match(/(?:comercio|establecimiento|merchant)[:\s]+([^\n,.]+)/i);
-  const m2 = raw.match(/\ben\s+([A-Z0-9][A-Z0-9 &'.\-]{2,40})/);
-  if (m1) merchant = m1[1];
-  else if (m2) merchant = m2[1];
-  merchant = merchant.replace(/\s+(el|por|con|fecha|a las)\b.*$/i, '').trim();
-  const isIncome = /(deposito|credito a su cuenta|transferencia recibida|abono a su cuenta)/.test(t);
-  const date = raw.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
-  let day = null;
-  if (date) {
-    const y = date[3].length === 2 ? `20${date[3]}` : date[3];
-    day = `${y}-${String(date[2]).padStart(2, '0')}-${String(date[1]).padStart(2, '0')}`;
+// ---------- Avisos del banco (correo o SMS pegado) ----------
+
+const MONTHS_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const pad = (n) => String(n).padStart(2, '0');
+
+// «DL MINIMARKET / BAKERY #12» → «DL Minimarket / Bakery». Las siglas cortas se quedan en mayúsculas.
+export function prettyMerchant(raw) {
+  let t = String(raw || '').replace(/\*/g, ' ').replace(/#\s*\d+/g, ' ').replace(/\s+/g, ' ').trim();
+  // Números de sucursal («WENDYS 12 PLAZA», «STORE 101»), salvo que el nombre sea solo eso.
+  const words = t.split(' ');
+  if (words.length > 1) t = words.filter((w, i) => i === 0 || !/^\d{1,5}$/.test(w)).join(' ');
+  if (!t) return '';
+  if (t !== t.toUpperCase()) return t.slice(0, 60);
+  const small = new Set(['de', 'del', 'la', 'las', 'el', 'los', 'y', 'en', 'a']);
+  return t.split(' ').map((w, i) => {
+    const lw = w.toLowerCase();
+    if (i > 0 && small.has(lw)) return lw;
+    if (/^[A-Z]{2,3}$/.test(w) && !/[AEIOU]/.test(w)) return w;
+    return lw.charAt(0).toUpperCase() + lw.slice(1);
+  }).join(' ').slice(0, 60);
+}
+
+// «SR JUAN PEREZ» → «Juan Perez».
+function personName(raw) {
+  return prettyMerchant(String(raw || '').replace(/^\s*(?:sr|sra|srta|sres|don|dona)\.?\s+/i, ''));
+}
+
+// Valor de un campo «Etiqueta: valor» (también en tablas «| Etiqueta: | valor |» o en la línea siguiente).
+function field(raw, label) {
+  const re = new RegExp(`(?:^|[\\n|]|\\s)${label}\\s*:?[\\s|]*([^\\n|]+)`, 'i');
+  const m = raw.match(re);
+  return m ? m[1].trim() : '';
+}
+
+function dateIn(raw) {
+  let m = raw.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{4}|\d{2})\b/);
+  if (m) {
+    const y = m[3].length === 2 ? `20${m[3]}` : m[3];
+    const d = Number(m[1]); const mo = Number(m[2]);
+    if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) return `${y}-${pad(mo)}-${pad(d)}`;
   }
-  return {
-    amount,
-    usd,
-    type: isIncome ? 'ingreso' : 'gasto',
-    merchant: merchant.slice(0, 40),
-    cat: isIncome ? 'ingreso' : guessCategory(`${merchant} ${t}`),
-    day,
-  };
+  m = norm(raw).match(/(\d{1,2}) de (enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)(?: de)? (\d{4})/);
+  if (m) return `${m[3]}-${pad(MONTHS_ES.indexOf(m[2]) + 1)}-${pad(m[1])}`;
+  return null;
+}
+
+function timeIn(raw) {
+  const m = raw.match(/hora\s*:?[\s|]*(\d{1,2})\s*:\s*(\d{1,2})/i) || raw.match(/\b(\d{1,2}):(\d{2})\s*(am|pm|a\.\s?m\.|p\.\s?m\.)?/i);
+  if (!m) return '';
+  let h = Number(m[1]);
+  const mi = Number(m[2]);
+  const ap = (m[3] || '').toLowerCase().replace(/[\s.]/g, '');
+  if (ap === 'pm' && h < 12) h += 12;
+  if (ap === 'am' && h === 12) h = 0;
+  return h < 24 && mi < 60 ? `${pad(h)}:${pad(mi)}` : '';
+}
+
+// Corta un texto con varios avisos pegados en un aviso por pedazo.
+function splitAlerts(raw) {
+  const starts = [];
+  const re = /(?:hola\s+[^,\n|]{2,60},|¡?\s*transacci[oó]n realizada\s*!?|¡?\s*pago realizado\s*!?|estimado cliente|comprobante de pago\b)/gi;
+  let m;
+  while ((m = re.exec(raw))) {
+    const prev = starts[starts.length - 1];
+    // «Comprobante de pago» seguido de «¡Transacción realizada!» es un solo aviso.
+    if (prev != null && m.index - prev < 120 && !/monto/i.test(raw.slice(prev, m.index))) continue;
+    starts.push(m.index);
+  }
+  if (starts.length <= 1) return [raw];
+  const parts = starts.map((st, i) => raw.slice(st, starts[i + 1] ?? raw.length));
+  if (starts[0] > 40 && /monto|rd\$|us\$|dop|usd/i.test(raw.slice(0, starts[0]))) parts.unshift(raw.slice(0, starts[0]));
+  return parts;
+}
+
+function bankIn(raw) {
+  return /apap|asociaci[oó]n popular/i.test(raw) ? 'APAP' : /banreservas|tub@nco/i.test(raw) ? 'Banreservas' : /banco popular|popular dominicano|\bbpd\b/i.test(raw) ? 'Banco Popular' : /\bbhd\b/i.test(raw) ? 'BHD' : /scotiabank/i.test(raw) ? 'Scotiabank' : /santa cruz/i.test(raw) ? 'Banco Santa Cruz' : /\bpromerica\b/i.test(raw) ? 'Promerica' : /banco caribe/i.test(raw) ? 'Banco Caribe' : /\bbanesco\b/i.test(raw) ? 'Banesco' : /\bvimenca\b/i.test(raw) ? 'Banco Vimenca' : '';
+}
+
+// Cuenta o tarjeta de donde salió el dinero (en una transferencia, el «Origen»).
+function accountIn(raw, t) {
+  const bank = bankIn(raw);
+  const origin = field(raw, 'Origen');
+  const from = origin || raw;
+  const acc = from.match(/(cuenta\s*(?:de\s*)?(ahorros?|corriente)?)[^\n|]*?\*{1,}\s*-?\s*(\d{4})/i);
+  if (origin && acc) {
+    const type = /corriente/i.test(acc[0]) ? 'corriente' : 'ahorro';
+    return { bank, kind: 'cuenta', last4: acc[3], name: `${type === 'corriente' ? 'Cuenta corriente' : 'Ahorro'}${bank ? ` ${bank}` : ''}` };
+  }
+  const card = raw.match(/(?:tarjeta|titular|visa|mastercard|master|amex)[^.\n|]{0,60}?(?:terminada|terminaci[oó]n|que termina) en\s*\*?(\d{4})/i) || raw.match(/(?:visa|mastercard|master|amex)[^\n|]{0,30}?\*+\s*-?\s*(\d{4})/i);
+  if (card) {
+    const name = (raw.match(/(visa[^,\n|]*?|mastercard[^,\n|]*?|master[^,\n|]*?)\s+(?:apap\s+)?terminada/i) || [])[1];
+    const debit = /d[eé]bito/i.test(raw.slice(Math.max(0, card.index - 40), card.index + 40));
+    const clean = String(name || 'Tarjeta').replace(/titular-?/i, '').trim();
+    return { bank, kind: debit ? 'debito' : 'tarjeta', last4: card[1], name: prettyMerchant(`${clean}${bank && !clean.toLowerCase().includes(bank.toLowerCase()) ? ` ${bank}` : ''}`) };
+  }
+  if (acc) {
+    const type = /corriente/i.test(acc[0]) ? 'corriente' : 'ahorro';
+    return { bank, kind: 'cuenta', last4: acc[3], name: `${type === 'corriente' ? 'Cuenta corriente' : 'Ahorro'}${bank ? ` ${bank}` : ''}` };
+  }
+  const tail = t.match(/(?:\*{2,}|x{2,})\s*-?\s*(\d{4})/);
+  if (tail) return { bank, kind: 'tarjeta', last4: tail[1], name: `Tarjeta${bank ? ` ${bank}` : ''}` };
+  return bank ? { bank, kind: 'cuenta', last4: '', name: bank } : null;
+}
+
+function parseOne(raw) {
+  const t = norm(raw);
+  if (!/(monto|rd\$|us\$|\bdop\b|\busd\b|\$)/i.test(raw)) return null;
+  // Monto y moneda.
+  let amount = null;
+  let currency = 'DOP';
+  const mf = raw.match(/monto\s*:?[\s|]*(RD\$|US\$|DOP|USD|\$)?\s*([\d.,]+\d)/i);
+  if (mf) {
+    amount = toNumber(mf[2]);
+    const mon = field(raw, 'Moneda');
+    currency = mf[1] ? (/us|usd/i.test(mf[1]) ? 'USD' : 'DOP') : mon ? (/(usd|d[oó]lar)/i.test(mon) ? 'USD' : 'DOP') : currencyIn(raw);
+  } else {
+    const ma = raw.match(/(RD\$|US\$|DOP|USD|\$)\s*([\d.,]+\d)/i);
+    if (ma) { amount = toNumber(ma[2]); currency = /us|usd/i.test(ma[1]) ? 'USD' : 'DOP'; }
+    else amount = parseAmount(raw);
+  }
+  if (!amount) return null;
+  const day = dateIn(raw);
+  const time = timeIn(raw);
+  const account = accountIn(raw, t);
+  const ref = (raw.match(/n[uú]mero de (?:transacci[oó]n|referencia)\s*:?[\s|]*(\d{6,})/i) || raw.match(/\breferencia\s*:?[\s|]*(\d{6,})/i) || [])[1] || '';
+  const tax = toNumber((raw.match(/impuestos?\s*:?[\s|]*(?:RD\$|DOP)?\s*([\d.,]*\d)/i) || [])[1] || '') || 0;
+  const op = (raw.match(/(?:^|[\n|])\s*transacci[oó]n\s*:?[\s|]*([^\n|]{3,60})/i) || [])[1] || '';
+  const opn = norm(op);
+  const base = { amount, currency, day, time, account, ref, tax: tax > 0 && tax < amount ? tax : 0 };
+  // Rechazadas: no se cobran.
+  if (/(declinad|rechazad|fondos insuficientes|no aprobad|denegad)/.test(t)) {
+    return { ...base, kind: 'declined', merchant: prettyMerchant(field(raw, 'Comercio')), why: 'Transacción declinada: no se cobró.' };
+  }
+  // Pagos a una tarjeta: no son gasto nuevo.
+  if (/ha recibido un pago|pago de tarjeta|pago a (?:tu |su )?tarjeta|abono a (?:tu |su )?tarjeta/.test(t)) {
+    const dest = field(raw, 'Destino');
+    const end4 = (dest.match(/(\d{4})\s*$/) || [])[1];
+    const card = dest ? `${prettyMerchant(dest.replace(/\*+\s*-?\s*\d{4}\s*$/, ''))}${end4 ? ` ·${end4}` : ''}`.trim() : '';
+    return { ...base, kind: 'transfer', cat: 'pago_tarjeta', merchant: card ? `Pago a ${card}` : 'Pago de tarjeta', why: 'Pago de tarjeta: las compras ya se cuentan una por una.' };
+  }
+  // Transferencias (Banreservas y otros): a tu cuenta, a otra persona o recibidas.
+  if (/transferencia|transf\b/.test(opn) || /transferencia/.test(t)) {
+    const origin = field(raw, 'Origen');
+    const dest = field(raw, 'Destino');
+    const who = (s) => norm(s.split(',')[0]).replace(/^(sr|sra|srta)\.?\s+/, '');
+    const concept = (raw.match(/monto\s*:?[\s|]*(?:RD\$|US\$|DOP|USD|\$)?\s*[\d.,]+\d[\s|]*\n[\s|]*([^\n|]{2,60})/i) || [])[1] || '';
+    const note = /^#?concept#?$/i.test(concept.trim()) || /^transacci[oó]n/i.test(concept.trim()) ? '' : concept.trim();
+    if (/recibid|acreditad|te enviaron|has recibido/.test(t)) {
+      return { ...base, kind: 'ingreso', cat: guessIncome(`${note} ${t}`), merchant: origin ? personName(origin.split(',')[0]) : 'Transferencia recibida', note };
+    }
+    if (origin && dest && who(origin) && who(origin) === who(dest)) {
+      return { ...base, kind: 'transfer', cat: 'entre_cuentas', merchant: 'Entre tus cuentas', note, why: 'Entre tus cuentas: el dinero sigue siendo tuyo.' };
+    }
+    const name = dest ? personName(dest.split(',')[0]) : 'Transferencia';
+    const cat = bestWord(`${note}`, { familia: CATEGORY_WORDS.familia }) ? 'familia' : (bestWord(note, CATEGORY_WORDS) || 'terceros');
+    return { ...base, kind: 'gasto', cat, merchant: name, note: note ? `Concepto: ${note}` : '', check: cat === 'terceros' ? '¿Para qué fue esta transferencia?' : '' };
+  }
+  if (/retiro|cajero|atm\b/.test(t) && !/comercio/.test(t)) {
+    return { ...base, kind: 'transfer', cat: 'retiro', merchant: 'Retiro de efectivo', why: 'Retiro: pasa de tu cuenta a efectivo.' };
+  }
+  // Depósitos e ingresos.
+  if (/(deposito|credito a (?:tu|su) cuenta|abono a (?:tu|su) cuenta|nomina|pago recibido en tu cuenta)/.test(t)) {
+    return { ...base, kind: 'ingreso', cat: guessIncome(t), merchant: prettyMerchant(field(raw, 'Comercio') || field(raw, 'Origen').split(',')[0] || 'Depósito') };
+  }
+  // Consumos con tarjeta o pagos de servicios.
+  let merchant = field(raw, 'Comercio') || field(raw, 'Establecimiento') || field(raw, 'Merchant');
+  if (!merchant) {
+    const m2 = raw.match(/\ben\s+([A-Z0-9][A-Z0-9 &'./\-]{2,40})/);
+    if (m2) merchant = m2[1].replace(/\s+(EL|POR|CON|FECHA|A LAS)\b.*$/i, '');
+  }
+  if (!merchant && op) merchant = op;
+  merchant = prettyMerchant(merchant);
+  return { ...base, kind: 'gasto', merchant, cat: guessCategory(`${merchant} ${op}`) };
+}
+
+// Uno o varios avisos pegados → movimientos. Cada uno trae: kind (gasto, ingreso, transfer o declined),
+// amount y currency, day, time, merchant, cat, account { bank, kind, last4, name }, ref y, si el banco
+// cobró impuesto a la transferencia, una línea aparte en «Comisiones e impuestos del banco».
+export function parseBankAlerts(text) {
+  const raw = String(text || '');
+  const out = [];
+  const seen = new Set();
+  for (const part of splitAlerts(raw)) {
+    const it = parseOne(part);
+    if (!it) continue;
+    const key = it.ref ? `r${it.ref}` : `${it.day}|${it.time}|${it.currency}|${it.amount}|${norm(it.merchant)}|${it.kind}`;
+    if (seen.has(key)) continue; // Banreservas envía el mismo aviso dos veces.
+    seen.add(key);
+    out.push(it);
+    if (it.tax && it.kind !== 'declined') {
+      out.push({ kind: 'gasto', amount: it.tax, currency: 'DOP', day: it.day, time: it.time, account: it.account, ref: it.ref ? `${it.ref}-imp` : '', merchant: 'Impuesto a transferencias', cat: 'comisiones', note: `Impuesto de: ${it.merchant || 'la transacción'}`, tax: 0 });
+    }
+  }
+  return out;
+}
+
+// Compatibilidad: el primer movimiento de un aviso, con la forma de la versión 1.
+export function parseBankAlert(text) {
+  const it = parseBankAlerts(text).find((x) => x.kind !== 'declined');
+  if (!it) return null;
+  return { amount: it.amount, usd: it.currency === 'USD', currency: it.currency, type: it.kind === 'ingreso' ? 'ingreso' : it.kind === 'transfer' ? 'transfer' : 'gasto', merchant: it.merchant, cat: it.cat, day: it.day, time: it.time };
 }
 
 export { MOOD_QUADS };

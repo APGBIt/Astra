@@ -168,7 +168,9 @@ export function parseQRData(raw) {
   return out;
 }
 
-const CAT_IDS = CATEGORIES.filter((c) => !['deuda', 'ahorro'].includes(c.id)).map((c) => `${c.id} (${c.name})`).join(', ');
+const SPEND = CATEGORIES.filter((c) => c.type === 'gasto');
+const CAT_IDS = SPEND.filter((c) => !['deuda', 'ahorro', 'terceros', 'familia'].includes(c.id)).map((c) => `${c.id} (${c.name})`).join(', ');
+const INCOME_IDS = CATEGORIES.filter((c) => c.type === 'ingreso').map((c) => c.id).join('|');
 
 export function receiptPrompt() {
   return `Eres un asistente contable en República Dominicana. La imagen es un recibo o factura de compra.
@@ -197,7 +199,7 @@ export function checkReceipt(r) {
     currency: r.moneda === 'USD' ? 'USD' : 'DOP',
     method: r.metodo_pago || '',
     last4: r.tarjeta_ultimos4 || '',
-    cat: CATEGORIES.some((c) => c.id === r.categoria) ? r.categoria : 'otros',
+    cat: SPEND.some((c) => c.id === r.categoria) ? r.categoria : 'otros',
     items: Array.isArray(r.articulos) ? r.articulos.slice(0, 25).map((a) => ({ desc: String(a.descripcion || '').slice(0, 60), total: Number(a.total) || 0 })) : [],
     doubts: new Set(Array.isArray(r.dudas) ? r.dudas.map(String) : []),
   };
@@ -217,7 +219,7 @@ export function capturePrompt(text, people, today = '') {
 Frase: """${String(text).slice(0, 1500)}"""
 Personas conocidas: ${people.map((p) => p.name).join(', ') || 'ninguna'}.${today ? `\nHoy es ${today}.` : ''}
 Tipos posibles:
-- {"kind":"tx","type":"gasto" o "ingreso","amount":número,"cat":"super|transporte|comida|servicios|hogar|salud|educacion|ocio|deuda|ahorro|otros","merchant":"texto"}
+- {"kind":"tx","type":"gasto" o "ingreso","amount":número,"currency":"DOP" o "USD" (USD si dice dólares, US$ o USD),"cat":"${SPEND.map((c) => c.id).join('|')}" (gastos) o "${INCOME_IDS}" (ingresos),"merchant":"texto"}
 - {"kind":"health","field":"steps|sleep|water|exercise","value":número} (sueño en horas, ejercicio en minutos)
 - {"kind":"pages","value":número}
 - {"kind":"contact","name":"nombre"}

@@ -474,3 +474,168 @@ test('cuentas y tarjetas: se guarda solo el final del número', () => {
   const d = L.addRecordItem(s, 'documentos', { title: 'Cédula', detail: '001-1234567-8' }, D, []);
   assert.equal(d.detail, '001-1234567-8');
 });
+
+// ---------- Finanzas 1.2: dólares y pesos, categorías, cuentas e importación ----------
+
+test('finanzas: gasto en dólares guarda moneda, tasa y su monto en pesos', () => {
+  const s = fresh();
+  const t = L.addTx(s, { type: 'gasto', amount: 13.7, currency: 'USD', rate: 61.1707, merchant: 'Panadería', day: '2026-09-27' }, D, []);
+  assert.equal(t.currency, 'USD');
+  assert.equal(t.orig, 13.7);
+  assert.equal(t.rate, 61.1707);
+  assert.equal(t.amount, -838.04);
+  assert.equal(L.txUSD(s, t), 13.7);
+  const p = L.addTx(s, { type: 'gasto', amount: 8000, cat: 'familia', rate: 62.5, day: '2026-09-27' }, D, []);
+  assert.equal(p.amount, -8000);
+  assert.equal(L.txUSD(s, p), 128);
+});
+
+test('finanzas: el resumen suma en pesos y en dólares, sin contar movimientos entre cuentas', () => {
+  const s = fresh();
+  L.addTx(s, { type: 'ingreso', amount: 30000, rate: 60 }, D, []);
+  L.addTx(s, { type: 'gasto', amount: 10, currency: 'USD', rate: 60, cat: 'comida' }, D, []);
+  L.addTx(s, { type: 'gasto', amount: 600, rate: 60, cat: 'super' }, D, []);
+  L.addTx(s, { type: 'transfer', amount: 15000, cat: 'pago_tarjeta' }, D, []);
+  const m = L.monthSummary(s, '2026-09');
+  assert.equal(m.income, 30000);
+  assert.equal(m.incomeUSD, 500);
+  assert.equal(m.spent, 1200);
+  assert.equal(m.spentUSD, 20);
+  assert.equal(m.moved, 15000);
+  assert.deepEqual(m.paidIn, { DOP: 600, USD: 10 });
+  assert.equal(m.byCat.comida, 600);
+});
+
+test('finanzas: tasa del día, la más cercana anterior y la tasa propia', () => {
+  const s = fresh();
+  L.recordRate(s, '2026-09-20', 60.5);
+  L.recordRate(s, '2026-09-25', 61);
+  assert.equal(L.fxRate(s, '2026-09-25'), 61);
+  assert.equal(L.fxRate(s, '2026-09-23'), 60.5);
+  assert.equal(L.fxRate(s), 61.1477); // la de referencia más nueva (15 oct) sigue siendo la de hoy
+  L.setManualRate(s, 63);
+  assert.equal(L.fxRate(s, '2026-09-25'), 63);
+  L.setManualRate(s, null);
+  assert.equal(L.fxRate(s, '2026-09-25'), 61);
+  assert.equal(L.recordRate(s, '2026-09-26', 5), false); // tasas absurdas no entran
+});
+
+test('finanzas: corregir la categoría enseña el comercio para la próxima', () => {
+  const s = fresh();
+  const t = L.addTx(s, { type: 'gasto', amount: 500, merchant: 'Kiosko Luna' }, D, []);
+  assert.equal(t.cat, 'otros');
+  L.updateTx(s, t.id, { cat: 'comida' });
+  assert.equal(s.money.tx[0].cat, 'comida');
+  assert.equal(L.guessTxCat(s, { merchant: 'KIOSKO LUNA #22' }), 'comida');
+  const t2 = L.addTx(s, { type: 'gasto', amount: 300, merchant: 'KIOSKO LUNA' }, D, []);
+  assert.equal(t2.cat, 'comida');
+});
+
+test('finanzas: editar el monto o la moneda recalcula los pesos', () => {
+  const s = fresh();
+  const t = L.addTx(s, { type: 'gasto', amount: 100, cat: 'ropa', rate: 60 }, D, []);
+  const u = L.updateTx(s, t.id, { currency: 'USD', amount: 20 });
+  assert.equal(u.amount, -1200);
+  assert.equal(u.id, t.id);
+  assert.equal(s.money.tx.length, 1);
+});
+
+test('finanzas: categorías propias, ocultas y presupuesto solo en gastos', () => {
+  const s = fresh();
+  const c = L.addCategory(s, { name: 'Colegio de los niños', group: 'personal', icon: 'cap' });
+  assert.ok(c.custom);
+  assert.ok(L.catsOfType(s, 'gasto').some((x) => x.id === c.id));
+  const t = L.addTx(s, { type: 'gasto', amount: 5000, cat: c.id }, D, []);
+  assert.equal(t.cat, c.id);
+  L.removeCategory(s, c.id);
+  assert.equal(s.money.tx[0].cat, 'otros');
+  assert.equal(L.removeCategory(s, 'super'), false);
+  L.updateCategory(s, 'domestico', { hidden: true });
+  assert.ok(!L.catsOfType(s, 'gasto').some((x) => x.id === 'domestico'));
+  L.setBudget(s, 'salario', 9000);
+  assert.equal(L.catOf(s, 'salario').budget, 0);
+  assert.ok(L.catGroups(s, 'gasto').length >= 7);
+});
+
+test('finanzas: cuentas y tarjetas sin números completos', () => {
+  const s = fresh();
+  const a = L.addAccount(s, { name: 'Visa APAP', kind: 'tarjeta', bank: 'APAP', last4: '4111 1111 1111 4242' });
+  assert.equal(a.last4, '4242');
+  assert.equal(L.accountLabel(a), 'Visa APAP ·4242');
+  assert.equal(L.addAccount(s, { name: 'Otra', bank: 'APAP', last4: '4242' }).id, a.id);
+  assert.equal(L.resolveAccount(s, { bank: 'APAP', last4: '4242', name: 'Visa' }), a.id);
+  const t = L.addTx(s, { type: 'gasto', amount: 50, account: a.id }, D, []);
+  L.removeAccount(s, a.id);
+  assert.equal(s.money.tx.find((x) => x.id === t.id).account, '');
+});
+
+test('finanzas: importar varios, saltar los repetidos y deshacer', () => {
+  const s = fresh();
+  const pack = {
+    label: 'Prueba',
+    accounts: [{ id: 'x-1234', name: 'Visa Prueba', kind: 'tarjeta', bank: 'Banco', last4: '1234' }],
+    rates: { '2026-09-26': 60.25 },
+    items: [
+      { kind: 'gasto', currency: 'USD', amount: 10, day: '2026-09-26', merchant: 'Café', cat: 'comida', account: 'x-1234', tag: 'Viaje', ref: 'm1' },
+      { kind: 'gasto', currency: 'DOP', amount: 16, day: '2026-09-26', merchant: 'Impuesto', cat: 'comisiones', ref: 'm2' },
+      { kind: 'transfer', currency: 'DOP', amount: 5000, day: '2026-09-26', cat: 'pago_tarjeta', on: false, ref: 'm3' },
+    ],
+  };
+  const r = L.importTxs(s, pack, D, []);
+  assert.equal(r.added, 2);
+  assert.equal(s.money.tx.length, 2);
+  const cafe = s.money.tx.find((t) => t.ref === 'm1');
+  assert.equal(cafe.rate, 60.25);
+  assert.equal(cafe.amount, -602.5);
+  assert.equal(L.accountOf(s, cafe.account).last4, '1234');
+  assert.equal(cafe.tag, 'Viaje');
+  assert.equal(L.fxRate(s, '2026-09-26'), 60.25);
+  assert.equal(s.money.lastImport.n, 2);
+  const again = L.importTxs(s, pack, D, []);
+  assert.equal(again.added, 0);
+  assert.equal(again.skipped, 2);
+  assert.equal(L.undoImport(s, r.batch), 2);
+  assert.equal(s.money.tx.length, 0);
+  assert.equal(s.money.lastImport, null);
+});
+
+test('finanzas: datos de la 1.x se actualizan sin perder nada', () => {
+  const s = fresh();
+  s.money = {
+    categories: [{ id: 'super', name: 'Supermercado', budget: 5000 }, { id: 'mia', name: 'Mi categoría', budget: 100 }],
+    tx: [
+      { id: 'a', day: '2026-09-01', amount: -850, cat: 'super', merchant: 'Bravo', note: '', source: 'manual' },
+      { id: 'b', day: '2026-09-02', amount: -20, cat: 'comida', merchant: 'Cafe', note: 'Monto en US$', source: 'recibo' },
+      { id: 'c', day: '2026-09-15', amount: 30000, cat: 'ingreso', merchant: '', note: '', source: 'manual' },
+    ],
+  };
+  L.ensureMoney(s);
+  const sup = L.catOf(s, 'super');
+  assert.equal(sup.name, 'Supermercado y colmado');
+  assert.equal(sup.budget, 5000);
+  assert.ok(L.catOf(s, 'mia').custom);
+  assert.equal(L.catOf(s, 'mia').budget, 100);
+  assert.ok(s.money.categories.length > 40);
+  const [a, b, c] = ['a', 'b', 'c'].map((id) => s.money.tx.find((t) => t.id === id));
+  assert.equal(a.currency, 'DOP');
+  assert.equal(a.kind, 'gasto');
+  assert.equal(a.orig, 850);
+  assert.equal(b.currency, 'USD');
+  assert.equal(b.orig, 20);
+  assert.ok(b.amount < -1000);
+  assert.equal(b.note, '');
+  assert.equal(c.kind, 'ingreso');
+  assert.ok(s.money.fx.rate > 50);
+  assert.ok(Array.isArray(s.money.accounts) && s.money.accounts.length >= 1);
+});
+
+test('finanzas: el jefe de deudas recibe golpes en pesos aunque pagues en dólares', () => {
+  const s = fresh();
+  L.startCampaign(s, { area: 'finanzas', goalId: 'deudas', target: 50000, days: 90, intensity: 'normal', missions: [] }, D);
+  const b = s.bosses[0];
+  L.addTx(s, { type: 'gasto', amount: 100, currency: 'USD', rate: 60, cat: 'deuda' }, D, []);
+  assert.equal(s.bosses[0].progress, 6000);
+  L.addTx(s, { type: 'transfer', amount: 5000, cat: 'pago_tarjeta' }, D, []);
+  assert.equal(s.bosses[0].progress, 6000);
+  assert.ok(b);
+});

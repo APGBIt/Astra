@@ -12,6 +12,8 @@ import { Record, RecordSection } from './screens/Record.jsx';
 import { Capture } from './screens/Capture.jsx';
 import { Receipt } from './screens/Receipt.jsx';
 import { Finance } from './screens/Finance.jsx';
+import { Import } from './screens/Import.jsx';
+import { refreshRate } from './app/fx.js';
 import { Path, Boss } from './screens/Path.jsx';
 import { Areas, Health, Mood, People, Learn, Focus } from './screens/Areas.jsx';
 import { Character, Inn, Shop, Chronicle, Recovery } from './screens/Character.jsx';
@@ -52,6 +54,7 @@ function Screen({ route }) {
     case 'expediente': return b ? <RecordSection id={b} /> : <Record />;
     case 'recibo': return <Receipt />;
     case 'finanzas': return <Finance query={q} />;
+    case 'importar': return <Import query={q} />;
     case 'camino': return <Path query={q} />;
     case 'meta': return <NewGoal query={q} />;
     case 'jefe': return <Boss id={b} />;
@@ -76,7 +79,9 @@ function App() {
   useEffect(() => {
     applyTheme(getState().settings.theme);
     runReconcile();
-    const onVis = () => { if (!document.hidden) runReconcile(); };
+    // La tasa del dólar se actualiza sola una vez al día (si hay internet).
+    setTimeout(() => { if (getState().profile.onboarded) refreshRate(); }, 1500);
+    const onVis = () => { if (!document.hidden) { runReconcile(); if (getState().profile.onboarded) refreshRate(); } };
     document.addEventListener('visibilitychange', onVis);
     const id = setInterval(runReconcile, 60000);
     if (!getState().profile.onboarded && location.hash && location.hash !== '#/crear') go('/', { replace: true });

@@ -1,6 +1,6 @@
 // Estado persistente de Astra. Se guarda solo en este navegador.
 import { useEffect, useReducer } from 'preact/hooks';
-import { defaultState, reconcile, ensureRecord } from '../game/logic.js';
+import { defaultState, reconcile, ensureRecord, ensureMoney } from '../game/logic.js';
 import { dayKey } from './dates.js';
 
 const KEY = 'astra.v1';
@@ -30,9 +30,9 @@ function migrate(s) {
   // Versión 2: pendientes, expediente y metas diarias propias.
   ensureRecord(m);
   if (!m.profile.goals || typeof m.profile.goals !== 'object') m.profile.goals = { ...d.profile.goals };
-  m.v = 2;
-  if (!Array.isArray(m.money.tx)) m.money.tx = [];
-  if (!Array.isArray(m.money.categories) || !m.money.categories.length) m.money.categories = d.money.categories;
+  // Versión 3: categorías nuevas, dólares y pesos, cuentas y tarjetas (los movimientos viejos se conservan).
+  ensureMoney(m);
+  m.v = 3;
   if (!Array.isArray(m.profile.classKeys)) m.profile.classKeys = [];
   if (!Array.isArray(m.streak.freezeDays)) m.streak.freezeDays = [];
   return m;
