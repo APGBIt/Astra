@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { execSync } from 'node:child_process';
 
 const DEV = process.argv.includes('--dev');
+const PKG = JSON.parse(readFileSync('package.json', 'utf8'));
 const out = await build({
   entryPoints: ['src/main.jsx'],
   bundle: true,
@@ -16,7 +17,7 @@ const out = await build({
   jsxImportSource: 'preact',
   write: false,
   legalComments: 'none',
-  define: { 'process.env.NODE_ENV': DEV ? '"development"' : '"production"' },
+  define: { 'process.env.NODE_ENV': DEV ? '"development"' : '"production"', __APP_VERSION__: JSON.stringify(PKG.version) },
 });
 const js = out.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
 const css = readFileSync('src/styles.css', 'utf8');
@@ -138,7 +139,7 @@ writeFileSync('dist/LEEME.txt', `ASTRA · Tu vida en modo juego de rol
 ====================================
 
 Esta carpeta es la app completa. Funciona en el navegador y se instala en el celular.
-Tus datos se guardan solo en tu teléfono.
+Tus datos se guardan en tu teléfono y, si lo conectas, en tu propio Google Drive.
 
 1) PROBARLA EN LA COMPUTADORA
    Abre index.html con Google Chrome o Microsoft Edge.
@@ -156,6 +157,64 @@ Tus datos se guardan solo en tu teléfono.
 
 5) TUS DATOS
    Personaje → Ajustes → «Descargar copia» para guardar tu progreso o pasarlo a otro teléfono.
+
+6) SINCRONIZAR CON TU DRIVE
+   Personaje → Ajustes → Sincronización. Cada persona conecta su propio Drive:
+   con el conector propio (un script en su Drive) o con «Conectar con Google».
+   El código del conector está en conector.gs/ (se abre en el navegador para copiarlo).
+`);
+
+// Código del conector propio (Apps Script): una página para verlo y copiarlo (…/conector.gs/).
+const { CONNECTOR_CODE, CONNECTOR_VERSION } = await import('./src/app/connector.js');
+const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+rmSync('dist/conector.gs', { recursive: true, force: true });
+mkdirSync('dist/conector.gs', { recursive: true });
+writeFileSync('dist/conector.gs/index.html', `<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Conector de Astra</title>
+<style>
+:root { --bg: #f7f6f2; --surface: #ffffff; --ink: #17181c; --muted: #5d6068; --line: #e2e0d8; --accent: #17181c; --on-accent: #ffffff; color-scheme: light; }
+@media (prefers-color-scheme: dark) { :root { --bg: #121316; --surface: #1c1d22; --ink: #f1f0ec; --muted: #a4a6ad; --line: #2e3037; --accent: #f1f0ec; --on-accent: #121316; color-scheme: dark; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 880px; margin: 0 auto; padding: 28px 16px 48px; display: flex; flex-direction: column; gap: 16px; }
+h1 { font-size: 26px; line-height: 1.2; margin: 0; }
+p { margin: 0; color: var(--muted); }
+ol { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+button { align-self: flex-start; min-height: 44px; padding: 0 18px; border: 0; border-radius: 22px; background: var(--accent); color: var(--on-accent); font: inherit; font-weight: 700; cursor: pointer; }
+button:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+pre { margin: 0; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: auto; max-height: 70vh; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre; }
+#ok { color: var(--muted); font-size: 14px; min-height: 1.5em; }
+</style>
+</head>
+<body>
+<main>
+<h1>Conector de Astra para tu Drive</h1>
+<p>Versión ${CONNECTOR_VERSION}. Cada persona lo instala en su propia cuenta de Google, y sus datos de Astra quedan en su Drive.</p>
+<ol>
+<li>Copia el código con el botón.</li>
+<li>Pégalo en Apps Script (en tu hoja «Base de datos de Astra»: Extensiones → Apps Script; o en un proyecto nuevo de script.google.com) y guarda.</li>
+<li>Implementar → Nueva implementación → Aplicación web. Ejecutar como: Yo. Quién tiene acceso: Cualquier usuario.</li>
+<li>Copia la URL que termina en /exec y pégala en Astra → Ajustes → Sincronización → Conector propio.</li>
+</ol>
+<button type="button" id="copy">Copiar el código</button>
+<span id="ok" role="status"></span>
+<pre id="code">${esc(CONNECTOR_CODE)}</pre>
+</main>
+<script>
+document.getElementById('copy').addEventListener('click', async function () {
+  var code = document.getElementById('code');
+  var ok = document.getElementById('ok');
+  try { await navigator.clipboard.writeText(code.textContent); ok.textContent = 'Código copiado.'; }
+  catch (e) { var r = document.createRange(); r.selectNodeContents(code); var s = getSelection(); s.removeAllRanges(); s.addRange(r); ok.textContent = 'Selecciona y copia el código (Ctrl + C).'; }
+});
+</script>
+</body>
+</html>
 `);
 
 // Copia para GitHub Pages (se publica la carpeta docs/).

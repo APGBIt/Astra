@@ -3,6 +3,7 @@ import { Icon } from '../ui/icons.jsx';
 import { Nav, TopBar, Bar, Sheet, SheetHead, TChip, Switch, Avatar, toast, ask, areaColor, areaSoft, areaInk, plural, focusOnMount } from '../ui/kit.jsx';
 import { norm } from '../game/parse.js';
 import { act, useApp } from '../app/store.js';
+import { PhotoStrip, PhotoThumb } from '../ui/photos.jsx';
 import { back, go } from '../app/router.js';
 import { diffDays, fmtShort, fmtDay } from '../app/dates.js';
 import { AREA, AREAS, RECORD_ICONS, RECORD_XP } from '../game/content.js';
@@ -356,6 +357,7 @@ function ItemRow({ s, sec, sch, it, today, hide, onOpen }) {
         {(detail || dates) && <span class="small muted">{[detail, dates].filter(Boolean).join(' · ')}</span>}
         {sch.alert && it.end && <span class="tiny strong" style={{ color: dueTone(n) ? `var(--${dueTone(n)}-ink)` : 'var(--muted)' }}>{dueText(n, sch.alert)} · {fmtShort(it.end)}{(() => { const st = alertStatus(s, sec.id, it); return st === 'pending' ? ' · en pendientes' : st === 'done' ? ' · atendido' : ''; })()}</span>}
       </button>
+      {(it.photos || []).length > 0 && <PhotoThumb id={it.photos[0]} size={44} onOpen={onOpen} label={`${it.title}: ver foto`} />}
       {sec.schema === 'contacts' && it.phone ? (
         <span class="row" style={{ gap: 6 }}>
           <a class="icon-btn" href={`tel:${it.phone}`} aria-label={`Llamar a ${it.title}`}><Icon name="phone" size={18} /></a>
@@ -371,7 +373,7 @@ function ItemRow({ s, sec, sch, it, today, hide, onOpen }) {
 function ItemSheet({ sec, sch, it, onClose }) {
   const s = useApp();
   const today = s.energy.day;
-  const [v, setV] = useState({ title: it ? it.title : '', detail: it ? it.detail : '', phone: it ? it.phone : '', start: it ? it.start || '' : '', end: it ? it.end || '' : '', note: it ? it.note : '' });
+  const [v, setV] = useState({ title: it ? it.title : '', detail: it ? it.detail : '', phone: it ? it.phone : '', start: it ? it.start || '' : '', end: it ? it.end || '' : '', note: it ? it.note : '', photos: it ? it.photos || [] : [] });
   const L = sch.labels;
   const set = (k) => (e) => setV({ ...v, [k]: e.currentTarget.value });
   const ok = v.title.trim().length > 1;
@@ -404,6 +406,7 @@ function ItemSheet({ sec, sch, it, onClose }) {
       {sch.alert && <span class="small muted">Te aviso en Hoy cuando falten 30 días y puedes pasarlo a Pendientes.</span>}
       {sch.hint && <div class="note tone-xp" style={{ fontSize: 13.5 }}><Icon name="lock" size={18} /><span>{sch.hint}</span></div>}
       {(L.note || sec.schema === 'generic' || it) && <div class="field"><label for="it-n">{L.note || 'Nota'}</label><textarea id="it-n" class="input" rows={3} value={v.note} maxLength={1000} onInput={set('note')} /></div>}
+      <PhotoStrip ids={v.photos} onChange={(photos) => setV({ ...v, photos })} kind="expediente" label="Fotos (opcional)" hint={sec.schema === 'docs' || sec.id === 'documentos' ? 'Una foto del documento por si lo pierdes. Se guarda en este teléfono y, si sincronizas, en tu Drive.' : ''} max={4} />
       <button type="button" class="btn block" disabled={!ok} onClick={save}><Icon name="check" size={20} />{it ? 'Guardar cambios' : `Agregar ${sch.item}`}</button>
       {cur && sch.alert && cur.end && !has && <button type="button" class="btn ghost block" onClick={() => { const t = act((st, d) => alertToTodo(st, sec.id, cur.id, d)); if (t) toast(`En pendientes: ${t.title}`, 'list'); onClose(); }}><Icon name="list" size={18} />Agregar a pendientes</button>}
       {cur && has && <span class="small muted row" style={{ gap: 6, justifyContent: 'center', textAlign: 'center' }}><Icon name="check" size={16} />{st === 'done' ? 'Ya lo atendiste. Cuando lo renueves, cambia la fecha y te aviso de nuevo.' : 'Ya está en tus pendientes.'}</span>}

@@ -6,6 +6,7 @@ import { fmtShort, monthKey, monthName, relDay } from '../app/dates.js';
 import { saveFile } from '../app/files.js';
 import { AREA, WIN_SCOPES, WIN_TYPES, WIN_SKILLS, WIN_XP } from '../game/content.js';
 import { addWin, updateWin, removeWin, periodRange, winStats, winsText, winsCSV, winPromptDue, dismissWinPrompt } from '../game/logic.js';
+import { PhotoStrip } from '../ui/photos.jsx';
 
 // Logros de la vida real: del trabajo, los estudios y lo personal. Con impacto y habilidades, listos para tu evaluación o tu CV.
 
@@ -119,7 +120,7 @@ function WinRow({ w, showScope, onOpen }) {
       <span class="stack-xs grow">
         <span class="semi">{w.title}</span>
         {w.impact && <span class="impact">{w.impact}</span>}
-        <span class="tiny muted semi">{fmtShort(w.day)} · {t.label}{showScope ? ` · ${scopeOf(w.scope).label}` : ''}{w.evidence ? ' · con evidencia' : ''}</span>
+        <span class="tiny muted semi">{fmtShort(w.day)} · {t.label}{showScope ? ` · ${scopeOf(w.scope).label}` : ''}{w.evidence || (w.photos || []).length ? ' · con evidencia' : ''}</span>
         {(w.skills || []).length > 0 && <span class="row wrap" style={{ gap: 4 }}>{w.skills.map((k) => <span key={k} class="skill">{k}</span>)}</span>}
       </span>
     </button>
@@ -150,6 +151,7 @@ export function WinSheet({ id, onClose, defaultScope = 'profesional' }) {
   const [impact, setImpact] = useState(w ? w.impact || '' : '');
   const [skills, setSkills] = useState(w ? w.skills || [] : []);
   const [evidence, setEvidence] = useState(w ? w.evidence || '' : '');
+  const [photos, setPhotos] = useState(w ? w.photos || [] : []);
   const [newSkill, setNewSkill] = useState('');
   if (id && !w) return null;
   const known = [...new Set([...WIN_SKILLS, ...(s.wins || []).flatMap((x) => x.skills || []), ...skills])];
@@ -160,7 +162,7 @@ export function WinSheet({ id, onClose, defaultScope = 'profesional' }) {
     setNewSkill('');
   };
   const paid = ((s.days[today] && s.days[today].wins) || 0) < WIN_XP.daily;
-  const data = () => ({ title, scope, type, day, impact, skills, evidence });
+  const data = () => ({ title, scope, type, day, impact, skills, evidence, photos });
   const save = () => {
     if (!title.trim()) return;
     if (w) {
@@ -211,6 +213,7 @@ export function WinSheet({ id, onClose, defaultScope = 'profesional' }) {
         <label for="we">Evidencia (opcional)</label>
         <input id="we" class="input" value={evidence} maxLength={300} placeholder="Correo de tu jefe, enlace, carpeta del proyecto…" onInput={(e) => setEvidence(e.currentTarget.value)} />
       </div>
+      <PhotoStrip ids={photos} onChange={setPhotos} kind="logro" label="Fotos de evidencia (opcional)" hint="Un certificado, un reconocimiento, una captura del correo." max={4} />
       <button type="button" class="btn block" disabled={!title.trim()} onClick={save}>
         <Icon name="trophy" size={20} />{w ? 'Guardar cambios' : paid ? `Guardar · +${WIN_XP.xp} XP de ${attrOf(scope)}` : 'Guardar'}
       </button>

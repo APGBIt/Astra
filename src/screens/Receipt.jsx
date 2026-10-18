@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
-import { TopBar, Bar, money, usd, rateText, toast, areaColor } from '../ui/kit.jsx';
+import { TopBar, Bar, Switch, money, usd, rateText, toast, areaColor } from '../ui/kit.jsx';
+import { addPhoto } from '../app/photos.js';
 import { act, useApp } from '../app/store.js';
 import { go, back } from '../app/router.js';
 import { monthKey } from '../app/dates.js';
@@ -20,6 +21,9 @@ export function Receipt() {
   const [msg, setMsg] = useState('');
   const [from, setFrom] = useState('');
   const [showItems, setShowItems] = useState(false);
+  const [keep, setKeep] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const fileRef = useRef(null);
   const ctl = useRef(null);
 
   useEffect(() => {
@@ -32,6 +36,7 @@ export function Receipt() {
     const file = e.currentTarget.files && e.currentTarget.files[0];
     e.currentTarget.value = '';
     if (!file) return;
+    fileRef.current = file;
     setThumb(URL.createObjectURL(file));
     setPhase('reading');
     setMsg('');
@@ -81,9 +86,13 @@ export function Receipt() {
     setData({ ...data, [k]: v, doubts });
   };
 
-  const save = () => {
+  const save = async () => {
     const total = Number(data.total) || 0;
-    if (!total) return;
+    if (!total || saving) return;
+    setSaving(true);
+    // La foto se guarda con el gasto si quieres (en este teléfono y, si sincronizas, en tu Drive).
+    let photo = null;
+    if (keep && fileRef.current) photo = await addPhoto(fileRef.current, { kind: 'recibo', desc: data.merchant || '' }).catch(() => null);
     act((st, t, ev) => addTx(st, {
       type: 'gasto',
       amount: total,
@@ -97,8 +106,9 @@ export function Receipt() {
       rnc: data.rnc,
       ncf: data.ncf,
       itbis: data.itbis,
+      photos: photo ? [photo] : [],
     }, t, ev));
-    toast('Gasto guardado · la foto no se guardó', 'check');
+    toast(photo ? 'Gasto guardado con la foto del recibo' : 'Gasto guardado · la foto no se guardó', 'check');
     go('/finanzas', { replace: true });
   };
 
@@ -125,7 +135,7 @@ export function Receipt() {
           </span>
         </div>
         <div class="note"><Icon name="qr" size={20} /><span>Si es una factura electrónica (e-CF), también leo su código QR cuando el navegador lo permite.</span></div>
-        <div class="note"><Icon name="lock" size={20} /><span>La foto se usa solo para leerla y no se guarda en la app.</span></div>
+        <div class="note"><Icon name="lock" size={20} /><span>Al guardar eliges si la foto se queda con el gasto (en este teléfono y en tu Drive si sincronizas) o si solo se usa para leerla.</span></div>
         <button type="button" class="link-btn" style={{ alignSelf: 'center' }} onClick={() => { setData({ ...EMPTY, day: today, doubts: new Set() }); setFrom(''); setPhase('review'); }}>Prefiero escribirlo a mano<Icon name="right" size={16} /></button>
       </main>
     );
@@ -200,8 +210,14 @@ export function Receipt() {
           </>
         ) : <span class="small muted">Esta categoría no tiene presupuesto. Puedes ponerle uno en Finanzas.</span>}
       </section>
-      <button type="button" class="btn block" disabled={!(Number(data.total) > 0)} onClick={save}><Icon name="check" size={20} />Guardar gasto</button>
-      <button type="button" class="link-btn muted" style={{ alignSelf: 'center' }} onClick={() => { setPhase('pick'); setThumb(''); }}>Tomar otra foto</button>
+      {thumb && (
+        <label class="between-c panel" style={{ cursor: 'pointer' }}>
+          <span class="stack-xs"><span class="semi">Guardar la foto con el gasto</span><span class="small muted">Queda en este teléfono y, si sincronizas, en tu Drive (Astra/Fotos/Recibos).</span></span>
+          <Switch checked={keep} onChange={setKeep} label="Guardar la foto con el gasto" />
+        </label>
+      )}
+      <button type="button" class="btn block" disabled={!(Number(data.total) > 0) || saving} onClick={save}><Icon name="check" size={20} />Guardar gasto</button>
+      <button type="button" class="link-btn muted" style={{ alignSelf: 'center' }} onClick={() => { setPhase('pick'); setThumb(''); fileRef.current = null; }}>Tomar otra foto</button>
     </main>
   );
 }

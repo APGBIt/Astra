@@ -16,6 +16,7 @@ import { CATEGORY_GROUPS, ACCOUNT_KINDS, CATEGORY_ICONS } from '../game/content.
 import { AreaTodos } from './Todos.jsx';
 import { CatPicker } from '../ui/catpicker.jsx';
 import { setPending } from './Import.jsx';
+import { PhotoStrip } from '../ui/photos.jsx';
 
 const SRC_LABEL = { recibo: 'Recibo', alerta: 'Aviso del banco', voz: 'Registro rápido', manual: 'A mano', importado: 'Importado', correo: 'Correo del banco' };
 const KIND_LABEL = { gasto: 'Gasto', ingreso: 'Ingreso', transfer: 'Entre cuentas' };
@@ -319,6 +320,7 @@ export function TxSheet({ s, initial, tx, onClose }) {
   const [account, setAccount] = useState(tx ? tx.account : initial.account || lastAcc);
   const [tag, setTag] = useState(tx ? tx.tag || '' : initial.tag || '');
   const [note, setNote] = useState(tx ? tx.note || '' : initial.note || '');
+  const [photos, setPhotos] = useState(tx ? tx.photos || [] : initial.photos || []);
   const [newCat, setNewCat] = useState(false);
   const [newAcc, setNewAcc] = useState(false);
   const n = toNumber(String(amount).replace(/[^\d.,]/g, '')) || 0;
@@ -337,7 +339,7 @@ export function TxSheet({ s, initial, tx, onClose }) {
   const converted = currency === 'USD' ? money(toDOP(n, 'USD', rate)) : usd(toUSD(n, rate));
   const save = () => {
     if (!n) return;
-    const p = { type, amount: n, currency, rate, cat: effCat, merchant, day, account, tag, note };
+    const p = { type, amount: n, currency, rate, cat: effCat, merchant, day, account, tag, note, photos };
     act((st, t, ev) => {
       if (editing) updateTx(st, tx.id, p);
       else {
@@ -428,6 +430,7 @@ export function TxSheet({ s, initial, tx, onClose }) {
         {newAcc && <AccountForm onDone={(id) => { setNewAcc(false); if (id) setAccount(id); }} />}
       </div>
       <div class="field"><label for="tnote">Nota (opcional)</label><input id="tnote" class="input" value={note} maxLength={200} onInput={(e) => setNote(e.currentTarget.value)} placeholder="Detalle, para quién, número de referencia…" /></div>
+      <PhotoStrip ids={photos} onChange={setPhotos} kind="recibo" label="Foto del recibo o factura (opcional)" max={4} />
       {type === 'transfer' && <div class="note"><Icon name="info" size={18} /><span>Los pagos de tarjeta y lo que mueves entre tus cuentas no cuentan como gasto: las compras ya se cuentan una por una.</span></div>}
       <button type="button" class="btn block" disabled={!n} onClick={save}><Icon name="check" size={20} />{editing ? 'Guardar cambios' : 'Guardar'}</button>
       {editing && (

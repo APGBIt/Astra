@@ -2,6 +2,16 @@
 
 Tu vida en modo juego de rol. App web instalable (y futura APK) para crecer en seis áreas de la vida con barras de vitalidad y energía, caminos, misiones y jefes.
 
+## Novedades de la versión 1.4 (sincronización con Drive)
+
+- **Cada persona conecta su propio Drive** en Personaje → Ajustes → Sincronización. Los datos de cada quien, expediente incluido, van solo a su cuenta de Google. Hay dos conectores:
+  - **Conector propio**: un script de Google (Apps Script) que cada persona instala una vez en su Drive. Sincroniza solo, sin volver a iniciar sesión. El código se copia desde la app o desde [`conector.gs/`](https://apgbit.github.io/Astra/conector.gs/).
+  - **Conectar con Google**: inicia sesión con la cuenta de Google y listo. Usa el permiso `drive.file`, así que Astra solo ve los archivos que ella misma crea. Quien administra Astra lo activa una vez en Google Cloud y decide quién puede usarlo: solo los correos que agregue como usuarios de prueba (hasta 100) o cualquiera, si publica la app.
+- **Sin conexión primero**: todo sigue funcionando sin internet. Al volver la conexión, al abrir la app y unos segundos después de cada cambio, Astra junta lo de este teléfono con lo de Drive (también con un botón). Si dos equipos cambiaron cosas distintas, se conservan las dos.
+- **En la carpeta «Astra» de tu Drive**: `astra-datos.json` con todos tus datos, una copia por día en «Respaldos» (se guardan 30), tus fotos en «Fotos» y tus registros en tablas para leer («Base de datos de Astra» o la carpeta «Tablas»). Las tablas no incluyen el expediente y las claves de IA nunca se suben.
+- **Fotos**: los movimientos (foto del recibo o la factura), los registros del expediente y los logros pueden llevar fotos. Se guardan en el teléfono y, si sincronizas, en tu Drive. Al leer un recibo con IA eliges si la foto se queda con el gasto.
+- **Otro equipo**: con el conector propio, un código de enlace conecta otra computadora o un teléfono nuevo a tu misma carpeta. Al conectar un equipo que ya tiene datos, eliges juntarlos o usar los de Drive; no se borra nada sin preguntar.
+
 ## Novedades de la versión 1.3
 
 - **Hogar**: tareas personales que se repiten (lavar la ropa, planchar, limpiar el baño, la basura, el súper…), con plantillas para empezar y la opción de crear las tuyas. Cada rutina tiene frecuencia por intervalo («cada 3 días», contando desde que la hiciste) o por días fijos («los sábados»), duración y atributo. Aparecen en Hoy y en Pendientes (categoría Hogar), con plan de la semana, saltar una vez, pausa e historial. Al escribir un pendiente de la casa, va solo a Hogar.
@@ -40,11 +50,11 @@ Tu vida en modo juego de rol. App web instalable (y futura APK) para crecer en s
 - **Finanzas**: ingresos, gastos, presupuesto por categoría y dinero por asignar. Tres formas de registrar: recibo con IA (incluye RNC, e-NCF e ITBIS; lee el QR de facturas electrónicas), alerta del banco pegada y entrada manual o por voz.
 - **Áreas**: salud (pasos, sueño, agua, ejercicio), ánimo (check-in de dos ejes, patrones, respiración), relaciones (frecuencia por persona, cumpleaños, WhatsApp), crecimiento (libros, tarjetas de repaso, práctica) y enfoque (sesiones que se agrietan si sales de la app, cierre de jornada).
 - **Posada** (cierre del día), **Tienda** (recompensas propias con oro, protectores de racha), **Crónica** (semana, gráfico de vitalidad, XP por atributo, insignias, títulos).
-- Modo claro y oscuro, sin conexión después de la primera visita, copia de seguridad descargable.
+- Modo claro y oscuro, sin conexión después de la primera visita, copia de seguridad descargable y sincronización con tu propio Google Drive.
 
 ## Privacidad
 
-No hay cuentas ni servidores propios. Todo se guarda en el navegador, también el expediente. La IA es opcional y solo recibe la foto de un recibo o el texto que decides enviar. La foto no se guarda. La copia de seguridad incluye el expediente: guárdala en un lugar seguro.
+No hay cuentas ni servidores propios. Todo se guarda en el navegador, también el expediente, y, si la persona lo conecta, en su propio Google Drive. Nadie más tiene acceso: cada quien conecta su Drive y el conector propio solo responde a la app que tiene su clave. La IA es opcional y solo recibe la foto de un recibo o el texto que decides enviar. La copia de seguridad y el archivo de Drive incluyen el expediente: guárdalos en un lugar seguro.
 
 La tasa del dólar se pide una vez al día a una fuente pública (currency-api por jsDelivr, con ExchangeRate-API de respaldo): solo se pide la tasa, sin enviar ningún dato tuyo. Se puede apagar en Finanzas → Dólares y pesos. Los enlaces para importar movimientos llevan los datos después del «#», que el navegador no envía a ningún servidor.
 
@@ -66,7 +76,8 @@ npm run build   # genera dist/, docs/ (GitHub Pages), artifact/ y astra-web.zip
 npm test        # pruebas de la lógica del juego y del analizador de texto
 ```
 
-- `src/game`: reglas del juego (`logic.js`), contenido (`content.js`), analizador de frases y alertas (`parse.js`) y frase y palabra del día (`daily.js`, `quotes.js`, `words.js`).
+- `src/game`: reglas del juego (`logic.js`), contenido (`content.js`), analizador de frases y alertas (`parse.js`), frase y palabra del día (`daily.js`, `quotes.js`, `words.js`), fusión de cambios entre equipos (`merge.js`) y tablas legibles (`tables.js`).
+- `src/app`: estado y almacenamiento (`store.js`), sincronización (`sync.js`, `transports.js`, `google.js`), conector de Apps Script (`connector.js`), fotos (`photos.js`, `idb.js`) y configuración pública (`config.js`: ID de cliente de Google para «Conectar con Google»).
 - `src/ai`: lectura de recibos y frases con IA.
 - `src/screens` y `src/ui`: pantallas y componentes (Preact).
 - `server`: lector de recibos opcional para Cloudflare Workers.

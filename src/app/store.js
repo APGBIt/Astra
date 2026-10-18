@@ -16,7 +16,7 @@ function merge(base, over) {
   return out;
 }
 
-function migrate(s) {
+export function migrate(s) {
   const d = defaultState();
   if (!s || typeof s !== 'object') return d;
   const m = merge(d, s);
@@ -64,6 +64,10 @@ let state = load();
 const subs = new Set();
 let timer = null;
 const listeners = new Set();
+// Avisos de «cambió algo tuyo» (para la sincronización). No se avisan los datos que llegan de Drive.
+const changeSubs = new Set();
+export function onChange(fn) { changeSubs.add(fn); return () => changeSubs.delete(fn); }
+const changed = () => changeSubs.forEach((f) => { try { f(); } catch { /* sin efecto */ } });
 
 function persist() {
   clearTimeout(timer);
@@ -85,6 +89,7 @@ export function act(fn) {
   state = next;
   persist();
   notify();
+  changed();
   if (ev.length) listeners.forEach((l) => l(ev));
   return ret;
 }
@@ -118,11 +123,28 @@ export function resetAll() {
   state.settings.theme = theme;
   persist();
   notify();
+  resetSubs.forEach((f) => f());
+}
+// Al borrar todo, la sincronización se desconecta (lo que hay en Drive no se toca).
+const resetSubs = new Set();
+export const onReset = (fn) => { resetSubs.add(fn); return () => resetSubs.delete(fn); };
+
+// Datos sin tus claves (para copias y para Drive).
+export function cleanData(s = state) {
+  return { ...s, settings: { ...s.settings, aiKey: '', serverToken: '' } };
 }
 
 export function exportData() {
-  const clean = { ...state, settings: { ...state.settings, aiKey: '', serverToken: '' } };
-  return JSON.stringify({ app: 'astra', v: 1, exportedAt: new Date().toISOString(), data: clean }, null, 1);
+  return JSON.stringify({ app: 'astra', v: 1, exportedAt: new Date().toISOString(), data: cleanData() }, null, 1);
+}
+
+// Pone datos que llegaron de Drive (ya juntados). Conserva tus claves de este teléfono.
+export function applyRemote(data) {
+  const keep = { aiKey: state.settings.aiKey, serverToken: state.settings.serverToken };
+  state = migrate(structuredClone(data));
+  Object.assign(state.settings, keep);
+  persist();
+  notify();
 }
 
 export function importData(text) {
@@ -133,6 +155,7 @@ export function importData(text) {
   Object.assign(state.settings, keep);
   persist();
   notify();
+  changed();
 }
 
 export function applyTheme(theme) {

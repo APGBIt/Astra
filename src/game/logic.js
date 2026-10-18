@@ -45,10 +45,12 @@ export function setDailyGoal(s, key, value, today = null) {
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
 const validDay = (d) => (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null);
+// Fotos: en los registros solo va su id; la imagen vive en el teléfono (y en Drive si sincronizas).
+export const cleanPhotos = (x) => (Array.isArray(x) ? [...new Set(x.filter((id) => typeof id === 'string' && /^p[\w-]{4,40}$/.test(id)))].slice(0, 8) : []);
 
 export function defaultState(today = dayKey()) {
   return {
-    v: 3,
+    v: 4,
     profile: { name: '', emblem: 'star', onboarded: false, created: today, classKeys: [], sleepGoal: 7, wakeGoal: '', selfRating: {}, goals: { ...DEFAULT_GOALS } },
     settings: { theme: 'auto', aiMode: 'auto', aiKey: '', aiModel: 'claude-sonnet-5-5', serverUrl: '', serverToken: '', lastBackup: null, hideNumbers: true, showDaily: true },
     xp: 0,
@@ -86,6 +88,7 @@ export function defaultState(today = dayKey()) {
     chores: [],
     wins: [],
     wordLog: {},
+    photos: {},
     record: buildRecord(),
   };
 }
@@ -1310,6 +1313,7 @@ function buildTx(s, p, prev = null) {
     rnc: p.rnc != null ? p.rnc : prev ? prev.rnc : '',
     ncf: p.ncf != null ? p.ncf : prev ? prev.ncf : '',
     itbis: Number(p.itbis != null ? p.itbis : prev ? prev.itbis : 0) || 0,
+    photos: cleanPhotos(p.photos != null ? p.photos : prev ? prev.photos : []),
     created: prev ? prev.created : Date.now(),
   };
 }
@@ -1346,6 +1350,7 @@ export function updateTx(s, id, p, { learn = true } = {}) {
     rate: p.rate != null ? p.rate : prev.rate, cat: p.cat || prev.cat, merchant: p.merchant != null ? p.merchant : prev.merchant,
     note: p.note != null ? p.note : prev.note, day: p.day || prev.day, time: p.time != null ? p.time : prev.time,
     account: p.account != null ? p.account : prev.account, tag: p.tag != null ? p.tag : prev.tag,
+    photos: p.photos != null ? p.photos : prev.photos,
   };
   if (!(Math.abs(Number(merged.amount) || 0) > 0)) return null;
   const tx = buildTx(s, merged, prev);
@@ -1799,6 +1804,17 @@ export function ensureHome(s) {
     .map((w) => ({ ...w, skills: Array.isArray(w.skills) ? w.skills : [], scope: WIN_SCOPE[w.scope] ? w.scope : 'profesional' }));
   if (typeof s.profile.wakeGoal !== 'string') s.profile.wakeGoal = '';
   if (!s.wordLog || typeof s.wordLog !== 'object' || Array.isArray(s.wordLog)) s.wordLog = {};
+  if (!s.photos || typeof s.photos !== 'object' || Array.isArray(s.photos)) s.photos = {};
+}
+
+// Fotos que usa algún registro (las demás se pueden limpiar).
+export function referencedPhotos(s) {
+  const out = new Set();
+  const add = (list) => { for (const id of list || []) out.add(id); };
+  for (const t of (s.money && s.money.tx) || []) add(t.photos);
+  for (const w of s.wins || []) add(w.photos);
+  for (const sec of (s.record && s.record.sections) || []) for (const it of sec.items || []) add(it.photos);
+  return out;
 }
 
 // ---------- Palabra del día ----------
@@ -2110,7 +2126,7 @@ export function addWin(s, p, today, ev) {
   const w = {
     id: `w${uid()}`, day: validDay(p.day) || today, title, scope, type: WIN_TYPES.some((x) => x.key === p.type) ? p.type : 'otro',
     impact: String(p.impact || '').slice(0, 600), skills: [...new Set((p.skills || []).map((x) => String(x).trim().slice(0, 40)).filter(Boolean))].slice(0, 6),
-    evidence: String(p.evidence || '').slice(0, 300), created: Date.now(), reward: null,
+    evidence: String(p.evidence || '').slice(0, 300), photos: cleanPhotos(p.photos), created: Date.now(), reward: null,
   };
   s.wins.unshift(w);
   s.wins.sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : (b.created || 0) - (a.created || 0)));
@@ -2136,6 +2152,7 @@ export function updateWin(s, id, p) {
   if (p.impact != null) w.impact = String(p.impact).slice(0, 600);
   if (p.skills) w.skills = [...new Set(p.skills.map((x) => String(x).trim().slice(0, 40)).filter(Boolean))].slice(0, 6);
   if (p.evidence != null) w.evidence = String(p.evidence).slice(0, 300);
+  if (p.photos != null) w.photos = cleanPhotos(p.photos);
   s.wins.sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : (b.created || 0) - (a.created || 0)));
   return w;
 }
@@ -2294,6 +2311,7 @@ function cleanItem(p) {
     start: validDay(p.start),
     end: validDay(p.end),
     note: str(p.note, 1000),
+    photos: cleanPhotos(p.photos),
   };
 }
 

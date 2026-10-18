@@ -7,6 +7,7 @@ import { SleepForm, SleepSheet } from './Sleep.jsx';
 import { WinPrompt } from './Wins.jsx';
 import { DailyCard } from './Word.jsx';
 import { TxSheet } from './Finance.jsx';
+import { SyncBadge } from './Sync.jsx';
 import { act, useApp } from '../app/store.js';
 import { fmtDay } from '../app/dates.js';
 import { AREA, MOOD_QUADS } from '../game/content.js';
@@ -57,7 +58,8 @@ export function Home() {
             <span class="small muted semi">{fmtDay(today)}</span>
             <h1 class="h1">{greeting(hour)}, {s.profile.name.split(' ')[0] || 'aventurero'}</h1>
           </div>
-          <div class="row" style={{ gap: 8 }}>
+          <div class="row" style={{ gap: 6 }}>
+            <SyncBadge />
             <a class="chip tone-xp" href="#/tienda" style={{ textDecoration: 'none', minHeight: 36, padding: '0 12px' }} aria-label={`${s.gold} de oro: abrir la tienda`}><Icon name="coin" size={16} />{s.gold}</a>
             <a href="#/personaje" aria-label="Tu personaje" style={{ display: 'flex' }}><Avatar name={s.profile.name} size={44} /></a>
           </div>

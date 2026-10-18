@@ -45,6 +45,7 @@ export function Welcome() {
       <div class="spacer" />
       <div class="stack">
         <a class="btn block" href="#/crear">Crear mi personaje<Icon name="right" size={20} /></a>
+        <a class="btn ghost block" href="#/sincronizar"><Icon name="cloud" size={20} />Ya uso Astra: traer mis datos de Drive</a>
         <label class="btn ghost block" style={{ position: 'relative' }}>
           Ya tengo una copia: recuperarla
           <input type="file" accept="application/json,.json" onChange={onImport} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />

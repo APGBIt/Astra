@@ -10,6 +10,8 @@ import { className } from '../game/logic.js';
 import { aiProvider, providerLabel } from '../ai/ai.js';
 import { DailyGoalsEditor } from './Goals.jsx';
 import { fmtDay } from '../app/dates.js';
+import { APP_VERSION } from '../app/config.js';
+import { SyncCard } from './Sync.jsx';
 
 const MODELS = [
   { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5 (recomendado)' },
@@ -129,9 +131,11 @@ export function Settings() {
         </section>
       )}
 
+      <SyncCard />
+
       <section class="card" aria-label="Tus datos">
-        <h2 class="h2">Tus datos</h2>
-        <span class="small muted">Todo vive en este navegador. Descarga una copia para no perder tu progreso o para pasarlo a otro teléfono. La copia incluye tu expediente: guárdala en un lugar seguro.</span>
+        <h2 class="h2">Copia en archivo</h2>
+        <span class="small muted">Tus datos viven en este teléfono (y en tu Drive si sincronizas). También puedes descargar una copia para guardarla o pasarla a otro equipo. Incluye tu expediente: guárdala en un lugar seguro.</span>
         <span class="small strong">{s.settings.lastBackup ? `Última copia: ${fmtDay(s.settings.lastBackup, { weekdayName: false })}` : 'Todavía no has descargado una copia.'}</span>
         <div class="row wrap">
           <button type="button" class="btn sm" onClick={download}><Icon name="download" size={18} />Descargar copia</button>
@@ -142,9 +146,9 @@ export function Settings() {
 
       <section class="card" aria-label="Privacidad">
         <h2 class="h2">Privacidad</h2>
-        <p class="small muted">Astra no tiene cuentas ni servidores propios. Tus misiones, gastos, ánimo y notas se guardan solo en este navegador. Nada se envía a otro lugar, salvo la foto de un recibo o una frase cuando pides leerla con IA, y solo al proveedor que tú configuras.</p>
+        <p class="small muted">Astra no tiene cuentas ni servidores propios. Tus misiones, gastos, ánimo, notas y fotos se guardan en este teléfono y, si lo conectas, en tu propio Google Drive: nadie más tiene acceso. Fuera de eso solo sale la foto de un recibo o una frase cuando pides leerla con IA, y solo al proveedor que tú configuras.</p>
       </section>
-      <p class="tiny muted" style={{ textAlign: 'center' }}>Astra 1.1 · versión web instalable</p>
+      <p class="tiny muted" style={{ textAlign: 'center' }}>Astra {APP_VERSION.replace(/\.0$/, '')} · versión web instalable</p>
     </main>
   );
 }

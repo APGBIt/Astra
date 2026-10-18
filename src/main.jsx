@@ -21,6 +21,13 @@ import { Settings } from './screens/Settings.jsx';
 import { Hogar } from './screens/Hogar.jsx';
 import { Wins } from './screens/Wins.jsx';
 import { WordScreen } from './screens/Word.jsx';
+import { SyncScreen } from './screens/Sync.jsx';
+import { startSync, syncNow, connectGoogle, syncConfig } from './app/sync.js';
+import { handleGoogleRedirect } from './app/google.js';
+import { toast } from './ui/kit.jsx';
+
+// Al volver de iniciar sesión con Google, el permiso llega en la dirección: se guarda antes de abrir la app.
+const googleBack = handleGoogleRedirect();
 
 // Las hojas (misión, pendiente, registrar) se abren encima de su pantalla. Esa pantalla no se vuelve
 // a montar: conserva dónde ibas en la lista, el filtro y la búsqueda.
@@ -39,6 +46,7 @@ function Screen({ route }) {
   const k = route.path;
   if (!s.profile.onboarded) {
     if (a === 'crear') return <Create />;
+    if (a === 'sincronizar') return <SyncScreen />;
     return <Welcome />;
   }
   switch (a) {
@@ -76,6 +84,7 @@ function Screen({ route }) {
     case 'hogar': return <Hogar query={q} />;
     case 'logros': return <Wins query={q} />;
     case 'palabra': return <WordScreen />;
+    case 'sincronizar': return <SyncScreen />;
     default: return <Home />;
   }
 }
@@ -90,7 +99,13 @@ function App() {
     const onVis = () => { if (!document.hidden) { runReconcile(); if (getState().profile.onboarded) refreshRate(); } };
     document.addEventListener('visibilitychange', onVis);
     const id = setInterval(runReconcile, 60000);
-    if (!getState().profile.onboarded && location.hash && location.hash !== '#/crear') go('/', { replace: true });
+    if (!getState().profile.onboarded && location.hash && location.hash !== '#/crear' && location.hash !== '#/sincronizar') go('/', { replace: true });
+    startSync();
+    if (googleBack) {
+      if (!googleBack.ok) toast(googleBack.error === 'access_denied' ? 'No diste permiso para usar tu Drive' : 'No se pudo iniciar sesión con Google', 'info');
+      else if (googleBack.intent === 'connect' || syncConfig().provider !== 'google') connectGoogle().catch((e) => toast((e && e.message) || 'No se pudo conectar con Google Drive', 'info'));
+      else syncNow({ manual: true });
+    }
     return () => { document.removeEventListener('visibilitychange', onVis); clearInterval(id); };
   }, []);
   return (

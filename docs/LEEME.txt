@@ -2,7 +2,7 @@ ASTRA · Tu vida en modo juego de rol
 ====================================
 
 Esta carpeta es la app completa. Funciona en el navegador y se instala en el celular.
-Tus datos se guardan solo en tu teléfono.
+Tus datos se guardan en tu teléfono y, si lo conectas, en tu propio Google Drive.
 
 1) PROBARLA EN LA COMPUTADORA
    Abre index.html con Google Chrome o Microsoft Edge.
@@ -20,3 +20,8 @@ Tus datos se guardan solo en tu teléfono.
 
 5) TUS DATOS
    Personaje → Ajustes → «Descargar copia» para guardar tu progreso o pasarlo a otro teléfono.
+
+6) SINCRONIZAR CON TU DRIVE
+   Personaje → Ajustes → Sincronización. Cada persona conecta su propio Drive:
+   con el conector propio (un script en su Drive) o con «Conectar con Google».
+   El código del conector está en conector.gs/ (se abre en el navegador para copiarlo).
