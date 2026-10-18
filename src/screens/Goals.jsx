@@ -2,7 +2,7 @@ import { Icon } from '../ui/icons.jsx';
 import { Sheet, SheetHead, NumberChips, num } from '../ui/kit.jsx';
 import { act, useApp } from '../app/store.js';
 import { GOAL_PRESETS } from '../game/content.js';
-import { dailyGoal, setDailyGoal, fmtHours } from '../game/logic.js';
+import { dailyGoal, setDailyGoal, fmtHours, setWakeGoal, bedtimeFor, fmtClock } from '../game/logic.js';
 
 // Metas diarias propias: sueño, pasos, agua y ejercicio. Opciones rápidas o el número que quieras.
 const ROWS = [
@@ -25,8 +25,25 @@ export function DailyGoalsEditor() {
             <span class="stack-xs"><span class="strong">{r.label}</span><span class="small muted">{r.help}</span></span>
           </div>
           <NumberChips value={dailyGoal(s, r.k)} onChange={(v) => setGoal(r.k, v)} presets={GOAL_PRESETS[r.k]} unit={r.unit} step={r.step} min={r.min} max={r.max} format={r.format} label={`Meta de ${r.label.toLowerCase()}`} delay={700} />
+          {r.k === 'sleep' && <WakeGoal />}
         </div>
       ))}
+    </div>
+  );
+}
+
+// Hora de levantarte: con ella se calcula a qué hora acostarte para dormir tu meta.
+function WakeGoal() {
+  const s = useApp();
+  const w = s.profile.wakeGoal || '';
+  const bed = bedtimeFor(s, w);
+  return (
+    <div class="stack-xs" style={{ paddingTop: 4 }}>
+      <div class="row" style={{ gap: 10 }}>
+        <label for="wakegoal" class="small semi grow">Me levanto normalmente a las</label>
+        <input id="wakegoal" type="time" class="input" value={w} onInput={(e) => act((st) => setWakeGoal(st, e.currentTarget.value))} style={{ width: 'auto', minHeight: 44 }} />
+      </div>
+      <span class="small muted">{bed ? `Para dormir ${fmtHours(s.profile.sleepGoal || 7)}, acuéstate a las ${fmtClock(bed)}` : 'Escríbela y te digo a qué hora acostarte.'}</span>
     </div>
   );
 }

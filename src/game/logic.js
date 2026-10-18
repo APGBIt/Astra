@@ -1,13 +1,15 @@
 // Astra · lógica del juego (sin interfaz). Todas las funciones que cambian el estado reciben el
 // estado (una copia editable), el día de hoy y una lista `ev` donde se anotan los eventos a celebrar.
-import { dayKey, addDays, diffDays, weekday, monthKey } from '../app/dates.js';
+import { dayKey, addDays, diffDays, weekday, monthKey, DAYS, MONTHS } from '../app/dates.js';
 import {
   AREA, AREA_KEYS, GOALS, CUSTOM_CHAPTERS, TALENTS, TALENT_LEVELS, POTIONS, SHOP_ITEMS,
   CATEGORIES, DEFAULT_REWARDS, INTENSITIES, MOOD_QUADS, INFLUENCES, DEFAULT_GOALS,
   TODO_GENERAL, TODO_XP, TODO_GOLD, RECORD_SECTIONS, RECORD_SCHEMAS, RECORD_XP,
-  CATEGORY_GROUPS, DEFAULT_ACCOUNTS, FX_DEFAULT,
+  CATEGORY_GROUPS, DEFAULT_ACCOUNTS, FX_DEFAULT, TODO_HOGAR, CHORE_XP, SLEEP_LATENCY_MIN, SLEEP_ROUTINE, WIN_XP, WIN_SCOPES, WIN_TYPES,
+  EXERCISE_TYPES, EXERCISE_WEEK_GOAL,
 } from './content.js';
 import { norm, guessCategory, guessIncome } from './parse.js';
+import { wordOf } from './daily.js';
 
 export const ENERGY_CAP = 10;
 export const STEPS_GOAL = DEFAULT_GOALS.steps;
@@ -47,8 +49,8 @@ const validDay = (d) => (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) 
 export function defaultState(today = dayKey()) {
   return {
     v: 3,
-    profile: { name: '', emblem: 'star', onboarded: false, created: today, classKeys: [], sleepGoal: 7, selfRating: {}, goals: { ...DEFAULT_GOALS } },
-    settings: { theme: 'auto', aiMode: 'auto', aiKey: '', aiModel: 'claude-sonnet-5-5', serverUrl: '', serverToken: '', lastBackup: null, hideNumbers: true },
+    profile: { name: '', emblem: 'star', onboarded: false, created: today, classKeys: [], sleepGoal: 7, wakeGoal: '', selfRating: {}, goals: { ...DEFAULT_GOALS } },
+    settings: { theme: 'auto', aiMode: 'auto', aiKey: '', aiModel: 'claude-sonnet-5-5', serverUrl: '', serverToken: '', lastBackup: null, hideNumbers: true, showDaily: true },
     xp: 0,
     attrs: Object.fromEntries(AREA_KEYS.map((k) => [k, 0])),
     gold: 0,
@@ -81,6 +83,9 @@ export function defaultState(today = dayKey()) {
     journal: [],
     todos: [],
     todoLists: [],
+    chores: [],
+    wins: [],
+    wordLog: {},
     record: buildRecord(),
   };
 }
@@ -480,6 +485,7 @@ export function reconcile(s, today) {
     for (const k of keys.slice(0, Math.max(0, keys.length - 120))) delete s.days[k];
   }
   ensureEnergyDay(s, today);
+  if (s.chores && s.chores.length) syncChores(s, today);
   return ev;
 }
 
@@ -760,6 +766,11 @@ export function activeCampaigns(s) {
 export function logHealth(s, day, patch, today, ev) {
   const h = s.health[day] || (s.health[day] = {});
   const goal = s.profile.sleepGoal || 7;
+  // Con la hora de acostarte y la de levantarte, las horas de sueño salen solas.
+  if (patch.sleep == null && patch.bed && patch.wake) {
+    const hrs = sleepFromTimes(patch.bed, patch.wake);
+    if (hrs != null) patch = { ...patch, sleep: hrs };
+  }
   if (patch.steps != null) {
     h.steps = Math.max(0, Math.round(Number(patch.steps) || 0));
     if (h.steps >= dailyGoal(s, 'steps')) bossFeed(s, 'stepsDay', 1, day, ev);
@@ -776,10 +787,21 @@ export function logHealth(s, day, patch, today, ev) {
     }
     if (h.sleep >= goal) bossFeed(s, 'sleepNight', 1, day, ev);
   }
+  for (const k of ['bed', 'wake']) if (patch[k] !== undefined) h[k] = timeToMin(patch[k]) != null ? minToTime(timeToMin(patch[k])) : '';
+  if (patch.quality !== undefined) h.quality = clamp(Math.round(Number(patch.quality) || 0), 0, 4) || null;
   if (patch.water != null) h.water = clamp(Math.round(Number(patch.water) || 0), 0, 30);
   if (patch.exercise != null) {
     const before = h.exercise || 0;
     h.exercise = clamp(Math.round(Number(patch.exercise) || 0), 0, 600);
+    // Minutos por tipo (caminar, gimnasio…): lo que sumas ahora va al tipo que elegiste.
+    if (h.exercise > before && patch.exType) {
+      const k = EXERCISE_TYPES.some((x) => x.key === patch.exType) ? patch.exType : 'otro';
+      h.exTypes = { ...(h.exTypes || {}), [k]: ((h.exTypes || {})[k] || 0) + (h.exercise - before) };
+    } else if (h.exercise < before && h.exTypes) {
+      // Si bajas el total, se descuenta de los tipos (del último al primero).
+      let extra = Object.values(h.exTypes).reduce((a, b) => a + b, 0) - h.exercise;
+      for (const k of Object.keys(h.exTypes).reverse()) { if (extra <= 0) break; const cut = Math.min(extra, h.exTypes[k]); h.exTypes[k] -= cut; extra -= cut; if (!h.exTypes[k]) delete h.exTypes[k]; }
+    }
     if (h.exercise > before) gainXP(s, 'salud', Math.min(30, Math.round((h.exercise - before) / 2)), day, ev);
     if (h.exercise >= 20) bossFeed(s, 'training', 1, day, ev);
   }
@@ -1006,12 +1028,19 @@ export function closeWorkday(s, today, ev) {
 // ---------- Posada (cierre del día) ----------
 
 export function saveInn(s, p, today, ev) {
-  const first = !s.inn[today];
-  s.inn[today] = { mood: p.mood || '', good: String(p.good || '').slice(0, 500), better: String(p.better || '').slice(0, 500), bed: p.bed || '' };
+  const prev = s.inn[today];
+  const first = !prev;
+  const routine = (Array.isArray(p.routine) ? p.routine : []).filter((k) => SLEEP_ROUTINE.some((x) => x.key === k));
+  const paid = prev ? prev.routinePaid || 0 : 0;
+  const t = (v) => (timeToMin(v) != null ? minToTime(timeToMin(v)) : '');
+  s.inn[today] = { mood: p.mood || '', good: String(p.good || '').slice(0, 500), better: String(p.better || '').slice(0, 500), bed: t(p.bed), wake: t(p.wake), routine, routinePaid: Math.max(paid, routine.length) };
   if (first) {
     changeVit(s, 5, 'Descansaste en la posada', today, ev);
     gainXP(s, 'emocional', 10, today, ev);
   }
+  // Cada paso de la rutina para dormir suma +2 XP de Vigor (una vez por paso al día).
+  if (routine.length > paid) gainXP(s, 'salud', 2 * (routine.length - paid), today, ev);
+
   checkAchievements(s, today, ev);
   return first;
 }
@@ -1458,19 +1487,21 @@ export function frequentCats(s, type = 'gasto', n = 6) {
 export function todoCategories(s) {
   return [
     { ...TODO_GENERAL, builtin: true },
+    { ...TODO_HOGAR, builtin: true },
     ...AREA_KEYS.map((k) => ({ id: k, name: AREA[k].area, area: k, builtin: true })),
     ...s.todoLists.map((l) => ({ id: l.id, name: l.name, area: l.area || null, builtin: false })),
   ];
 }
 
 export function todoCategory(s, cat) {
+  if (cat === TODO_HOGAR.id) return { ...TODO_HOGAR, builtin: true };
   if (AREA[cat]) return { id: cat, name: AREA[cat].area, area: cat, builtin: true };
   const l = s.todoLists.find((x) => x.id === cat);
   if (l) return { id: l.id, name: l.name, area: l.area || null, builtin: false };
   return { ...TODO_GENERAL, builtin: true };
 }
 
-const validCat = (s, cat) => (AREA[cat] || s.todoLists.some((l) => l.id === cat) ? cat : 'general');
+const validCat = (s, cat) => (AREA[cat] || cat === TODO_HOGAR.id || s.todoLists.some((l) => l.id === cat) ? cat : 'general');
 
 // Pendientes que se repiten: al completarlos aparece el siguiente con su nueva fecha.
 export const TODO_REPEATS = [
@@ -1537,6 +1568,13 @@ export function updateTodo(s, id, patch, today = null) {
   else if (t.due !== before.due || t.repeat !== before.repeat || !t.anchor) t.anchor = t.due ? Number(t.due.slice(8)) : null;
   // Cambiar la fecha a mano mueve la serie completa (posponer, en cambio, mueve solo esta vez).
   if (t.due !== before.due || t.repeat !== before.repeat) t.sched = null;
+  if (t.chore) {
+    const c = s.chores.find((x) => x.id === t.chore);
+    if (c) {
+      c.title = t.title;
+      if (t.due && t.due !== before.due) c.nextOverride = t.due;
+    }
+  }
 }
 
 export function removeTodo(s, id) {
@@ -1544,14 +1582,15 @@ export function removeTodo(s, id) {
 }
 
 export const todoReward = (t) => ({
-  xp: TODO_XP.base + (t.important ? TODO_XP.important : 0),
+  xp: TODO_XP.base + (t.important ? TODO_XP.important : 0) + (Number(t.xpBonus) || 0),
   gold: TODO_GOLD.base + (t.important ? TODO_GOLD.important : 0),
 });
 
 export function completeTodo(s, id, today, ev) {
   const t = s.todos.find((x) => x.id === id);
   if (!t || t.done) return null;
-  const area = todoCategory(s, t.cat).area;
+  // Las tareas del hogar suben el atributo que elegiste para esa rutina (o solo tu nivel).
+  const area = t.chore && t.attr !== undefined ? (AREA[t.attr] ? t.attr : null) : todoCategory(s, t.cat).area;
   const d = getDay(s, today);
   d.todos = (d.todos || 0) + 1;
   let got = { xp: 0, gold: 0, area };
@@ -1567,6 +1606,11 @@ export function completeTodo(s, id, today, ev) {
   t.reward = got;
   s.stats.todos = (s.stats.todos || 0) + 1;
   if (t.src) markAlertHandled(s, t.src, true);
+  // Tarea del hogar: queda anotada y aparece la próxima vez según su frecuencia.
+  if (t.chore) {
+    const n = choreCompleted(s, t, today);
+    if (n) { t.spawned = n.id; got.next = n.due; }
+  }
   // Si se repite, deja listo el siguiente (aunque estuviera atrasado, la próxima fecha queda en el futuro).
   if (t.repeat) {
     const prev = t.spawned && s.todos.find((x) => x.id === t.spawned);
@@ -1607,6 +1651,7 @@ export function uncompleteTodo(s, id) {
     else if (!n) t.spawned = null;
   }
   if (t.src) markAlertHandled(s, t.src, false);
+  if (t.chore) choreUndone(s, t);
   t.done = null;
   t.reward = null;
 }
@@ -1648,16 +1693,18 @@ export const todosForArea = (s, area) => pendingTodos(s).filter((t) => t.cat ===
 
 // Posponer cambia solo esta vez: si se repite, la serie sigue en su fecha de siempre
 // (la fecha original queda en `sched` y de ahí sale la siguiente).
-function moveDue(t, d) {
+function moveDue(t, d, s = null) {
   if (t.repeat && t.due && !t.sched) t.sched = t.due;
   t.due = d;
+  // Posponer una tarea del hogar mueve su próxima vez (la frecuencia sigue igual).
+  if (t.chore && s) { const c = s.chores.find((x) => x.id === t.chore); if (c) c.nextOverride = d; }
 }
 
 export function postponeTodo(s, id, due) {
   const t = s.todos.find((x) => x.id === id);
   const d = validDay(due);
   if (!t || t.done || !d) return null;
-  moveDue(t, d);
+  moveDue(t, d, s);
   return t;
 }
 
@@ -1666,7 +1713,7 @@ export function overdueToToday(s, today, ids = null) {
   let n = 0;
   for (const t of s.todos) {
     if (t.done || !t.due || t.due >= today || (ids && !ids.includes(t.id))) continue;
-    moveDue(t, today);
+    moveDue(t, today, s);
     n += 1;
   }
   return n;
@@ -1690,6 +1737,470 @@ export function updateTodoList(s, id, p) {
 export function removeTodoList(s, id) {
   s.todoLists = s.todoLists.filter((x) => x.id !== id);
   for (const t of s.todos) if (t.cat === id) t.cat = 'general';
+}
+
+// ---------- Hogar: tareas personales que se repiten ----------
+// Cada rutina (lavar la ropa, planchar…) tiene una frecuencia. Su «próxima vez» vive como un pendiente
+// de la categoría Hogar: así aparece en Hoy y en Pendientes. Al completarlo se anota y se crea el siguiente,
+// contando desde el día en que la hiciste («cada 3 días») o en el próximo día fijo («los sábados»).
+
+const UNITS = ['day', 'week', 'month'];
+export function normFreq(f) {
+  if (f && f.type === 'weekdays') {
+    const days = [...new Set((f.days || []).map(Number).filter((d) => d >= 0 && d <= 6))].sort((a, b) => a - b);
+    return days.length ? { type: 'weekdays', days } : { type: 'every', n: 1, unit: 'week' };
+  }
+  return { type: 'every', n: clamp(Math.round(Number(f && f.n) || 1), 1, 365), unit: UNITS.includes(f && f.unit) ? f.unit : 'day' };
+}
+
+const PLURAL_DAYS = ['domingos', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábados'];
+const listY = (xs) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} y ${xs[xs.length - 1]}`);
+export function freqLabel(f) {
+  const q = normFreq(f);
+  if (q.type === 'weekdays') {
+    if (q.days.length === 7) return 'Cada día';
+    if (q.days.join() === '1,2,3,4,5') return 'De lunes a viernes';
+    if (q.days.join() === '0,6') return 'Los fines de semana';
+    const order = [...q.days].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7));
+    return `Los ${listY(order.map((d) => PLURAL_DAYS[d]))}`;
+  }
+  if (q.unit === 'day') return q.n === 1 ? 'Cada día' : `Cada ${q.n} días`;
+  if (q.unit === 'week') return q.n === 1 ? 'Cada semana' : `Cada ${q.n} semanas`;
+  return q.n === 1 ? 'Cada mes' : `Cada ${q.n} meses`;
+}
+// Días aproximados entre una vez y la siguiente (para ordenar y calcular la carga de la semana).
+export function freqDays(f) {
+  const q = normFreq(f);
+  if (q.type === 'weekdays') return 7 / q.days.length;
+  return q.n * (q.unit === 'day' ? 1 : q.unit === 'week' ? 7 : 30);
+}
+
+function addPeriod(day, n, unit) {
+  if (unit === 'day') return addDays(day, n);
+  if (unit === 'week') return addDays(day, 7 * n);
+  const [y, m, d] = day.split('-').map(Number);
+  const t = new Date(y, m - 1 + n, 1);
+  const last = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
+  return `${t.getFullYear()}-${pad2(t.getMonth() + 1)}-${pad2(Math.min(d, last))}`;
+}
+function nextWeekday(from, days) {
+  let d = from;
+  for (let i = 0; i < 8; i++) { if (days.includes(weekday(d))) return d; d = addDays(d, 1); }
+  return from;
+}
+
+// Repara datos viejos o dañados (sin borrar lo que sirve).
+export function ensureHome(s) {
+  s.chores = (Array.isArray(s.chores) ? s.chores : []).filter((c) => c && typeof c === 'object' && c.id && c.title).map((c) => ({
+    ...c, freq: normFreq(c.freq), mins: clamp(Math.round(Number(c.mins) || 15), 1, 600), log: (Array.isArray(c.log) ? c.log : []).filter(validDay).slice(0, 120),
+    base: validDay(c.base), nextOverride: validDay(c.nextOverride), start: validDay(c.start) || validDay(c.created) || null, paused: !!c.paused,
+  }));
+  s.wins = (Array.isArray(s.wins) ? s.wins : []).filter((w) => w && typeof w === 'object' && w.id && w.title && validDay(w.day))
+    .map((w) => ({ ...w, skills: Array.isArray(w.skills) ? w.skills : [], scope: WIN_SCOPE[w.scope] ? w.scope : 'profesional' }));
+  if (typeof s.profile.wakeGoal !== 'string') s.profile.wakeGoal = '';
+  if (!s.wordLog || typeof s.wordLog !== 'object' || Array.isArray(s.wordLog)) s.wordLog = {};
+}
+
+// ---------- Palabra del día ----------
+
+// «La usé hoy»: +5 XP de Sabiduría, una vez al día.
+export const WORD_XP = 5;
+export function useWord(s, today, ev) {
+  if (!s.wordLog) s.wordLog = {};
+  if (s.wordLog[today]) return false;
+  s.wordLog[today] = wordOf(today).word;
+  const keys = Object.keys(s.wordLog).sort();
+  for (const k of keys.slice(0, Math.max(0, keys.length - 400))) delete s.wordLog[k];
+  gainXP(s, 'crecimiento', WORD_XP, today, ev);
+  checkAchievements(s, today, ev);
+  return true;
+}
+
+// Guardarla como tarjeta de repaso (sin repetir).
+export function wordToCard(s, day, today) {
+  const w = wordOf(day);
+  const front = `«${w.word}»: ¿qué significa?`;
+  if (s.cards.some((c) => c.front === front)) return null;
+  return addCard(s, front, `${w.meaning}\nEjemplo: ${w.example}`, today);
+}
+
+export const choreXP = (mins) => CHORE_XP.base + Math.min(CHORE_XP.max, Math.round((Number(mins) || 0) / 10) * CHORE_XP.per10);
+
+// Próxima vez que toca. `base`: el último día cubierto (el día que la hiciste, o su fecha si la adelantaste).
+export function choreNext(c, today) {
+  const q = normFreq(c.freq);
+  if (c.nextOverride && (!c.base || c.nextOverride > c.base)) return c.nextOverride;
+  if (q.type === 'weekdays') return nextWeekday(c.base ? addDays(c.base, 1) : c.start || today, q.days);
+  if (!c.base) return c.start || today;
+  return addPeriod(c.base, q.n, q.unit);
+}
+
+const openChoreTodos = (s, id) => s.todos.filter((t) => t.chore === id && !t.done);
+
+function choreTodo(s, c, due, today) {
+  const t = addTodo(s, { title: c.title, cat: TODO_HOGAR.id, due, note: c.note || '' }, today);
+  if (!t) return null;
+  t.chore = c.id;
+  t.attr = c.attr === undefined ? TODO_HOGAR.area : c.attr;
+  t.xpBonus = choreXP(c.mins) - CHORE_XP.base;
+  return t;
+}
+
+// Deja cada rutina con un solo pendiente abierto, con su título y atributo al día.
+// La fecha del pendiente abierto solo se recalcula si cambió la frecuencia o la próxima fecha (`redate`):
+// si se atrasa, sigue atrasado hasta que lo hagas.
+export function syncChores(s, today, redate = null) {
+  if (!Array.isArray(s.chores)) s.chores = [];
+  const ids = new Set(s.chores.map((c) => c.id));
+  s.todos = s.todos.filter((t) => !t.chore || t.done || ids.has(t.chore));
+  for (const c of s.chores) {
+    const open = openChoreTodos(s, c.id).sort((a, b) => ((a.due || '') < (b.due || '') ? -1 : 1));
+    if (c.paused) { s.todos = s.todos.filter((t) => !(t.chore === c.id && !t.done)); continue; }
+    if (!open.length) { choreTodo(s, c, choreNext(c, today), today); continue; }
+    const [t, ...extra] = open;
+    if (extra.length) s.todos = s.todos.filter((x) => !extra.includes(x));
+    t.title = c.title;
+    t.cat = TODO_HOGAR.id;
+    if (redate === true || redate === c.id) t.due = choreNext(c, today);
+    t.note = c.note || t.note || '';
+    t.attr = c.attr === undefined ? TODO_HOGAR.area : c.attr;
+    t.xpBonus = choreXP(c.mins) - CHORE_XP.base;
+  }
+}
+
+export function addChore(s, p, today) {
+  const title = String(p.title || '').trim().slice(0, 80);
+  if (!title) return null;
+  const c = {
+    id: `h${uid()}`, title, icon: p.icon || 'home', group: p.group || 'casa', freq: normFreq(p.freq || { type: 'every', n: 7, unit: 'day' }),
+    mins: clamp(Math.round(Number(p.mins) || 15), 1, 600), attr: p.attr === undefined ? TODO_HOGAR.area : (AREA[p.attr] ? p.attr : null),
+    note: String(p.note || '').slice(0, 300), start: validDay(p.start) || today, base: validDay(p.last) || null, nextOverride: null,
+    paused: false, log: validDay(p.last) ? [p.last] : [], created: today,
+  };
+  s.chores.push(c);
+  syncChores(s, today);
+  return c;
+}
+
+export function updateChore(s, id, p, today) {
+  const c = s.chores.find((x) => x.id === id);
+  if (!c) return null;
+  if (p.title != null && String(p.title).trim()) c.title = String(p.title).trim().slice(0, 80);
+  if (p.icon) c.icon = p.icon;
+  if (p.group) c.group = p.group;
+  if (p.freq) {
+    c.freq = normFreq(p.freq);
+    c.nextOverride = null;
+    // Si nunca la has hecho y eliges días fijos, cuenta desde hoy (no desde la fecha en que se repartió).
+    if (c.freq.type === 'weekdays' && !c.base) c.start = today;
+  }
+  if (p.mins != null) c.mins = clamp(Math.round(Number(p.mins) || 15), 1, 600);
+  if (p.attr !== undefined) c.attr = AREA[p.attr] ? p.attr : null;
+  if (p.note != null) c.note = String(p.note).slice(0, 300);
+  if (p.next !== undefined) c.nextOverride = validDay(p.next);
+  const resumed = p.paused === false && c.paused;
+  if (p.paused != null) c.paused = !!p.paused;
+  // Al reanudar una rutina pausada, no arranca con atraso: toca hoy como muy tarde.
+  if (resumed && !c.nextOverride && choreNext(c, today) < today) c.nextOverride = today;
+  syncChores(s, today, p.freq || p.next !== undefined || resumed ? c.id : null);
+  return c;
+}
+
+export function removeChore(s, id) {
+  s.chores = s.chores.filter((c) => c.id !== id);
+  s.todos = s.todos.filter((t) => !(t.chore === id && !t.done));
+}
+
+// Saltar esta vez: la próxima pasa a la siguiente fecha que tocaría.
+export function skipChore(s, id, today) {
+  const c = s.chores.find((x) => x.id === id);
+  if (!c) return null;
+  const q = normFreq(c.freq);
+  const cur = choreNext(c, today);
+  const from = cur > today ? cur : today;
+  c.nextOverride = q.type === 'weekdays' ? nextWeekday(addDays(from, 1), q.days) : addPeriod(from, q.n, q.unit);
+  syncChores(s, today, c.id);
+  return c.nextOverride;
+}
+
+// Al completar su pendiente: se anota el día y se crea la próxima vez.
+function choreCompleted(s, t, today) {
+  const c = s.chores.find((x) => x.id === t.chore);
+  if (!c) return null;
+  t.prevBase = c.base || null;
+  t.prevOverride = c.nextOverride || null;
+  c.log = [today, ...(c.log || [])].slice(0, 120);
+  // «Cada 3 días» cuenta desde el día en que la hiciste; «los sábados» da por cubierto el sábado que adelantaste.
+  c.base = normFreq(c.freq).type === 'weekdays' && t.due && t.due > today ? t.due : today;
+  c.nextOverride = null;
+  if (c.paused) return null;
+  return choreTodo(s, c, choreNext(c, today), today);
+}
+
+function choreUndone(s, t) {
+  const c = s.chores.find((x) => x.id === t.chore);
+  if (!c) return;
+  const i = (c.log || []).indexOf(t.done);
+  if (i >= 0) c.log.splice(i, 1);
+  // Si la vez siguiente ya se hizo, su fecha manda y no se toca.
+  if (t.spawned && s.todos.some((x) => x.id === t.spawned && x.done)) return;
+  c.base = t.prevBase || null;
+  c.nextOverride = t.prevOverride || null;
+}
+
+// Estado de una rutina hoy.
+export function choreStatus(s, c, today) {
+  const t = openChoreTodos(s, c.id)[0] || null;
+  const due = t ? t.due : choreNext(c, today);
+  const n = due ? diffDays(today, due) : 0;
+  const state = c.paused ? 'paused' : n < 0 ? 'late' : n === 0 ? 'today' : n <= 2 ? 'soon' : 'ok';
+  return { todo: t, due, inDays: n, state, last: (c.log || [])[0] || null };
+}
+
+// Plan de los próximos 7 días (si las haces a tiempo).
+export function choreWeek(s, today) {
+  const end = addDays(today, 6);
+  const days = Array.from({ length: 7 }, (_, i) => ({ day: addDays(today, i), items: [], mins: 0 }));
+  for (const c of s.chores) {
+    if (c.paused) continue;
+    const q = normFreq(c.freq);
+    let d = choreStatus(s, c, today).due;
+    if (d && d < today) d = today;
+    for (let i = 0; d && d <= end && i < 10; i++) {
+      const slot = days[diffDays(today, d)];
+      if (slot) { slot.items.push(c); slot.mins += c.mins || 0; }
+      d = q.type === 'weekdays' ? nextWeekday(addDays(d, 1), q.days) : addPeriod(d, q.n, q.unit);
+    }
+  }
+  return days;
+}
+
+export function houseSummary(s, today) {
+  const st = s.chores.filter((c) => !c.paused).map((c) => ({ c, ...choreStatus(s, c, today) }));
+  const due = st.filter((x) => x.state === 'late' || x.state === 'today');
+  const weekAgo = addDays(today, -6);
+  const doneWeek = s.chores.reduce((a, c) => a + (c.log || []).filter((d) => d >= weekAgo && d <= today).length, 0);
+  const doneToday = s.chores.reduce((a, c) => a + (c.log || []).filter((d) => d === today).length, 0);
+  return {
+    total: st.length, due: due.length, late: st.filter((x) => x.state === 'late').length,
+    mins: due.reduce((a, x) => a + (x.c.mins || 0), 0), doneWeek, doneToday,
+    // La que más se atrasa (para darle prioridad).
+    worst: st.filter((x) => x.state === 'late').sort((a, b) => a.inDays - b.inDays)[0] || null,
+  };
+}
+
+// ---------- Sueño: horario, calidad y rutina ----------
+
+export const timeToMin = (t) => (/^\d{1,2}:\d{2}$/.test(t || '') ? Number(t.split(':')[0]) * 60 + Number(t.split(':')[1]) : null);
+export const minToTime = (m) => { const x = ((Math.round(m) % 1440) + 1440) % 1440; return `${pad2(Math.floor(x / 60))}:${pad2(x % 60)}`; };
+// «22:15» → «10:15 p. m.»
+export function fmtClock(t) {
+  const m = timeToMin(t);
+  if (m == null) return '';
+  const h = Math.floor(m / 60);
+  const mm = pad2(m % 60);
+  return `${h % 12 || 12}:${mm} ${h < 12 ? 'a. m.' : 'p. m.'}`;
+}
+// Horas dormidas entre la hora de acostarte y la de levantarte (redondeado al cuarto de hora).
+export function sleepFromTimes(bed, wake) {
+  const b = timeToMin(bed);
+  const w = timeToMin(wake);
+  if (b == null || w == null) return null;
+  let m = w - b;
+  if (m <= 0) m += 1440;
+  return Math.round(m / 15) / 4;
+}
+
+// Lo que dice tu sueño de los últimos 7 días: promedio, deuda, regularidad, calidad y hora sugerida.
+export function sleepInsights(s, today) {
+  const goal = s.profile.sleepGoal || 7;
+  const nights = [];
+  for (let i = 0; i < 7; i++) {
+    const d = addDays(today, -i);
+    const h = s.health[d];
+    if (h && h.sleep != null) nights.push({ day: d, ...h });
+  }
+  const n = nights.length;
+  const avg = n ? nights.reduce((a, x) => a + x.sleep, 0) / n : null;
+  const debt = nights.reduce((a, x) => a + Math.max(0, goal - x.sleep), 0);
+  const met = nights.filter((x) => x.sleep >= goal).length;
+  // Las horas de acostarse se miden desde el mediodía, para que 11:30 p. m. y 12:30 a. m. queden cerca.
+  const beds = nights.map((x) => timeToMin(x.bed)).filter((m) => m != null).map((m) => (m - 720 + 1440) % 1440);
+  const wakes = nights.map((x) => timeToMin(x.wake)).filter((m) => m != null);
+  const mean = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
+  const spread = beds.length >= 3 ? Math.max(...beds) - Math.min(...beds) : null;
+  const avgBed = beds.length ? minToTime(mean(beds) + 720) : null;
+  const avgWake = wakes.length ? minToTime(mean(wakes)) : null;
+  const q = nights.map((x) => x.quality).filter((v) => v >= 1 && v <= 4);
+  const wakeAt = s.profile.wakeGoal || (wakes.length >= 3 ? avgWake : null);
+  const bedAt = wakeAt ? minToTime(timeToMin(wakeAt) - goal * 60 - SLEEP_LATENCY_MIN) : null;
+  const routine = [];
+  for (let i = 1; i <= 7; i++) { const inn = s.inn[addDays(today, -i)]; if (inn && Array.isArray(inn.routine)) routine.push(inn.routine.length); }
+  let tip = null;
+  if (n >= 2 && debt >= 3) tip = { icon: 'moon', text: `Te faltaron ${fmtHours(debt)} de sueño esta semana. Acostarte 30 minutos antes unos días la paga sin dormir de más el fin de semana.` };
+  else if (spread != null && spread > 90) tip = { icon: 'clock', text: `Tu hora de acostarte varía ${fmtHours(spread / 60)} entre noches. Una hora fija (más o menos media hora) hace que te duermas antes y despiertes con más energía.` };
+  else if (q.length >= 3 && mean(q) < 2.5) tip = { icon: 'eyeoff', text: 'Duermes las horas, pero descansas poco. Prueba la rutina para dormir de la posada: sin pantallas y cena ligera.' };
+  else if (n >= 5 && met >= 5) tip = { icon: 'star', text: 'Buen descanso: cumpliste tu meta casi todas las noches. Así se sostiene la energía.' };
+  return { goal, n, avg, debt, met, spread, avgBed, avgWake, quality: q.length ? mean(q) : null, wakeAt, bedAt, routineNights: routine.filter((x) => x > 0).length, tip };
+}
+
+// Hora sugerida para acostarte según a qué hora te levantas y tu meta de sueño.
+export function bedtimeFor(s, wake) {
+  const w = timeToMin(wake);
+  if (w == null) return null;
+  return minToTime(w - (s.profile.sleepGoal || 7) * 60 - SLEEP_LATENCY_MIN);
+}
+
+export function setWakeGoal(s, v) {
+  s.profile.wakeGoal = timeToMin(v) != null ? minToTime(timeToMin(v)) : '';
+}
+
+// Ejercicio de la semana (últimos 7 días) contra la recomendación de la OMS.
+export function exerciseWeek(s, today) {
+  let total = 0;
+  const byType = {};
+  let days = 0;
+  for (let i = 0; i < 7; i++) {
+    const h = s.health[addDays(today, -i)];
+    if (!h || !h.exercise) continue;
+    total += h.exercise;
+    days += 1;
+    let typed = 0;
+    for (const [k, v] of Object.entries(h.exTypes || {})) { byType[k] = (byType[k] || 0) + v; typed += v; }
+    if (h.exercise > typed) byType.otro = (byType.otro || 0) + (h.exercise - typed);
+  }
+  return { total, days, goal: EXERCISE_WEEK_GOAL, byType: Object.entries(byType).sort((a, b) => b[1] - a[1]) };
+}
+
+// Reparte las rutinas nuevas en la semana para que no toquen todas el mismo día.
+export function spreadChoreStarts(list, today, s = null) {
+  const load = Array(7).fill(0);
+  if (s) for (const [i, d] of choreWeek(s, today).entries()) load[i] = d.mins;
+  const out = new Array(list.length).fill(today);
+  const order = list.map((x, i) => ({ x, i })).sort((a, b) => freqDays(a.x.freq) - freqDays(b.x.freq) || (b.x.mins || 0) - (a.x.mins || 0));
+  for (const { x, i } of order) {
+    const q = normFreq(x.freq);
+    const step = Math.max(1, Math.round(freqDays(q)));
+    if (q.type === 'weekdays') {
+      out[i] = today;
+      for (let d = 0; d < 7; d++) if (q.days.includes(weekday(addDays(today, d)))) load[d] += x.mins || 0;
+      continue;
+    }
+    const span = Math.min(7, step);
+    let best = 0;
+    for (let d = 1; d < span; d++) if (load[d] < load[best]) best = d;
+    out[i] = addDays(today, best);
+    for (let d = best; d < 7; d += step) load[d] += x.mins || 0;
+  }
+  return out;
+}
+
+export function addChores(s, list, today) {
+  const starts = spreadChoreStarts(list, today, s);
+  return list.map((x, i) => addChore(s, { ...x, start: starts[i] }, today)).filter(Boolean);
+}
+
+// ---------- Logros (profesionales, académicos y personales) ----------
+
+const WIN_SCOPE = Object.fromEntries(WIN_SCOPES.map((x) => [x.key, x]));
+export function addWin(s, p, today, ev) {
+  const title = String(p.title || '').trim().slice(0, 140);
+  if (!title) return null;
+  const scope = WIN_SCOPE[p.scope] ? p.scope : 'profesional';
+  const w = {
+    id: `w${uid()}`, day: validDay(p.day) || today, title, scope, type: WIN_TYPES.some((x) => x.key === p.type) ? p.type : 'otro',
+    impact: String(p.impact || '').slice(0, 600), skills: [...new Set((p.skills || []).map((x) => String(x).trim().slice(0, 40)).filter(Boolean))].slice(0, 6),
+    evidence: String(p.evidence || '').slice(0, 300), created: Date.now(), reward: null,
+  };
+  s.wins.unshift(w);
+  s.wins.sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : (b.created || 0) - (a.created || 0)));
+  const d = getDay(s, today);
+  d.wins = (d.wins || 0) + 1;
+  if (d.wins <= WIN_XP.daily) {
+    const area = WIN_SCOPE[scope].area;
+    const xp = area ? gainXP(s, area, WIN_XP.xp, today, ev) : gainPlayerXP(s, WIN_XP.xp, today, ev);
+    addGold(s, WIN_XP.gold, today);
+    w.reward = { xp, gold: WIN_XP.gold, area };
+  }
+  checkAchievements(s, today, ev);
+  return w;
+}
+
+export function updateWin(s, id, p) {
+  const w = s.wins.find((x) => x.id === id);
+  if (!w) return null;
+  if (p.title != null && String(p.title).trim()) w.title = String(p.title).trim().slice(0, 140);
+  if (p.day && validDay(p.day)) w.day = p.day;
+  if (p.scope && WIN_SCOPE[p.scope]) w.scope = p.scope;
+  if (p.type && WIN_TYPES.some((x) => x.key === p.type)) w.type = p.type;
+  if (p.impact != null) w.impact = String(p.impact).slice(0, 600);
+  if (p.skills) w.skills = [...new Set(p.skills.map((x) => String(x).trim().slice(0, 40)).filter(Boolean))].slice(0, 6);
+  if (p.evidence != null) w.evidence = String(p.evidence).slice(0, 300);
+  s.wins.sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : (b.created || 0) - (a.created || 0)));
+  return w;
+}
+
+export function removeWin(s, id) {
+  s.wins = s.wins.filter((w) => w.id !== id);
+}
+
+// Períodos para revisar logros (y llevarlos a tu evaluación).
+export function periodRange(key, today) {
+  const [y, m] = today.split('-').map(Number);
+  if (key === 'trimestre') { const q0 = Math.floor((m - 1) / 3) * 3 + 1; return { from: `${y}-${pad2(q0)}-01`, to: today, label: `Trimestre ${Math.floor((m - 1) / 3) + 1} de ${y}` }; }
+  if (key === 'semestre') { const h0 = m <= 6 ? 1 : 7; return { from: `${y}-${pad2(h0)}-01`, to: today, label: `${m <= 6 ? 'Primer' : 'Segundo'} semestre de ${y}` }; }
+  if (key === 'ano') return { from: `${y}-01-01`, to: today, label: `Año ${y}` };
+  if (key === '12m') return { from: addDays(today, -364), to: today, label: 'Últimos 12 meses' };
+  return { from: '0000-01-01', to: '9999-12-31', label: 'Todo' };
+}
+
+const longDay = (d) => { const [y, m, dd] = d.split('-').map(Number); return `${dd} de ${MONTHS[m - 1]} de ${y}`; };
+
+// Resumen en texto para pegar en tu evaluación de desempeño, tu CV o un correo.
+export function winsText(list, label = '') {
+  const lines = [`Logros${label ? ` · ${label}` : ''} (${list.length})`];
+  for (const sc of WIN_SCOPES) {
+    const xs = list.filter((w) => w.scope === sc.key);
+    if (!xs.length) continue;
+    lines.push('', sc.label.toUpperCase());
+    for (const w of xs) {
+      const type = (WIN_TYPES.find((t) => t.key === w.type) || {}).label;
+      lines.push(`• ${longDay(w.day)}: ${w.title}${type && w.type !== 'otro' ? ` (${type.toLowerCase()})` : ''}`);
+      if (w.impact) lines.push(`  Impacto: ${w.impact}`);
+      if (w.skills && w.skills.length) lines.push(`  Habilidades: ${w.skills.join(', ')}`);
+      if (w.evidence) lines.push(`  Evidencia: ${w.evidence}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+const csvCell = (v) => { const t = String(v == null ? '' : v); return /[",;\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+export function winsCSV(list) {
+  const head = ['Fecha', 'Ámbito', 'Tipo', 'Logro', 'Impacto', 'Habilidades', 'Evidencia'];
+  const rows = list.map((w) => [w.day, (WIN_SCOPE[w.scope] || {}).label || '', (WIN_TYPES.find((t) => t.key === w.type) || {}).label || '', w.title, w.impact, (w.skills || []).join(', '), w.evidence]);
+  return `\uFEFF${[head, ...rows].map((r) => r.map(csvCell).join(';')).join('\r\n')}`;
+}
+
+// Recordatorio semanal (viernes a domingo) si no anotaste ningún logro en la semana.
+const weekStart = (d) => addDays(d, -((weekday(d) + 6) % 7));
+export function winPromptDue(s, today) {
+  const wd = weekday(today);
+  if (wd !== 5 && wd !== 6 && wd !== 0) return false;
+  if (s.profile.winAskWeek === weekStart(today)) return false;
+  return !s.wins.some((w) => w.day >= weekStart(today) || (w.created && dayKey(new Date(w.created)) >= weekStart(today)));
+}
+export function dismissWinPrompt(s, today) {
+  s.profile.winAskWeek = weekStart(today);
+}
+
+export function winStats(list) {
+  const byType = {};
+  const skills = {};
+  for (const w of list) {
+    byType[w.type] = (byType[w.type] || 0) + 1;
+    for (const k of w.skills || []) skills[k] = (skills[k] || 0) + 1;
+  }
+  return { n: list.length, byType, skills: Object.entries(skills).sort((a, b) => b[1] - a[1]) };
 }
 
 // ---------- Expediente personal ----------
@@ -1935,6 +2446,20 @@ export const ACHIEVEMENTS = [
   { id: 'fenix', icon: 'sparkle', title: 'Fénix', desc: 'Sal del modo recuperación.', test: (s) => (s.stats.recovered || 0) >= 1 },
   { id: 'aldia', icon: 'list', title: 'Al día', desc: 'Completa 20 pendientes.', test: (s) => (s.stats.todos || 0) >= 20 },
   { id: 'expediente', icon: 'folder', title: 'Expediente en orden', desc: 'Completa la mitad de tu expediente.', test: (s) => !!s.record && recordProgress(s).pct >= 0.5 },
+  { id: 'hogar20', icon: 'home', title: 'Casa en orden', desc: 'Completa 20 tareas del hogar.', test: (s) => (s.chores || []).reduce((a, c) => a + (c.log || []).length, 0) >= 20 },
+  { id: 'descanso7', icon: 'moon', title: 'Buen descanso', desc: 'Duerme tu meta 7 noches seguidas.', test: (s) => {
+    const goal = s.profile.sleepGoal || 7;
+    let best = 0; let run = 0; let prev = null;
+    for (const d of Object.keys(s.health).sort()) {
+      const ok = s.health[d] && s.health[d].sleep >= goal;
+      run = ok ? (prev && diffDays(prev, d) === 1 ? run + 1 : 1) : 0;
+      prev = ok ? d : null;
+      best = Math.max(best, run);
+    }
+    return best >= 7;
+  } },
+  { id: 'logros10', icon: 'trophy', title: 'Hoja de vida viva', desc: 'Anota 10 logros.', test: (s) => (s.wins || []).length >= 10 },
+  { id: 'palabras10', icon: 'book', title: 'Buen vocabulario', desc: 'Usa 10 palabras del día.', test: (s) => Object.keys(s.wordLog || {}).length >= 10 },
 ];
 
 export function checkAchievements(s, today, ev) {

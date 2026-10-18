@@ -2,6 +2,16 @@
 
 Tu vida en modo juego de rol. App web instalable (y futura APK) para crecer en seis áreas de la vida con barras de vitalidad y energía, caminos, misiones y jefes.
 
+## Novedades de la versión 1.3
+
+- **Hogar**: tareas personales que se repiten (lavar la ropa, planchar, limpiar el baño, la basura, el súper…), con plantillas para empezar y la opción de crear las tuyas. Cada rutina tiene frecuencia por intervalo («cada 3 días», contando desde que la hiciste) o por días fijos («los sábados»), duración y atributo. Aparecen en Hoy y en Pendientes (categoría Hogar), con plan de la semana, saltar una vez, pausa e historial. Al escribir un pendiente de la casa, va solo a Hogar.
+- **Sueño**: por horas o por horario (a qué hora te acostaste y te levantaste) y calidad. Promedio, deuda de sueño, regularidad, noches en tu meta y hora sugerida para acostarte según tu hora de levantarte. En la posada, una rutina para dormir que da XP de Vigor. Corrige cualquier noche de la semana desde la gráfica.
+- **Actividad por tipo** (caminar, gimnasio, correr…) y minutos de la semana frente a los 150 que recomienda la OMS.
+- **Logros** profesionales, académicos y personales: tipo, impacto, habilidades y evidencia. Filtros por período y habilidad, resumen para copiar en tu evaluación o tu CV y exportación a CSV. Recordatorio de fin de semana.
+- **Hoy más limpio**: un aviso a la vez, registro rápido (agua, sueño, ánimo y gasto sin salir de la pantalla) y una sola lista con misiones, pendientes y tareas del hogar.
+- **Frase del día** (una distinta cada día del año) y **palabra del día** con su significado, ejemplo de uso y sinónimos; «La usé hoy» da XP de Sabiduría y se puede guardar como tarjeta de repaso.
+- Las recompensas del juego ahora se llaman **insignias**, para no confundirlas con tus logros reales. Insignias nuevas: Casa en orden, Buen descanso, Hoja de vida viva y Buen vocabulario.
+
 ## Novedades de la versión 1.2 (Finanzas)
 
 - **Dólares y pesos**: cada movimiento se registra en RD$ o US$ y se ve en las dos monedas. La tasa del día se guarda con el movimiento (la conversión no cambia después) y se actualiza sola una vez al día con internet; también puedes poner tu propia tasa. Incluye un convertidor.
@@ -29,7 +39,7 @@ Tu vida en modo juego de rol. App web instalable (y futura APK) para crecer en s
 - **Registrar**: escribe o dicta lo que hiciste («gasté 850 en el súper y caminé 40 minutos») y la app lo convierte en registros.
 - **Finanzas**: ingresos, gastos, presupuesto por categoría y dinero por asignar. Tres formas de registrar: recibo con IA (incluye RNC, e-NCF e ITBIS; lee el QR de facturas electrónicas), alerta del banco pegada y entrada manual o por voz.
 - **Áreas**: salud (pasos, sueño, agua, ejercicio), ánimo (check-in de dos ejes, patrones, respiración), relaciones (frecuencia por persona, cumpleaños, WhatsApp), crecimiento (libros, tarjetas de repaso, práctica) y enfoque (sesiones que se agrietan si sales de la app, cierre de jornada).
-- **Posada** (cierre del día), **Tienda** (recompensas propias con oro, protectores de racha), **Crónica** (semana, gráfico de vitalidad, XP por atributo, logros, títulos).
+- **Posada** (cierre del día), **Tienda** (recompensas propias con oro, protectores de racha), **Crónica** (semana, gráfico de vitalidad, XP por atributo, insignias, títulos).
 - Modo claro y oscuro, sin conexión después de la primera visita, copia de seguridad descargable.
 
 ## Privacidad
@@ -56,7 +66,7 @@ npm run build   # genera dist/, docs/ (GitHub Pages), artifact/ y astra-web.zip
 npm test        # pruebas de la lógica del juego y del analizador de texto
 ```
 
-- `src/game`: reglas del juego (`logic.js`), contenido (`content.js`) y analizador de frases y alertas (`parse.js`).
+- `src/game`: reglas del juego (`logic.js`), contenido (`content.js`), analizador de frases y alertas (`parse.js`) y frase y palabra del día (`daily.js`, `quotes.js`, `words.js`).
 - `src/ai`: lectura de recibos y frases con IA.
 - `src/screens` y `src/ui`: pantallas y componentes (Preact).
 - `server`: lector de recibos opcional para Cloudflare Workers.

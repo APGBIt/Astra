@@ -246,7 +246,8 @@ test('pendientes: categorías propias con atributo y al borrarlas pasan a Genera
   L.uncompleteTodo(s, t.id);
   L.removeTodoList(s, l.id);
   assert.equal(t.cat, 'general');
-  assert.equal(L.todoCategories(s).length, 7);
+  // General, Hogar y las seis áreas.
+  assert.equal(L.todoCategories(s).length, 8);
 });
 
 test('expediente: secciones fijas, XP una sola vez por dato y avisos de vencimiento', () => {

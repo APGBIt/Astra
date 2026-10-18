@@ -2,6 +2,7 @@ import { useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
 import { Nav, TopBar, Segs, Bar, Avatar, TChip, Sheet, SheetHead, NumberChips, toast, areaColor, areaSoft, plural, ask } from '../ui/kit.jsx';
 import { RecordCard } from './Record.jsx';
+import { RoutineChecklist } from './Sleep.jsx';
 import { act, useApp } from '../app/store.js';
 import { back } from '../app/router.js';
 import { relDay, DAYS_SHORT, weekday, fmtDay, diffDays, addDays } from '../app/dates.js';
@@ -9,6 +10,7 @@ import { AREAS, AREA, AREA_ROUTE, POTIONS, SHOP_ITEMS, RECOVERY_QUESTS } from '.
 import {
   playerLevel, attrLevel, className, energyInfo, statuses, usePotion, potionUses, buyItem, redeemReward, uid,
   saveInn, weekStats, weekXpBy, ACHIEVEMENTS, completeRecoveryQuest, inRecovery, dayMissions, talentsFor, recordProgress, fmtHours,
+  bedtimeFor, fmtClock, sleepFromTimes,
 } from '../game/logic.js';
 
 // ¿Toca descargar una copia? Si nunca se hizo y ya hay datos, o si la última tiene más de 14 días.
@@ -146,7 +148,7 @@ export function Character() {
         <div class="grid2">
           <a href="#/tienda" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)' }}><span class="row"><Icon name="bag" /><span class="strong grow">Tienda</span></span><span class="small muted">{s.gold} de oro</span></a>
           <a href="#/posada" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)' }}><span class="row"><Icon name="moon" /><span class="strong grow">Posada</span></span><span class="small muted">{s.inn[today] ? 'Hoy cerrado' : 'Cierra el día'}</span></a>
-          <a href="#/cronica" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)' }}><span class="row"><Icon name="chart" /><span class="strong grow">Crónica</span></span><span class="small muted">{Object.keys(s.achievements).length} logros</span></a>
+          <a href="#/cronica" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)' }}><span class="row"><Icon name="chart" /><span class="strong grow">Crónica</span></span><span class="small muted">{Object.keys(s.achievements).length} insignias</span></a>
           <a href="#/misiones" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)' }}><span class="row"><Icon name="sword" /><span class="strong grow">Misiones</span></span><span class="small muted">{s.missions.filter((m) => !m.archived).length} activas</span></a>
           <a href="#/ajustes" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)', gridColumn: '1 / -1' }}><span class="row"><Icon name="gear" /><span class="strong grow">Ajustes</span><span class="small muted">Metas diarias, IA, copia de seguridad y tema</span></span></a>
         </div>
@@ -187,15 +189,21 @@ export function Inn() {
   const [mood, setMood] = useState(prev ? prev.mood : '');
   const [good, setGood] = useState(prev ? prev.good : '');
   const [better, setBetter] = useState(prev ? prev.better : '');
-  const [bed, setBed] = useState(prev ? prev.bed : '');
+  const [wake, setWake] = useState(prev && prev.wake ? prev.wake : s.profile.wakeGoal || '');
+  const [bed, setBed] = useState(prev && prev.bed ? prev.bed : (s.profile.wakeGoal && bedtimeFor(s, s.profile.wakeGoal)) || '');
+  const [routine, setRoutine] = useState(prev && Array.isArray(prev.routine) ? prev.routine : []);
+  const suggested = bedtimeFor(s, wake);
+  const planned = sleepFromTimes(bed, wake);
+  const paidRoutine = prev ? prev.routinePaid || 0 : 0;
   const d = s.days[today];
   const { done, all } = dayMissions(s, today);
   const vitToday = s.vitLog.filter((l) => l.day === today).reduce((a, l) => a + l.delta, 0);
   const todosToday = s.todos.filter((t) => t.done === today).length;
   const todosTomorrow = s.todos.filter((t) => !t.done && t.due && t.due <= addDays(today, 1)).length;
   const save = () => {
-    const first = act((st, t, ev) => saveInn(st, { mood, good, better, bed }, t, ev));
-    toast(first ? 'Descansaste en la posada · +5 de vitalidad' : 'Cierre actualizado', 'moon');
+    const first = act((st, t, ev) => saveInn(st, { mood, good, better, bed, wake, routine }, t, ev));
+    const extra = Math.max(0, routine.length - paidRoutine) * 2;
+    toast(`${first ? 'Descansaste en la posada · +5 de vitalidad' : 'Cierre actualizado'}${extra ? ` · +${extra} XP de Vigor` : ''}`, 'moon');
     back('/');
   };
   return (
@@ -217,7 +225,21 @@ export function Inn() {
       <div class="stack-sm"><span class="label">¿Cómo termina tu día?</span><div class="chips" role="group" aria-label="Ánimo">{INN_MOODS.map((m) => <TChip key={m} sm on={mood === m} onClick={() => setMood(m)}>{m}</TChip>)}</div></div>
       <div class="field"><label for="g">¿Qué salió bien hoy?</label><textarea id="g" class="input" rows={3} value={good} maxLength={500} onInput={(e) => setGood(e.currentTarget.value)} /></div>
       <div class="field"><label for="b">Una cosa para mejorar mañana</label><textarea id="b" class="input" rows={2} value={better} maxLength={500} onInput={(e) => setBetter(e.currentTarget.value)} /></div>
-      <div class="field"><label for="bd">¿A qué hora te vas a acostar?</label><input id="bd" type="time" class="input" value={bed} onInput={(e) => setBed(e.currentTarget.value)} /><span class="small muted">Dormir {fmtHours(s.profile.sleepGoal)} llena tu energía de mañana.</span></div>
+      <section class="stack-sm" aria-label="Para dormir">
+        <span class="label">Para dormir bien</span>
+        <div class="timepair">
+          <div class="field"><label for="wk">Mañana me levanto a las</label><input id="wk" type="time" class="input" value={wake} onInput={(e) => setWake(e.currentTarget.value)} /></div>
+          <div class="field"><label for="bd">Me voy a acostar a las</label><input id="bd" type="time" class="input" value={bed} onInput={(e) => setBed(e.currentTarget.value)} /></div>
+        </div>
+        <span class="small muted">
+          {suggested ? <>Para dormir {fmtHours(s.profile.sleepGoal)}, acuéstate a las <b>{fmtClock(suggested)}</b>{bed && suggested !== bed ? <> · <button type="button" class="link-btn" style={{ minHeight: 0, display: 'inline', padding: 0 }} onClick={() => setBed(suggested)}>usar esa hora</button>.</> : ''}</> : `Dormir ${fmtHours(s.profile.sleepGoal)} llena tu energía de mañana.`}
+          {planned != null && bed && wake ? ` Así dormirías ${fmtHours(planned)}.` : ''}
+        </span>
+      </section>
+      <section class="stack-sm" aria-label="Rutina para dormir">
+        <div class="between-c"><span class="label">Rutina para dormir</span><span class="small muted semi">+2 XP de Vigor cada una</span></div>
+        <RoutineChecklist value={routine} onChange={setRoutine} />
+      </section>
       <button type="button" class="btn block" onClick={save}><Icon name="moon" size={20} />{prev ? 'Guardar cambios' : 'Descansar y guardar · +5 vitalidad'}</button>
     </main>
   );
@@ -316,8 +338,8 @@ export function Chronicle() {
           </div>
         ))}
       </section>
-      <section class="card" aria-label="Logros">
-        <div class="between-c"><h2 class="h2">Logros</h2><span class="small muted">{Object.keys(s.achievements).length} de {ACHIEVEMENTS.length}</span></div>
+      <section class="card" aria-label="Insignias">
+        <div class="between-c"><h2 class="h2">Insignias</h2><span class="small muted">{Object.keys(s.achievements).length} de {ACHIEVEMENTS.length}</span></div>
         <div class="grid3" style={{ rowGap: 16 }}>
           {ACHIEVEMENTS.map((a) => {
             const on = !!s.achievements[a.id];
@@ -382,7 +404,7 @@ export function Recovery() {
       <section class="stack center" style={{ display: 'flex', textAlign: 'center' }}>
         <span style={{ width: 112, height: 112, borderRadius: 56, background: 'var(--vit-soft)', color: 'var(--vit)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="heart" size={52} stroke={1.6} /></span>
         <h1 class="h1">{inRecovery(s, today) ? 'Modo recuperación' : 'Todo en orden'}</h1>
-        <p class="lead">{inRecovery(s, today) ? `Tu vitalidad llegó a 0. No pierdes niveles, oro ni logros. Hasta el ${fmtDay(rec.until, { weekdayName: false })}, cada misión te devuelve el doble de vitalidad.` : 'No estás en recuperación. Si algún día tu vitalidad llega a 0, aquí tendrás misiones cortas para volver.'}</p>
+        <p class="lead">{inRecovery(s, today) ? `Tu vitalidad llegó a 0. No pierdes niveles, oro ni insignias. Hasta el ${fmtDay(rec.until, { weekdayName: false })}, cada misión te devuelve el doble de vitalidad.` : 'No estás en recuperación. Si algún día tu vitalidad llega a 0, aquí tendrás misiones cortas para volver.'}</p>
       </section>
       <section class="stack-sm" aria-label="Vitalidad">
         <div class="between small strong"><span class="row" style={{ gap: 6, color: 'var(--vit-ink)' }}><Icon name="heart" size={15} fill />Vitalidad</span><span>{s.vit} / 100 · meta 50</span></div>

@@ -326,20 +326,21 @@ export function dueLabel(due, today) {
   return fmtShort(due);
 }
 
-export function DuePicker({ value, onChange, today }) {
+export function DuePicker({ value, onChange, today, allowNone = true }) {
   const opts = [
     ['Hoy', today],
     ['Mañana', addDays(today, 1)],
     ['Fin de semana', nextWeekend(today)],
     ['Próxima semana', nextMonday(today)],
-    ['Sin fecha', null],
+    ...(allowNone ? [['Sin fecha', null]] : []),
   ];
-  const matched = opts.find(([, v]) => v === value);
-  const [pick, setPick] = useState(!matched && !!value);
+  // Si dos opciones caen el mismo día (el domingo, «Mañana» y «Próxima semana»), se marca solo la primera.
+  const first = opts.findIndex(([, v]) => v === value);
+  const [pick, setPick] = useState(first < 0 && !!value);
   return (
     <div class="stack-sm">
       <div class="chips" role="group" aria-label="Fecha">
-        {opts.map(([l, v]) => <TChip key={l} sm on={!pick && value === v} onClick={() => { setPick(false); onChange(v); }}>{l}</TChip>)}
+        {opts.map(([l, v], i) => <TChip key={l} sm on={!pick && i === first} onClick={() => { setPick(false); onChange(v); }}>{l}</TChip>)}
         <TChip sm on={pick} icon="calendar" onClick={() => setPick(true)}>{pick && value ? fmtShort(value) : 'Elegir fecha'}</TChip>
       </div>
       {pick && <input type="date" class="input" aria-label="Fecha del pendiente" value={value || ''} onInput={(e) => onChange(e.currentTarget.value || null)} />}
@@ -437,7 +438,7 @@ function describe(e) {
       : { icon: 'map', text: `Capítulo completado: ${e.title}` };
     case 'attr': return { icon: AREA[e.area].icon, text: `${AREA[e.area].attr} sube a nivel ${e.n}` };
     case 'talent': return { icon: 'sparkle', text: `Nuevo talento: ${e.name} (+5 % XP)` };
-    case 'achievement': return { icon: 'trophy', text: `Logro: ${e.title} · +25 de oro` };
+    case 'achievement': return { icon: 'trophy', text: `Insignia: ${e.title} · +25 de oro` };
     case 'streak': return { icon: 'flame', text: `¡Racha de ${e.n} días!` };
     case 'streakLost': return { icon: 'flame', text: `Tu racha de ${e.count} días se reinició. Hoy empieza otra.` };
     case 'freezeUsed': return { icon: 'shield', text: e.n === 1 ? 'Un protector cuidó tu racha.' : `${e.n} protectores cuidaron tu racha.` };

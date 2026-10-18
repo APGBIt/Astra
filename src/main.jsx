@@ -18,6 +18,9 @@ import { Path, Boss } from './screens/Path.jsx';
 import { Areas, Health, Mood, People, Learn, Focus } from './screens/Areas.jsx';
 import { Character, Inn, Shop, Chronicle, Recovery } from './screens/Character.jsx';
 import { Settings } from './screens/Settings.jsx';
+import { Hogar } from './screens/Hogar.jsx';
+import { Wins } from './screens/Wins.jsx';
+import { WordScreen } from './screens/Word.jsx';
 
 // Las hojas (misión, pendiente, registrar) se abren encima de su pantalla. Esa pantalla no se vuelve
 // a montar: conserva dónde ibas en la lista, el filtro y la búsqueda.
@@ -70,6 +73,9 @@ function Screen({ route }) {
     case 'cronica': return <Chronicle />;
     case 'recuperacion': return <Recovery />;
     case 'ajustes': return <Settings />;
+    case 'hogar': return <Hogar query={q} />;
+    case 'logros': return <Wins query={q} />;
+    case 'palabra': return <WordScreen />;
     default: return <Home />;
   }
 }

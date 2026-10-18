@@ -1,6 +1,6 @@
 // Estado persistente de Astra. Se guarda solo en este navegador.
 import { useEffect, useReducer } from 'preact/hooks';
-import { defaultState, reconcile, ensureRecord, ensureMoney } from '../game/logic.js';
+import { defaultState, reconcile, ensureRecord, ensureMoney, ensureHome } from '../game/logic.js';
 import { dayKey } from './dates.js';
 
 const KEY = 'astra.v1';
@@ -21,7 +21,7 @@ function migrate(s) {
   if (!s || typeof s !== 'object') return d;
   const m = merge(d, s);
   // Listas: si vienen dañadas, se reinician vacías.
-  for (const k of ['missions', 'vitLog', 'campaigns', 'bosses', 'moods', 'people', 'contacts', 'books', 'reads', 'cards', 'practice', 'focus', 'rewards', 'redeemed', 'titles', 'journal', 'todos', 'todoLists']) {
+  for (const k of ['missions', 'vitLog', 'campaigns', 'bosses', 'moods', 'people', 'contacts', 'books', 'reads', 'cards', 'practice', 'focus', 'rewards', 'redeemed', 'titles', 'journal', 'todos', 'todoLists', 'chores', 'wins']) {
     if (!Array.isArray(m[k])) m[k] = [];
   }
   // Pendientes y categorías dañados se descartan uno a uno (no toda la lista).
@@ -32,7 +32,9 @@ function migrate(s) {
   if (!m.profile.goals || typeof m.profile.goals !== 'object') m.profile.goals = { ...d.profile.goals };
   // Versión 3: categorías nuevas, dólares y pesos, cuentas y tarjetas (los movimientos viejos se conservan).
   ensureMoney(m);
-  m.v = 3;
+  // Versión 4: tareas del hogar, sueño por horario y logros (no cambia nada de lo anterior).
+  ensureHome(m);
+  m.v = 4;
   if (!Array.isArray(m.profile.classKeys)) m.profile.classKeys = [];
   if (!Array.isArray(m.streak.freezeDays)) m.streak.freezeDays = [];
   return m;

@@ -101,6 +101,16 @@ const P = {
   cash: '<rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5h.01M18 14.5h.01"/>',
   bank: '<path d="M3 9.5 12 4l9 5.5M4.5 9.5h15M6 10.5v6M10 10.5v6M14 10.5v6M18 10.5v6M3.5 20h17M4.5 17h15"/>',
   filter: '<path d="M3.5 5h17l-6.5 8v6l-4 2v-8z"/>',
+  // Hogar.
+  iron: '<path d="M2.5 18h17a1.5 1.5 0 0 0 1.5-1.5V15a5 5 0 0 0-5-5H8.5z"/><path d="M10 10V7.5A1.5 1.5 0 0 1 11.5 6H17"/>',
+  bed: '<path d="M3 18V7M3 14h18v4M21 14v-2a3 3 0 0 0-3-3h-7v5"/><circle cx="7" cy="11" r="2"/>',
+  snow: '<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/><path d="M9.5 4.5 12 7l2.5-2.5M9.5 19.5 12 17l2.5 2.5"/>',
+  skip: '<path d="M5 5l9 7-9 7z"/><path d="M19 5v14"/>',
+  copy: '<rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h2"/>',
+  // Sincronización.
+  cloud: '<path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 9.5a4.25 4.25 0 0 1-.5 8.5z"/>',
+  cloudoff: '<path d="M3 3l18 18"/><path d="M8.6 6.1A6 6 0 0 1 18 9.5a4.25 4.25 0 0 1 2.3 7.7M17 18H7a4.5 4.5 0 0 1-1.6-8.7"/>',
+  sync: '<path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 3v5h5"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 21v-5h-5"/>',
 };
 
 export function Icon({ name, size = 22, stroke = 2, fill = false, label, style }) {

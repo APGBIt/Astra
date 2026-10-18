@@ -37,7 +37,7 @@ export function describeItem(s, it) {
     case 'calm': return { icon: 'face', area: 'emocional', title: `Calma · ${it.minutes} minutos`, sub: 'Respiración o meditación' };
     case 'todo': {
       const c = todoCategory(s, it.cat);
-      return { icon: 'list', area: c.area, title: `Pendiente · ${it.title}`, sub: `${c.name}${it.due ? ` · ${dueLabel(it.due, s.energy.day).toLowerCase()}` : ''}${it.repeat ? ` · ${repeatLabel(it.repeat).toLowerCase()}` : ''}${it.important ? ' · importante' : ''}` };
+      return { icon: c.id === 'hogar' ? 'home' : 'list', area: c.color || c.area, title: `Pendiente · ${it.title}`, sub: `${c.name}${it.due ? ` · ${dueLabel(it.due, s.energy.day).toLowerCase()}` : ''}${it.repeat ? ` · ${repeatLabel(it.repeat).toLowerCase()}` : ''}${it.important ? ' · importante' : ''}` };
     }
     default: return { icon: 'note', area: 'emocional', title: 'Nota del día', sub: it.text };
   }

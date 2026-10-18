@@ -9,7 +9,7 @@ import { norm, parseTodo, classifyMission } from '../game/parse.js';
 import {
   todoCategories, todoCategory, addTodo, updateTodo, removeTodo, completeTodo, uncompleteTodo, clearDoneTodos,
   TODO_BUCKETS, todoBucket, sortTodos, pendingTodos, todosIn, todosDue, todoReward, addTodoList, updateTodoList, removeTodoList,
-  addMission, TODO_REPEATS, repeatLabel, nextRepeat, postponeTodo, overdueToToday,
+  addMission, TODO_REPEATS, repeatLabel, nextRepeat, postponeTodo, overdueToToday, freqLabel, skipChore,
 } from '../game/logic.js';
 import { fmtShort, addDays, diffDays, weekday, DAYS } from '../app/dates.js';
 
@@ -19,7 +19,9 @@ const pref = {
   set(k, v) { try { localStorage.setItem(`astra.ui.${k}`, v); } catch { /* sin almacenamiento */ } },
 };
 
-const catColor = (s, cat) => areaColor(todoCategory(s, cat).area);
+// Color de una categoría: el suyo propio (Hogar) o el de su atributo.
+export const tone = (c) => (c && (c.color || c.area)) || null;
+const catColor = (s, cat) => areaColor(tone(todoCategory(s, cat)));
 
 // La pantalla se vuelve a montar al abrir y cerrar un pendiente: el filtro se recuerda mientras la app está abierta.
 const memo = { filter: 'all', showDone: false };
@@ -32,6 +34,7 @@ function resolveCat(s, parsed, fallback) {
     if (hit) return hit.id;
   }
   if (fallback) return fallback;
+  if (parsed.home) return 'hogar';
   return parsed.area || 'general';
 }
 
@@ -53,8 +56,9 @@ export function doneText(r) {
 
 export function TodoRow({ s, t, today, showCat = true }) {
   const cat = todoCategory(s, t.cat);
-  const color = areaColor(cat.area);
+  const color = areaColor(tone(cat));
   const late = t.due && !t.done && t.due < today;
+  const chore = t.chore && (s.chores || []).find((c) => c.id === t.chore);
   const toggle = () => {
     if (t.done) { act((st) => uncompleteTodo(st, t.id)); return; }
     const r = act((st, d, ev) => completeTodo(st, t.id, d, ev));
@@ -67,11 +71,12 @@ export function TodoRow({ s, t, today, showCat = true }) {
       </button>
       <a class="body" href={`#/pendientes/${t.id}`} style={{ textDecoration: 'none' }}>
         <span class="title">{t.important && !t.done && <Icon name="star" size={15} fill style={{ color: 'var(--xp)', marginRight: 5, verticalAlign: -2 }} label="Importante" />}{t.title}</span>
-        {(showCat || t.due || t.note || t.repeat) && (
+        {(showCat || t.due || t.note || t.repeat || chore) && (
           <span class="meta">
             {showCat && <span class="row" style={{ gap: 5 }}><span class="dot" style={{ background: color }} />{cat.name}</span>}
             {t.due && !t.done && <span class={late ? 'late' : t.due === today ? 'soon' : ''}>{showCat ? '· ' : ''}{dueLabel(t.due, today)}</span>}
             {t.repeat && !t.done && <span class="row" style={{ gap: 3 }}><Icon name="repeat" size={13} label={repeatLabel(t.repeat)} />{(TODO_REPEATS.find((x) => x.key === t.repeat) || {}).short}</span>}
+            {chore && !t.done && <span class="row" style={{ gap: 3 }}><Icon name="repeat" size={13} label="Rutina del hogar" />{freqLabel(chore.freq).toLowerCase()}</span>}
             {t.note && <Icon name="note" size={13} label="Tiene nota" />}
           </span>
         )}
@@ -121,8 +126,8 @@ export function QuickAdd({ s, today, fixedCat = null, defaultCat = null, placeho
       {typing && (
         <div class="row wrap" style={{ gap: 6 }}>
           {!fixedCat && (
-            <button type="button" class="chip" aria-expanded={panel === 'cat' ? 'true' : 'false'} onClick={() => setPanel(panel === 'cat' ? null : 'cat')} style={{ border: 'none', background: areaSoft(c.area), color: areaInk(c.area), fontWeight: 700, minHeight: 34 }}>
-              <span class="dot" style={{ background: areaColor(c.area) }} />{c.name}<Icon name="down" size={14} />
+            <button type="button" class="chip" aria-expanded={panel === 'cat' ? 'true' : 'false'} onClick={() => setPanel(panel === 'cat' ? null : 'cat')} style={{ border: 'none', background: areaSoft(tone(c)), color: areaInk(tone(c)), fontWeight: 700, minHeight: 34 }}>
+              <span class="dot" style={{ background: areaColor(tone(c)) }} />{c.name}<Icon name="down" size={14} />
             </button>
           )}
           <button type="button" class="chip" aria-expanded={panel === 'due' ? 'true' : 'false'} onClick={() => setPanel(panel === 'due' ? null : 'due')} style={{ border: 'none', minHeight: 34, fontWeight: 700 }}>
@@ -160,7 +165,7 @@ export function CatPicker({ s, value, onChange, allowNew = true }) {
       <div class="chips" role="group" aria-label="Categoría">
         {todoCategories(s).map((c) => (
           <TChip key={c.id} sm on={value === c.id} onClick={() => onChange(c.id)}>
-            <span class="dot" style={{ background: areaColor(c.area) }} />{c.name}
+            <span class="dot" style={{ background: areaColor(tone(c)) }} />{c.name}
           </TChip>
         ))}
         {allowNew && <TChip sm icon="plus" on={adding} onClick={() => setAdding(!adding)}>Nueva</TChip>}
@@ -176,10 +181,10 @@ export function CatPicker({ s, value, onChange, allowNew = true }) {
   );
 }
 
-function AttrPicker({ value, onChange }) {
+export function AttrPicker({ value, onChange, label = '¿Qué atributo sube al completar?' }) {
   return (
     <div class="stack-sm">
-      <span class="label">¿Qué atributo sube al completar?</span>
+      <span class="label">{label}</span>
       <div class="chips" role="group" aria-label="Atributo">
         <TChip sm on={!value} onClick={() => onChange(null)}>Ninguno (solo tu nivel)</TChip>
         {AREAS.map((a) => <TChip key={a.key} sm on={value === a.key} icon={a.icon} color={areaColor(a.key)} onClick={() => onChange(a.key)}>{a.attr}</TChip>)}
@@ -215,7 +220,7 @@ export function Todos({ query }) {
 
   let groups;
   if (group === 'categoria') {
-    groups = all.map((c) => ({ key: c.id, label: c.name, color: areaColor(c.area), items: visible.filter((t) => t.cat === c.id) })).filter((g) => g.items.length);
+    groups = all.map((c) => ({ key: c.id, label: c.name, color: areaColor(tone(c)), items: visible.filter((t) => t.cat === c.id) })).filter((g) => g.items.length);
   } else {
     groups = TODO_BUCKETS.map((b) => ({ key: b.key, label: b.label, late: b.key === 'vencidos', items: visible.filter((t) => todoBucket(t, today) === b.key) })).filter((g) => g.items.length);
   }
@@ -239,12 +244,18 @@ export function Todos({ query }) {
 
         <QuickAdd s={s} today={today} defaultCat={filter !== 'all' ? filter : null} placeholder={filter !== 'all' ? `Agregar a ${todoCategory(s, filter).name}…` : '¿Qué tienes pendiente?'} />
 
+        {filter === 'hogar' && (
+          <a href="#/hogar" class="row" style={{ gap: 10, minHeight: 52, padding: '0 14px', borderRadius: 16, background: areaSoft('hogar'), color: areaInk('hogar'), textDecoration: 'none' }}>
+            <Icon name="home" size={19} /><span class="grow semi">{(s.chores || []).length ? 'Tus rutinas del hogar: frecuencias y plan de la semana' : 'Crea tus rutinas: lavar, planchar, limpiar… y se repiten solas'}</span><Icon name="right" size={16} />
+          </a>
+        )}
+
         <div class="stack-sm">
           <div class="chips scroll" role="group" aria-label="Filtrar por categoría">
             <TChip sm on={filter === 'all'} onClick={() => setFilter('all')}>Todas · {pend.length}</TChip>
             {shownCats.map((c) => (
               <TChip key={c.id} sm on={filter === c.id} onClick={() => setFilter(filter === c.id ? 'all' : c.id)}>
-                <span class="dot" style={{ background: areaColor(c.area) }} />{c.name} · {counts[c.id] || 0}
+                <span class="dot" style={{ background: areaColor(tone(c)) }} />{c.name} · {counts[c.id] || 0}
               </TChip>
             ))}
             <TChip sm icon="plus" onClick={() => setCats(true)}>Categoría</TChip>
@@ -323,11 +334,12 @@ export function TodoSheet({ id, query }) {
   const [repeat, setRepeat] = useState(t ? t.repeat || null : undefined);
   const [note, setNote] = useState(t ? t.note : '');
   if (id && !t) return null;
+  const chore = t && t.chore ? (s.chores || []).find((c) => c.id === t.chore) : null;
   const parsed = t ? { title, due: null, important: false, area: null, tag: null } : parseTodo(title, today);
-  const effCat = cat || resolveCat(s, parsed, null);
+  const effCat = chore ? 'hogar' : cat || resolveCat(s, parsed, null);
   const effDue = due !== undefined ? due : parsed.due;
   const effImp = important != null ? important : parsed.important;
-  const effRep = repeat !== undefined ? repeat : parsed.repeat || null;
+  const effRep = chore ? null : repeat !== undefined ? repeat : parsed.repeat || null;
   const finalTitle = t ? title.trim() : (parsed.title || title.trim());
 
   const save = () => {
@@ -360,16 +372,22 @@ export function TodoSheet({ id, query }) {
         <input id="tt" class="input big" value={title} maxLength={140} placeholder="Ej. Renovar el marbete el viernes" onInput={(e) => setTitle(e.currentTarget.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !t) save(); }} autoFocus={!t} />
         {!t && parsed.title && parsed.title !== title.trim() && <span class="small muted row" style={{ gap: 6 }}><Icon name="sparkle" size={14} />Se guardará como «{parsed.title}»</span>}
       </div>
-      <div class="stack-sm"><span class="label">Categoría</span><CatPicker s={s} value={effCat} onChange={setCat} /></div>
-      <div class="stack-sm"><span class="label">¿Para cuándo?</span><DuePicker value={effDue} today={today} onChange={setDue} /></div>
-      <div class="stack-sm">
+      {chore ? (
+        <a href={`#/hogar?r=${chore.id}`} class="row" style={{ gap: 12, minHeight: 56, padding: '8px 14px', borderRadius: 16, background: areaSoft('hogar'), color: areaInk('hogar'), textDecoration: 'none' }}>
+          <Icon name={chore.icon || 'home'} size={20} />
+          <span class="stack-xs grow"><span class="semi">Rutina del hogar · {freqLabel(chore.freq).toLowerCase()}</span><span class="small">Al hacerla vuelve sola. Toca para cambiar la frecuencia o pausarla.</span></span>
+          <Icon name="right" size={16} />
+        </a>
+      ) : <div class="stack-sm"><span class="label">Categoría</span><CatPicker s={s} value={effCat} onChange={setCat} /></div>}
+      <div class="stack-sm"><span class="label">{chore ? '¿Cuándo toca esta vez?' : '¿Para cuándo?'}</span><DuePicker value={effDue} today={today} onChange={setDue} allowNone={!chore} /></div>
+      {!chore && <div class="stack-sm">
         <span class="label">¿Se repite?</span>
         <div class="chips" role="group" aria-label="Se repite">
           <TChip sm on={!effRep} onClick={() => setRepeat(null)}>No</TChip>
           {TODO_REPEATS.map((r) => <TChip key={r.key} sm icon="repeat" on={effRep === r.key} onClick={() => setRepeat(r.key)}>{r.label}</TChip>)}
         </div>
         {effRep && <span class="small muted">Al completarlo aparece el siguiente{(() => { const n = nextRepeat(effDue || today, effRep); return n ? `, para el ${fmtShort(n)}` : ''; })()}.{!effDue ? ' Empieza hoy.' : ''}</span>}
-      </div>
+      </div>}
       <label class="between-c panel" style={{ cursor: 'pointer' }}>
         <span class="row" style={{ gap: 10 }}><Icon name="star" size={20} fill={effImp} style={{ color: effImp ? 'var(--xp)' : undefined }} /><span class="stack-xs"><span class="semi">Importante</span><span class="small muted">Sube arriba en la lista y da el doble de XP.</span></span></span>
         <Switch checked={effImp} onChange={setImportant} label="Importante" />
@@ -393,10 +411,18 @@ export function TodoSheet({ id, query }) {
               </div>
             </div>
           )}
-          <div class="row" style={{ justifyContent: 'space-between' }}>
-            {!t.done ? <button type="button" class="btn sm soft" onClick={toMission}><Icon name="sword" size={18} />Hacerla misión</button> : <span />}
-            <button type="button" class="btn sm soft" style={{ color: 'var(--vit-ink)' }} onClick={async () => { if (await ask('¿Borrar este pendiente?', { ok: 'Borrar', danger: true })) { act((st) => removeTodo(st, t.id)); toast('Pendiente borrado', 'trash'); close(); } }}><Icon name="trash" size={18} />Borrar</button>
-          </div>
+          {chore ? (!t.done && (
+            <button type="button" class="btn sm soft" style={{ alignSelf: 'flex-start' }} onClick={() => {
+              const n = act((st, d) => skipChore(st, chore.id, d));
+              if (n) toast(`Saltada esta vez · vuelve ${whenText(n, today)}`, 'skip');
+              close();
+            }}><Icon name="skip" size={18} />Saltar esta vez</button>
+          )) : (
+            <div class="row" style={{ justifyContent: 'space-between' }}>
+              {!t.done ? <button type="button" class="btn sm soft" onClick={toMission}><Icon name="sword" size={18} />Hacerla misión</button> : <span />}
+              <button type="button" class="btn sm soft" style={{ color: 'var(--vit-ink)' }} onClick={async () => { if (await ask('¿Borrar este pendiente?', { ok: 'Borrar', danger: true })) { act((st) => removeTodo(st, t.id)); toast('Pendiente borrado', 'trash'); close(); } }}><Icon name="trash" size={18} />Borrar</button>
+            </div>
+          )}
         </div>
       )}
       {!t && <button type="button" class="link-btn muted" style={{ alignSelf: 'center' }} onClick={toMission} disabled={!finalTitle}>¿Es algo para hoy que cuesta esfuerzo? Hazlo misión<Icon name="right" size={16} /></button>}
@@ -415,12 +441,12 @@ function CatsSheet({ onClose }) {
   return (
     <Sheet onClose={onClose} label="Categorías">
       <SheetHead title="Categorías" onClose={onClose} />
-      <p class="small muted">General y las seis áreas siempre están. Crea las tuyas (Casa, Trámites, Maestría…) y elige qué atributo sube cuando completas sus pendientes.</p>
+      <p class="small muted">General, Hogar y las seis áreas siempre están. Crea las tuyas (Trámites, Maestría…) y elige qué atributo sube cuando completas sus pendientes.</p>
       <section class="card flush" aria-label="Tus categorías">
         {todoCategories(s).map((c) => (
           <div key={c.id} class="lrow" style={{ minHeight: 56 }}>
-            <span class="tile sm" style={{ background: areaSoft(c.area), color: areaColor(c.area) }}><Icon name={c.area ? AREA[c.area].icon : c.builtin ? 'list' : 'tag'} size={18} /></span>
-            <span class="stack-xs grow"><span class="strong">{c.name}</span><span class="tiny muted semi">{plural(counts[c.id] || 0, 'pendiente', 'pendientes')} · {c.area ? `sube ${AREA[c.area].attr}` : 'sube tu nivel'}</span></span>
+            <span class="tile sm" style={{ background: areaSoft(tone(c)), color: areaColor(tone(c)) }}><Icon name={c.id === 'hogar' ? 'home' : c.area ? AREA[c.area].icon : c.builtin ? 'list' : 'tag'} size={18} /></span>
+            <span class="stack-xs grow"><span class="strong">{c.name}</span><span class="tiny muted semi">{plural(counts[c.id] || 0, 'pendiente', 'pendientes')} · {c.id === 'hogar' ? `sube ${AREA[c.area].attr} o el atributo de cada rutina` : c.area ? `sube ${AREA[c.area].attr}` : 'sube tu nivel'}</span></span>
             {!c.builtin && <button type="button" class="icon-btn plain" aria-label={`Editar ${c.name}`} onClick={() => setEditing(c)}><Icon name="edit" size={18} /></button>}
           </div>
         ))}

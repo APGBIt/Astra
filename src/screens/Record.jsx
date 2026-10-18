@@ -35,7 +35,7 @@ function dueText(n, label = 'Vence') {
 const dueTone = (n) => (n < 0 ? 'vit' : n <= 30 ? 'xp' : '');
 
 // Fechas que piden atención y todavía no están en pendientes ni atendidas.
-function openAlerts(s, today, within = 30) {
+export function openAlerts(s, today, within = 30) {
   return recordAlerts(s, today, within).filter((a) => !alertStatus(s, a.sec.id, a.item));
 }
 
@@ -259,6 +259,12 @@ export function RecordSection({ id }) {
               {sec.fields.length > 0 && <button type="button" class="btn sm ghost" aria-pressed={edit ? 'true' : 'false'} onClick={() => setEdit(!edit)}><Icon name={edit ? 'check' : 'edit'} size={18} />{edit ? 'Listo' : 'Editar datos'}</button>}
             </div>
           </>
+        )}
+
+        {(sec.id === 'hitos' || sec.id === 'trayectoria') && (
+          <a href="#/logros" class="row" style={{ gap: 10, minHeight: 52, padding: '8px 14px', borderRadius: 16, background: 'var(--laborales-soft)', color: 'var(--laborales-ink)', textDecoration: 'none' }}>
+            <Icon name="trophy" size={19} /><span class="grow semi">{(s.wins || []).length ? `Tus logros con impacto y habilidades · ${(s.wins || []).length}` : 'Anota tus logros con su impacto en «Logros»: listos para tu evaluación y tu CV'}</span><Icon name="right" size={16} />
+          </a>
         )}
 
         {sec.kind === 'list' && (

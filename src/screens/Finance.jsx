@@ -301,7 +301,7 @@ function TxRow({ s, t, onOpen }) {
 
 // ---------- Hoja: nuevo o editar movimiento ----------
 
-function TxSheet({ s, initial, tx, onClose }) {
+export function TxSheet({ s, initial, tx, onClose }) {
   const today = s.energy.day;
   const editing = !!tx;
   const lastAcc = (s.money.tx.find((t) => t.account && accountOf(s, t.account)) || {}).account || '';

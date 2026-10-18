@@ -230,8 +230,132 @@ export const GOAL_PRESETS = {
 
 // Categorías fijas: General (sin atributo) y las seis áreas. Las propias se crean en la app.
 export const TODO_GENERAL = { id: 'general', name: 'General', area: null };
+// Tareas personales y de la casa (lavar, planchar, limpiar…). Suben Temple: un hogar en orden calma la mente.
+export const TODO_HOGAR = { id: 'hogar', name: 'Hogar', area: 'emocional', color: 'hogar' };
 export const TODO_XP = { base: 5, important: 5 };
 export const TODO_GOLD = { base: 2, important: 2 };
+
+// ---------- Hogar: rutinas de tareas personales ----------
+
+export const CHORE_GROUPS = [
+  { id: 'ropa', name: 'Ropa' },
+  { id: 'limpieza', name: 'Limpieza' },
+  { id: 'cocina', name: 'Cocina y compras' },
+  { id: 'casa', name: 'Casa' },
+  { id: 'personal', name: 'Cuidado personal' },
+  { id: 'vehiculo', name: 'Vehículo' },
+  { id: 'mascotas', name: 'Mascotas' },
+  { id: 'mandados', name: 'Mandados' },
+];
+
+// Frecuencias: cada N días/semanas/meses (cuenta desde la última vez que la hiciste) o días fijos de la semana.
+export const CHORE_FREQS = [
+  { key: '1d', label: 'Cada día', freq: { type: 'every', n: 1, unit: 'day' } },
+  { key: '2d', label: 'Cada 2 días', freq: { type: 'every', n: 2, unit: 'day' } },
+  { key: '3d', label: 'Cada 3 días', freq: { type: 'every', n: 3, unit: 'day' } },
+  { key: '1w', label: 'Cada semana', freq: { type: 'every', n: 1, unit: 'week' } },
+  { key: '2w', label: 'Cada 2 semanas', freq: { type: 'every', n: 2, unit: 'week' } },
+  { key: '1m', label: 'Cada mes', freq: { type: 'every', n: 1, unit: 'month' } },
+  { key: '3m', label: 'Cada 3 meses', freq: { type: 'every', n: 3, unit: 'month' } },
+];
+
+const W = (n, unit = 'week') => ({ type: 'every', n, unit });
+const D = (n) => ({ type: 'every', n, unit: 'day' });
+const M = (n) => ({ type: 'every', n, unit: 'month' });
+// Plantillas para empezar rápido. `pick`: vienen marcadas en la primera configuración.
+export const CHORE_TEMPLATES = [
+  { title: 'Lavar la ropa', group: 'ropa', icon: 'shirt', freq: W(1), mins: 45, pick: true },
+  { title: 'Planchar', group: 'ropa', icon: 'iron', freq: W(1), mins: 40, pick: true },
+  { title: 'Doblar y guardar la ropa', group: 'ropa', icon: 'shirt', freq: W(1), mins: 20 },
+  { title: 'Lavar sábanas y toallas', group: 'ropa', icon: 'bed', freq: W(1), mins: 30, pick: true },
+  { title: 'Llevar ropa a la lavandería', group: 'ropa', icon: 'bag', freq: W(2), mins: 20 },
+  { title: 'Limpiar el baño', group: 'limpieza', icon: 'drop', freq: W(1), mins: 30, pick: true },
+  { title: 'Barrer y trapear', group: 'limpieza', icon: 'broom', freq: D(3), mins: 30, pick: true },
+  { title: 'Lavar los platos', group: 'limpieza', icon: 'utensils', freq: D(1), mins: 15 },
+  { title: 'Limpiar la cocina', group: 'limpieza', icon: 'sparkle', freq: D(2), mins: 20 },
+  { title: 'Sacar la basura', group: 'limpieza', icon: 'trash', freq: D(2), mins: 5, pick: true },
+  { title: 'Quitar el polvo', group: 'limpieza', icon: 'sparkle', freq: W(1), mins: 20 },
+  { title: 'Limpiar la nevera', group: 'limpieza', icon: 'snow', freq: M(1), mins: 30 },
+  { title: 'Cocinar en casa', group: 'cocina', icon: 'utensils', freq: D(1), mins: 45, attr: 'salud' },
+  { title: 'Preparar la comida de la semana', group: 'cocina', icon: 'utensils', freq: W(1), mins: 90, attr: 'salud' },
+  { title: 'Hacer la compra del súper', group: 'cocina', icon: 'cart', freq: W(1), mins: 60, attr: 'finanzas', pick: true },
+  { title: 'Comprar el botellón de agua', group: 'cocina', icon: 'drop', freq: W(1), mins: 10 },
+  { title: 'Revisar el gas', group: 'cocina', icon: 'flame', freq: M(1), mins: 5 },
+  { title: 'Cambiar las sábanas', group: 'casa', icon: 'bed', freq: W(1), mins: 15 },
+  { title: 'Regar las plantas', group: 'casa', icon: 'sprout', freq: D(3), mins: 10 },
+  { title: 'Ordenar el clóset', group: 'casa', icon: 'archive', freq: M(1), mins: 45 },
+  { title: 'Ordenar la casa', group: 'casa', icon: 'sofa', freq: D(2), mins: 20 },
+  { title: 'Fumigar', group: 'casa', icon: 'shield', freq: M(3), mins: 30 },
+  { title: 'Cortarte el pelo', group: 'personal', icon: 'scissors', freq: M(1), mins: 45 },
+  { title: 'Arreglarte las uñas', group: 'personal', icon: 'sparkle', freq: W(2), mins: 30 },
+  { title: 'Limpiar los zapatos', group: 'personal', icon: 'shirt', freq: W(2), mins: 15 },
+  { title: 'Preparar la ropa de mañana', group: 'personal', icon: 'shirt', freq: D(1), mins: 5, attr: 'laborales' },
+  { title: 'Lavar el carro', group: 'vehiculo', icon: 'car', freq: W(2), mins: 40 },
+  { title: 'Revisar aceite y gomas', group: 'vehiculo', icon: 'wrench', freq: M(1), mins: 15 },
+  { title: 'Bañar a la mascota', group: 'mascotas', icon: 'paw', freq: W(2), mins: 30 },
+  { title: 'Comprar alimento de la mascota', group: 'mascotas', icon: 'paw', freq: M(1), mins: 20 },
+  { title: 'Ir al banco o hacer diligencias', group: 'mandados', icon: 'bank', freq: W(2), mins: 60 },
+];
+export const CHORE_ICONS = ['shirt', 'iron', 'bed', 'broom', 'drop', 'trash', 'utensils', 'cart', 'sparkle', 'sofa', 'sprout', 'scissors', 'car', 'wrench', 'paw', 'bag', 'home', 'archive', 'flame', 'snow', 'bank', 'list'];
+// XP por tarea del hogar: base más un poco por cada 10 minutos (hasta +10).
+export const CHORE_XP = { base: 5, per10: 1, max: 10, gold: 2 };
+
+// ---------- Sueño ----------
+
+// Rutina para dormir: lo que ayuda a dormir mejor (se marca en la posada, al cerrar el día).
+export const SLEEP_ROUTINE = [
+  { key: 'pantallas', label: 'Sin pantallas 30 min antes', icon: 'eyeoff' },
+  { key: 'cafeina', label: 'Sin café después de las 2 p. m.', icon: 'flask' },
+  { key: 'cena', label: 'Cena ligera y temprano', icon: 'utensils' },
+  { key: 'cuarto', label: 'Cuarto oscuro, fresco y callado', icon: 'moon' },
+  { key: 'hora', label: 'A la misma hora de siempre', icon: 'clock' },
+  { key: 'manana', label: 'Dejé listo lo de mañana', icon: 'list' },
+];
+export const SLEEP_QUALITY = [
+  { v: 1, label: 'Mal' },
+  { v: 2, label: 'Regular' },
+  { v: 3, label: 'Bien' },
+  { v: 4, label: 'Muy bien' },
+];
+// Lo que se tarda en quedarse dormido (para la hora sugerida de acostarse).
+export const SLEEP_LATENCY_MIN = 15;
+
+// ---------- Ejercicio ----------
+
+export const EXERCISE_TYPES = [
+  { key: 'caminar', label: 'Caminar', icon: 'pulse' },
+  { key: 'correr', label: 'Correr', icon: 'bolt' },
+  { key: 'gimnasio', label: 'Gimnasio o pesas', icon: 'dumbbell' },
+  { key: 'bici', label: 'Bicicleta', icon: 'sync' },
+  { key: 'deporte', label: 'Deporte', icon: 'trophy' },
+  { key: 'baile', label: 'Baile', icon: 'sparkle' },
+  { key: 'yoga', label: 'Yoga o estiramiento', icon: 'heart' },
+  { key: 'otro', label: 'Otro', icon: 'plus' },
+];
+// La OMS recomienda al menos 150 minutos de actividad moderada a la semana para adultos.
+export const EXERCISE_WEEK_GOAL = 150;
+
+// ---------- Logros (profesionales, académicos y personales) ----------
+
+export const WIN_SCOPES = [
+  { key: 'profesional', label: 'Profesional', area: 'laborales' },
+  { key: 'academico', label: 'Académico', area: 'crecimiento' },
+  { key: 'personal', label: 'Personal', area: null },
+];
+export const WIN_TYPES = [
+  { key: 'entrega', label: 'Entrega o proyecto', icon: 'flag' },
+  { key: 'meta', label: 'Meta cumplida', icon: 'target' },
+  { key: 'mejora', label: 'Mejora de un proceso', icon: 'chart' },
+  { key: 'reconocimiento', label: 'Reconocimiento', icon: 'trophy' },
+  { key: 'feedback', label: 'Comentario positivo', icon: 'chat' },
+  { key: 'liderazgo', label: 'Liderazgo o mentoría', icon: 'people' },
+  { key: 'presentacion', label: 'Presentación o publicación', icon: 'mic' },
+  { key: 'aprendizaje', label: 'Curso, certificación o nota', icon: 'cap' },
+  { key: 'rol', label: 'Ascenso o nuevo rol', icon: 'crown' },
+  { key: 'otro', label: 'Otro logro', icon: 'star' },
+];
+export const WIN_SKILLS = ['Liderazgo', 'Comunicación', 'Trabajo en equipo', 'Análisis de datos', 'Gestión de proyectos', 'Mejora continua', 'Planificación', 'Innovación', 'Orientación a resultados', 'Servicio', 'Negociación', 'Tecnología', 'Gestión del talento', 'Redacción'];
+export const WIN_XP = { xp: 20, gold: 5, daily: 3 };
 
 // ---------- Expediente personal ----------
 

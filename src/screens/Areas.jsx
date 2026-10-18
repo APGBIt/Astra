@@ -4,14 +4,18 @@ import { Nav, TopBar, Bar, Ring, TChip, Stepper, Sheet, SheetHead, Bolts, Number
 import { AreaTodos } from './Todos.jsx';
 import { RecordCard } from './Record.jsx';
 import { GoalsSheet } from './Goals.jsx';
+import { HogarCard } from './Hogar.jsx';
+import { WinsCard } from './Wins.jsx';
+import { SleepSheet, SleepWeek, SleepInsights } from './Sleep.jsx';
 import { vibrate } from '../app/env.js';
 import { act, useApp } from '../app/store.js';
 import { addDays, relDay, DAYS_SHORT, weekday, fmtShort } from '../app/dates.js';
-import { AREAS, AREA, AREA_ROUTE, MOOD_QUADS, INFLUENCES, CIRCLES } from '../game/content.js';
+import { AREAS, AREA, AREA_ROUTE, MOOD_QUADS, INFLUENCES, CIRCLES, EXERCISE_TYPES } from '../game/content.js';
 import {
   attrLevel, talentsFor, dayMissions, isDone, completeMission, undoMission, logHealth, fmtHours, dailyGoal, todosForArea,
   addMood, moodInsight, moodCounts, logCalm, addPerson, updatePerson, removePerson, contactPerson, personStatus, duePeople,
   upcomingBirthdays, waLink, addBook, logPages, addCard, dueCards, reviewCard, logPractice, finishFocus, closeWorkday, bossHP,
+  exerciseWeek,
 } from '../game/logic.js';
 import { MissionRow } from './Home.jsx';
 
@@ -41,6 +45,8 @@ export function Areas() {
             );
           })}
         </div>
+        <HogarCard />
+        <WinsCard />
         <RecordCard />
       </main>
       <Nav active="areas" />
@@ -102,10 +108,12 @@ export function Health() {
   const today = s.energy.day;
   const h = s.health[today] || {};
   const [sheet, setSheet] = useState(null);
+  const [sleepDay, setSleepDay] = useState(today);
   const goal = dailyGoal(s, 'sleep');
   const g = { steps: dailyGoal(s, 'steps'), water: dailyGoal(s, 'water'), exercise: dailyGoal(s, 'exercise') };
-  const week = Array.from({ length: 7 }, (_, i) => addDays(today, i - 6));
+  const ex = exerciseWeek(s, today);
   const save = (patch, msg) => { act((st, t, ev) => logHealth(st, t, patch, t, ev)); if (msg) toast(msg, 'check'); setSheet(null); };
+  const editSleep = (d) => { setSleepDay(d); setSheet('sleep'); };
   const tiles = [
     { key: 'steps', icon: 'pulse', label: 'Pasos', value: h.steps != null ? num(h.steps) : '—', sub: `meta ${num(g.steps)}`, pct: (h.steps || 0) / g.steps },
     { key: 'sleep', icon: 'moon', label: 'Sueño', value: h.sleep != null ? fmtHours(h.sleep) : '—', sub: `meta ${fmtHours(goal)}`, pct: (h.sleep || 0) / goal },
@@ -120,7 +128,7 @@ export function Health() {
         <div class="grid2">
           {tiles.map((t) => (
             <div key={t.key} style={{ position: 'relative' }}>
-              <button type="button" class="card tight" onClick={() => (t.key === 'water' ? save({ water: (h.water || 0) + 1 }, 'Un vaso más') : setSheet(t.key))} style={{ textAlign: 'left', color: 'var(--ink)', width: '100%', height: '100%' }}
+              <button type="button" class="card tight" onClick={() => (t.key === 'water' ? save({ water: (h.water || 0) + 1 }, 'Un vaso más') : t.key === 'sleep' ? editSleep(today) : setSheet(t.key))} style={{ textAlign: 'left', color: 'var(--ink)', width: '100%', height: '100%' }}
                 aria-label={t.key === 'water' ? `Agua: ${t.value} de ${g.water} vasos. Tocar para sumar uno` : `${t.label}: ${t.value}. Tocar para registrar`}>
                 <div class="between-c"><span style={{ color: areaColor('salud'), display: 'flex' }}><Icon name={t.icon} /></span><Ring value={t.pct} size={30} stroke={5} color={areaColor('salud')} /></div>
                 <span class="display-num" style={{ fontSize: 24 }}>{t.value}</span>
@@ -130,21 +138,21 @@ export function Health() {
             </div>
           ))}
         </div>
-        <section class="card" aria-label="Sueño de la semana">
-          <div class="between-c"><h2 class="h2">Sueño de la semana</h2><span class="small muted">meta {fmtHours(goal)}</span></div>
-          <div class="row" style={{ alignItems: 'flex-end', gap: 8, height: 110 }}>
-            {week.map((d) => {
-              const v = s.health[d]?.sleep;
-              const pct = v != null ? Math.min(1, v / 10) : 0;
-              return (
-                <div key={d} class="stack-xs" style={{ flex: '1 1 0', alignItems: 'center', height: '100%', justifyContent: 'flex-end' }}>
-                  <span class="tiny strong">{v != null ? v : ''}</span>
-                  <div style={{ width: '100%', maxWidth: 28, height: `${Math.max(4, pct * 70)}px`, borderRadius: 8, background: v == null ? 'var(--soft)' : v >= goal ? areaColor('salud') : 'var(--vit)' }} role="img" aria-label={`${d}: ${v != null ? fmtHours(v) : 'sin dato'}`} />
-                  <span class="tiny muted">{DAYS_SHORT[weekday(d)]}</span>
-                </div>
-              );
-            })}
-          </div>
+        <section class="card" aria-label="Tu sueño">
+          <div class="between-c"><h2 class="h2">Tu sueño</h2><span class="small muted">meta {fmtHours(goal)}</span></div>
+          <SleepWeek s={s} today={today} onEdit={editSleep} />
+          <span class="tiny muted">Toca una noche para registrarla o corregirla.</span>
+          <SleepInsights s={s} today={today} onWakeGoal={() => setSheet('goals')} />
+          <a href="#/posada" class="link-btn" style={{ alignSelf: 'flex-start' }}><Icon name="moon" size={16} />Rutina para dormir en la posada</a>
+        </section>
+        <section class="card" aria-label="Actividad de la semana">
+          <div class="between-c"><h2 class="h2">Actividad de la semana</h2><span class="small muted">{ex.total} de {ex.goal} min</span></div>
+          <Bar value={ex.total / ex.goal} size="lg" color={areaColor('salud')} label={`${ex.total} de ${ex.goal} minutos de actividad en 7 días`} />
+          <span class="small muted">{ex.total >= ex.goal ? 'Cumpliste lo que recomienda la OMS: al menos 150 minutos a la semana.' : `La OMS recomienda al menos ${ex.goal} minutos de actividad moderada a la semana. Te faltan ${ex.goal - ex.total}.`}</span>
+          {ex.byType.length > 0 && (
+            <div class="chips">{ex.byType.map(([k, v]) => { const t = EXERCISE_TYPES.find((x) => x.key === k) || EXERCISE_TYPES[EXERCISE_TYPES.length - 1]; return <span key={k} class="chip sm"><Icon name={t.icon} size={13} />{t.label} · {v} min</span>; })}</div>
+          )}
+          <button type="button" class="btn sm soft" style={{ alignSelf: 'flex-start' }} onClick={() => setSheet('exercise')}><Icon name="dumbbell" size={18} />Registrar actividad</button>
         </section>
         <div class="note"><Icon name="info" size={18} /><span>En la versión para Android (APK), tus pasos y tu sueño llegarán solos desde Health Connect. Por ahora los registras aquí o con «Cuéntame qué hiciste».</span></div>
         <AreaMissions area="salud" />
@@ -154,8 +162,8 @@ export function Health() {
       <Nav active="areas" />
       {sheet === 'goals' && <GoalsSheet onClose={() => setSheet(null)} />}
       {sheet === 'steps' && <NumberSheet title="Pasos de hoy" label="Pasos" initial={h.steps || ''} onClose={() => setSheet(null)} onSave={(v) => save({ steps: v }, 'Pasos guardados')} />}
-      {sheet === 'exercise' && <NumberSheet title="Ejercicio" label="Minutos que sumaste ahora" initial="" onClose={() => setSheet(null)} onSave={(v) => save({ exercise: (h.exercise || 0) + v }, `+${v} minutos de ejercicio`)} />}
-      {sheet === 'sleep' && <SleepSheet goal={goal} initial={h.sleep ?? goal} onClose={() => setSheet(null)} onSave={(v) => save({ sleep: v }, 'Sueño guardado')} />}
+      {sheet === 'exercise' && <ExerciseSheet onClose={() => setSheet(null)} onSave={(v, type) => save({ exercise: (h.exercise || 0) + v, exType: type }, `+${v} minutos de ${(EXERCISE_TYPES.find((x) => x.key === type) || { label: 'actividad' }).label.toLowerCase()}`)} />}
+      {sheet === 'sleep' && <SleepSheet s={s} day={sleepDay} today={today} onClose={() => setSheet(null)} />}
     </>
   );
 }
@@ -172,14 +180,23 @@ function NumberSheet({ title, label, initial, onClose, onSave }) {
   );
 }
 
-function SleepSheet({ goal, initial, onClose, onSave }) {
-  const [v, setV] = useState(initial);
+function ExerciseSheet({ onClose, onSave }) {
+  const [type, setType] = useState(() => { try { return localStorage.getItem('astra.ui.exType') || 'caminar'; } catch { return 'caminar'; } });
+  const [min, setMin] = useState(30);
+  const pick = (k) => { setType(k); try { localStorage.setItem('astra.ui.exType', k); } catch { /* sin almacenamiento */ } };
   return (
-    <Sheet onClose={onClose} label="Sueño de anoche">
-      <SheetHead title="Sueño de anoche" onClose={onClose} />
-      <Stepper value={v} onChange={setV} step={0.5} min={0} max={14} format={fmtHours} label="Horas de sueño" />
-      <span class="small muted">Tu meta es {fmtHours(goal)}. Dormirla llena tu energía y suma +5 de vitalidad. Puedes cambiarla en «Mis metas».</span>
-      <button type="button" class="btn block" onClick={() => onSave(v)}><Icon name="check" size={20} />Guardar</button>
+    <Sheet onClose={onClose} label="Registrar actividad">
+      <SheetHead title="Registrar actividad" onClose={onClose} />
+      <div class="stack-sm">
+        <span class="label">¿Qué hiciste?</span>
+        <div class="chips" role="group" aria-label="Tipo de actividad">{EXERCISE_TYPES.map((t) => <TChip key={t.key} sm icon={t.icon} on={type === t.key} onClick={() => pick(t.key)}>{t.label}</TChip>)}</div>
+      </div>
+      <div class="stack-sm">
+        <span class="label">Minutos</span>
+        <NumberChips value={min} onChange={setMin} presets={[10, 20, 30, 45, 60]} format={(v) => `${v} min`} unit="min" min={1} max={600} label="Minutos de actividad" />
+      </div>
+      <span class="small muted">Se suma a tu ejercicio de hoy y da XP de Vigor.</span>
+      <button type="button" class="btn block" disabled={!min} onClick={() => onSave(min, type)}><Icon name="check" size={20} />Guardar</button>
     </Sheet>
   );
 }
@@ -444,6 +461,7 @@ export function Learn() {
           <span class="small muted">Curso, idioma, instrumento o la habilidad que estés entrenando.</span>
           <button type="button" class="btn sm soft" style={{ alignSelf: 'flex-start' }} onClick={() => setSheet({ kind: 'practice' })}><Icon name="timer" size={18} />Registrar práctica</button>
         </section>
+        <WinsCard scope="academico" />
         <AreaMissions area="crecimiento" />
         <AreaTodos area="crecimiento" />
         <Talents area="crecimiento" />
@@ -565,6 +583,7 @@ export function Focus() {
           <span class="tile" style={{ background: areaSoft('laborales'), color: areaColor('laborales') }}><Icon name="moon" /></span>
           <span class="stack-xs grow"><span class="strong">{closed ? 'Jornada cerrada' : 'Cerrar la jornada'}</span><span class="small muted">Desconectarte a tiempo también suma: +10 XP y +2 de vitalidad.</span></span>
         </button>
+        <WinsCard scope="profesional" />
         <AreaMissions area="laborales" />
         <AreaTodos area="laborales" />
       </main>

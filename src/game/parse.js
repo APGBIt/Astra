@@ -71,6 +71,10 @@ export function currencyIn(text) {
   return /(us\$|\busd\b|\bd[oó]lar|\bdollars?\b|\bu\$s\b)/i.test(String(text || '')) ? 'USD' : 'DOP';
 }
 
+// Tareas de la casa: lavar, planchar, limpiar, la basura, el súper… van a la categoría Hogar.
+const HOME_RE = /\b(lavar|lavado|planchar|plancha|barrer|trapear|fregar|aspirar|sacudir|desempolvar|tender la (?:cama|ropa)|doblar (?:la )?ropa|basura|lavanderia|cocinar|regar|fumigar|sabanas|limpiar|limpieza|botellon|supermercado|super|colmado|mandados?|diligencias)\b/;
+export const isHomeTask = (text) => HOME_RE.test(norm(text));
+
 export function guessArea(text) {
   const t = norm(text);
   const score = {};
@@ -379,7 +383,7 @@ export function parseTodo(text, today) {
   const { due, rest } = parseDue(t, today);
   let title = rest.replace(/\s+/g, ' ').trim();
   title = title ? title[0].toUpperCase() + title.slice(1) : '';
-  return { title, due, important, tag, repeat, area: guessArea(title) };
+  return { title, due, important, tag, repeat, area: guessArea(title), home: isHomeTask(title) };
 }
 
 function localToday() {
