@@ -11,6 +11,7 @@ import {
   addTodo, todoCategory, repeatLabel, accountLabel,
 } from '../game/logic.js';
 import { cardForText } from '../game/money.js';
+import { logCalmSession, addJournal } from '../game/mind.js';
 import { aiProvider, aiJSON, capturePrompt, aiErrorText } from '../ai/ai.js';
 
 const SHORTCUTS = [
@@ -75,12 +76,10 @@ export function applyItems(st, items, today, ev) {
       case 'mood': addMood(st, { quad: it.quad, words: it.word ? [it.word] : [] }, today, ev); break;
       case 'mission': completeMission(st, it.missionId, today, ev); break;
       case 'focus': finishFocus(st, { minutes: it.minutes, label: 'Registrado' }, today, ev); break;
-      case 'calm': logCalm(st, it.minutes, today, ev); break;
+      case 'calm': logCalmSession(st, { kind: 'registro', title: 'Calma registrada', minutes: it.minutes }, today, ev); break;
       case 'todo': addTodo(st, { title: it.title, cat: it.cat, due: it.due, important: it.important, repeat: it.repeat }, today); break;
       default:
-        st.journal = st.journal || [];
-        st.journal.unshift({ id: uid(), day: today, text: String(it.text).slice(0, 500) });
-        st.journal = st.journal.slice(0, 300);
+        addJournal(st, { kind: 'nota', text: String(it.text || '').slice(0, 500) }, today, ev);
     }
   }
   return n;

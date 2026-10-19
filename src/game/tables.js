@@ -5,6 +5,8 @@ import {
 } from './content.js';
 import { addDays } from '../app/dates.js';
 import { balances, cardInfo, fundInfo, isCard, isFundPlan, moneyAccount, planDates, planFreqLabel, planStatus } from './money.js';
+import { CALM_KINDS } from './mind.js';
+import { WHEEL } from './wellness.js';
 import {
   accountLabel, catName, choreStatus, freqLabel, repeatLabel, todoCategory, txCur, txDOP, txKind, txOrig, txRate,
 } from './logic.js';
@@ -67,11 +69,11 @@ export function buildTables(s, today) {
       }),
     ),
     Salud: table(
-      ['Fecha', 'Sueño (horas)', 'Me acosté', 'Me levanté', 'Calidad', 'Pasos', 'Agua (vasos)', 'Ejercicio (min)', 'Tipo de ejercicio'],
+      ['Fecha', 'Sueño (horas)', 'Me acosté', 'Me levanté', 'Calidad', 'Pasos', 'Agua (vasos)', 'Ejercicio (min)', 'Tipo de ejercicio', 'Frutas y verduras'],
       days.map((d) => {
         const h = s.health[d] || {};
         const types = Object.entries(h.exTypes || {}).map(([k, v]) => `${label(EXERCISE_TYPES, k)} ${v}`).join(', ');
-        return [d, h.sleep ?? '', h.bed || '', h.wake || '', h.quality ? label(SLEEP_QUALITY, h.quality, 'v') : '', h.steps ?? '', h.water ?? '', h.exercise ?? '', types];
+        return [d, h.sleep ?? '', h.bed || '', h.wake || '', h.quality ? label(SLEEP_QUALITY, h.quality, 'v') : '', h.steps ?? '', h.water ?? '', h.exercise ?? '', types, h.veg ?? ''];
       }),
     ),
     Logros: table(
@@ -79,11 +81,24 @@ export function buildTables(s, today) {
       (s.wins || []).map((w) => [w.day, label(WIN_SCOPES, w.scope), label(WIN_TYPES, w.type), w.title, w.impact || '', (w.skills || []).join(', '), w.evidence || '']),
     ),
     Ánimo: table(
-      ['Fecha', 'Hora', 'Estado', 'Palabras', 'Qué influyó', 'Nota'],
-      (s.moods || []).slice(0, 2000).map((m) => [m.day, m.ts ? new Date(m.ts).toTimeString().slice(0, 5) : '', (MOOD_QUADS[m.quad] || {}).label || '', (m.words || []).join(', '), (m.influences || []).map((k) => label(INFLUENCES, k)).join(', '), m.note || '']),
+      ['Fecha', 'Hora', 'Estado', 'Palabras', 'Qué influyó', 'Dónde lo sentí', 'Nota'],
+      (s.moods || []).slice(0, 2000).map((m) => [m.day, m.ts ? new Date(m.ts).toTimeString().slice(0, 5) : '', (MOOD_QUADS[m.quad] || {}).label || '', (m.words || []).join(', '), (m.influences || []).map((k) => label(INFLUENCES, k)).join(', '), (m.body || []).join(', '), m.note || '']),
+    ),
+    // Sesiones de calma (respiración, meditación, pausas SOS).
+    Calma: table(
+      ['Fecha', 'Hora', 'Tipo', 'Práctica', 'Minutos', 'Después me sentí'],
+      ((s.mind && s.mind.calm) || []).slice(0, 3000).map((c) => [c.day, c.ts ? new Date(c.ts).toTimeString().slice(0, 5) : '', CALM_KINDS[c.kind] || '', c.title || '', c.minutes, c.after ? { mejor: 'Mejor', igual: 'Igual', peor: 'Peor' }[c.after] : '']),
+    ),
+    // Chequeos de bienestar (OMS-5, 0 a 100) y rueda de la vida (1 a 10 por área). Sin el diario: es solo tuyo.
+    Bienestar: table(
+      ['Fecha', 'Chequeo', 'Puntaje', 'Detalle'],
+      [
+        ...((s.mind && s.mind.checks) || []).map((c) => [c.day, 'Bienestar OMS-5', c.score, c.items.join(' · ')]),
+        ...((s.mind && s.mind.wheel) || []).map((w) => [w.day, 'Rueda de la vida', Math.round((WHEEL.reduce((a, x) => a + (w.scores[x.id] || 0), 0) / WHEEL.length) * 10) / 10, WHEEL.map((x) => `${x.label} ${w.scores[x.id]}`).join(', ')]),
+      ].sort((a, b) => (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0)),
     ),
     Posada: table(
-      ['Fecha', 'Cómo terminó el día', 'Lo que salió bien', 'Para mejorar', 'Me acuesto', 'Me levanto', 'Rutina para dormir'],
+      ['Fecha', 'Cómo terminó el día', 'Cosas buenas', 'Para mejorar', 'Me acuesto', 'Me levanto', 'Rutina para dormir'],
       innKeys.map((d) => {
         const x = s.inn[d] || {};
         return [d, x.mood || '', x.good || '', x.better || '', x.bed || '', x.wake || '', (x.routine || []).map((k) => label(SLEEP_ROUTINE, k)).join(', ')];

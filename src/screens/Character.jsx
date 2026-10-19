@@ -3,6 +3,8 @@ import { Icon } from '../ui/icons.jsx';
 import { Nav, TopBar, Segs, Bar, Avatar, TChip, Sheet, SheetHead, NumberChips, toast, areaColor, areaSoft, plural, ask } from '../ui/kit.jsx';
 import { RecordCard } from './Record.jsx';
 import { RoutineChecklist } from './Sleep.jsx';
+import { WeeklyReviewCard } from './Reflect.jsx';
+import { journalDays } from '../game/mind.js';
 import { act, useApp } from '../app/store.js';
 import { back } from '../app/router.js';
 import { relDay, DAYS_SHORT, weekday, fmtDay, diffDays, addDays } from '../app/dates.js';
@@ -187,7 +189,9 @@ export function Inn() {
   const today = s.energy.day;
   const prev = s.inn[today];
   const [mood, setMood] = useState(prev ? prev.mood : '');
-  const [good, setGood] = useState(prev ? prev.good : '');
+  const [goods, setGoods] = useState(() => { const g = prev && Array.isArray(prev.goods) && prev.goods.length ? prev.goods : prev && prev.good ? [prev.good] : []; return [g[0] || '', g[1] || '', g[2] || '']; });
+  const intent = s.mind && s.mind.intents[today];
+  const [intentDone, setIntentDone] = useState(intent ? intent.done || '' : '');
   const [better, setBetter] = useState(prev ? prev.better : '');
   const [wake, setWake] = useState(prev && prev.wake ? prev.wake : s.profile.wakeGoal || '');
   const [bed, setBed] = useState(prev && prev.bed ? prev.bed : (s.profile.wakeGoal && bedtimeFor(s, s.profile.wakeGoal)) || '');
@@ -201,7 +205,7 @@ export function Inn() {
   const todosToday = s.todos.filter((t) => t.done === today).length;
   const todosTomorrow = s.todos.filter((t) => !t.done && t.due && t.due <= addDays(today, 1)).length;
   const save = () => {
-    const first = act((st, t, ev) => saveInn(st, { mood, good, better, bed, wake, routine }, t, ev));
+    const first = act((st, t, ev) => saveInn(st, { mood, goods, better, bed, wake, routine, intent: intentDone || null }, t, ev));
     const extra = Math.max(0, routine.length - paidRoutine) * 2;
     toast(`${first ? 'Descansaste en la posada · +5 de vitalidad' : 'Cierre actualizado'}${extra ? ` · +${extra} XP de Vigor` : ''}`, 'moon');
     back('/');
@@ -223,7 +227,17 @@ export function Inn() {
         </a>
       )}
       <div class="stack-sm"><span class="label">¿Cómo termina tu día?</span><div class="chips" role="group" aria-label="Ánimo">{INN_MOODS.map((m) => <TChip key={m} sm on={mood === m} onClick={() => setMood(m)}>{m}</TChip>)}</div></div>
-      <div class="field"><label for="g">¿Qué salió bien hoy?</label><textarea id="g" class="input" rows={3} value={good} maxLength={500} onInput={(e) => setGood(e.currentTarget.value)} /></div>
+      {intent && (
+        <div class="stack-sm">
+          <span class="label">Tu intención de hoy: «{intent.text}». ¿La viviste?</span>
+          <div class="chips" role="group" aria-label="Intención cumplida">{[['si', 'Sí'], ['parte', 'En parte'], ['no', 'No']].map(([k, l]) => <TChip key={k} sm on={intentDone === k} onClick={() => setIntentDone(k)}>{l}</TChip>)}</div>
+        </div>
+      )}
+      <div class="stack-sm">
+        <span class="label">Tres cosas buenas de hoy</span>
+        <span class="small muted">Grandes o pequeñas, y si quieres, por qué pasaron. Hacerlo cada noche sube el ánimo con el tiempo.</span>
+        {goods.map((v, i) => <input key={i} class="input" value={v} maxLength={200} placeholder={`${i + 1}.`} aria-label={`Cosa buena ${i + 1}`} onInput={(e) => setGoods(goods.map((x, j) => (j === i ? e.currentTarget.value : x)))} />)}
+      </div>
       <div class="field"><label for="b">Una cosa para mejorar mañana</label><textarea id="b" class="input" rows={2} value={better} maxLength={500} onInput={(e) => setBetter(e.currentTarget.value)} /></div>
       <section class="stack-sm" aria-label="Para dormir">
         <span class="label">Para dormir bien</span>
@@ -324,6 +338,7 @@ export function Chronicle() {
         <div class="kpi"><span class="v" style={{ color: 'var(--xp-ink)' }}>+{xp.toLocaleString('en-US')}</span><span class="l">XP</span></div>
         <div class="kpi"><span class="v">{moods}</span><span class="l">Check-ins</span></div>
       </div>
+      <WeeklyReviewCard s={s} today={today} />
       <section class="card" aria-label="Vitalidad de la semana">
         <div class="between-c"><h2 class="h2">Vitalidad</h2><span class="small muted">al cierre de cada día</span></div>
         <VitChart week={week} />
@@ -359,12 +374,11 @@ export function Chronicle() {
           <div class="chips">{s.titles.map((t) => <span key={t} class="chip tone-xp"><Icon name="crown" size={14} />{t}</span>)}</div>
         </section>
       )}
-      {s.journal && s.journal.length > 0 && (
-        <section class="card flush" aria-label="Notas">
-          <div style={{ padding: '14px 0 4px' }}><h2 class="h2">Notas del día</h2></div>
-          {s.journal.slice(0, 8).map((n) => <div class="lrow" key={n.id}><span class="grow small">{n.text}</span><span class="tiny muted">{relDay(n.day, today)}</span></div>)}
-        </section>
-      )}
+      <a href="#/diario" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)', flexDirection: 'row', alignItems: 'center' }}>
+        <span class="tile" style={{ background: areaSoft('crecimiento'), color: areaColor('crecimiento') }}><Icon name="book" /></span>
+        <span class="stack-xs grow"><span class="strong">Tu diario</span><span class="small muted">{s.journal.length ? `${plural(s.journal.length, 'entrada', 'entradas')} en ${plural(journalDays(s), 'día', 'días')}` : 'Escribe tu primera entrada'}</span></span>
+        <Icon name="right" size={18} />
+      </a>
     </main>
   );
 }

@@ -110,6 +110,8 @@ export function classifyMission(text) {
   const steps = t.match(/(\d[\d.,]*)\s*pasos/);
   if (steps) auto = { metric: 'steps', gte: toNumber(steps[1]) || 8000 };
   else if (/dormir/.test(t) && /hora/.test(t)) auto = { metric: 'sleep', gte: 'goal' };
+  else if (mins && /(medit|respir|calma|mindful)/.test(t) && !avoid) auto = { metric: 'calm', gte: mins };
+  else if (/(escribir|escribe|anotar) en (mi|tu|el) diario/.test(t) && !avoid) auto = { metric: 'journal', gte: 1 };
   return { area, cost, kind, days, auto, title: cleanTitle(text) };
 }
 

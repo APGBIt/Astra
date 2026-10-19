@@ -10,13 +10,18 @@ import { TxSheet } from './Finance.jsx';
 import { SyncBadge } from './Sync.jsx';
 import { both, whenText, payInitial } from './Money.jsx';
 import { dueItems } from '../game/money.js';
+import { CheckIn } from './Emotions.jsx';
+import { CalmPlayer, WorrySheet, ThoughtSheet, runAction } from './Calm.jsx';
+import { IntentPrompt } from './Journal.jsx';
+import { ReviewPrompt, Who5Prompt } from './Reflect.jsx';
+import { reviewDue, wellbeingInfo } from '../game/mind.js';
 import { act, useApp } from '../app/store.js';
 import { fmtDay, addDays, diffDays } from '../app/dates.js';
 import { AREA, MOOD_QUADS } from '../game/content.js';
 import {
   playerLevel, className, energyInfo, statuses, dayMissions, isDone, completeMission, undoMission, slipMission,
   missionXP, activeCampaigns, campaignProgress, currentChapter, inRecovery, autoLabel, logHealth, dailyGoal,
-  usePotion, fmtHours, bossHP, todosDue, pendingTodos, sortTodos, duePeople, winPromptDue, addMood, txKind, txDOP, accountLabel,
+  usePotion, fmtHours, bossHP, todosDue, pendingTodos, sortTodos, duePeople, winPromptDue, txKind, txDOP, accountLabel,
 } from '../game/logic.js';
 
 // Hoy: lo esencial en una sola pantalla. Un aviso a la vez, registro rápido sin salir de aquí
@@ -35,6 +40,8 @@ export function Home() {
   const [sheet, setSheet] = useState(null);
   const [more, setMore] = useState(false);
   const [showDone, setShowDone] = useState(false);
+  const [play, setPlay] = useState(null);
+  const [tool, setTool] = useState(null);
 
   // Primero lo que da más: sin automáticas, las que penalizan, las de tu clase y las más baratas.
   const missions = [...pending].sort((a, b) => ((a.auto ? 1 : 0) - (b.auto ? 1 : 0))
@@ -136,6 +143,8 @@ export function Home() {
             <a class="chip" href="#/misiones" style={{ textDecoration: 'none' }}><Icon name="sword" size={14} />Misiones</a>
             <a class="chip" href="#/pendientes" style={{ textDecoration: 'none' }}><Icon name="list" size={14} />Pendientes{openTodos ? ` · ${openTodos}` : ''}</a>
             <a class="chip" href="#/posada" style={{ textDecoration: 'none' }}><Icon name="moon" size={14} />{s.inn[today] ? 'Posada' : 'Cerrar el día'}</a>
+            <a class="chip" href="#/calma" style={{ textDecoration: 'none' }}><Icon name="sparkle" size={14} />Calma</a>
+            <a class="chip" href="#/diario" style={{ textDecoration: 'none' }}><Icon name="book" size={14} />Diario</a>
           </div>
         </section>
 
@@ -182,7 +191,10 @@ export function Home() {
       </main>
       <Nav active="hoy" />
       {sheet === 'sleep' && <SleepSheet s={s} day={today} today={today} onClose={() => setSheet(null)} />}
-      {sheet === 'mood' && <MoodSheet onClose={() => setSheet(null)} />}
+      {sheet === 'mood' && <MoodSheet onClose={() => setSheet(null)} onAction={(a) => { setSheet(null); runAction(a, { setPlay, setTool }); }} />}
+      {tool === 'descarga' && <WorrySheet onClose={() => setTool(null)} />}
+      {tool === 'replantear' && <ThoughtSheet onClose={() => setTool(null)} />}
+      {play && <CalmPlayer session={play} onClose={() => setPlay(null)} />}
       {sheet === 'tx' && <TxSheet s={s} initial={{}} onClose={() => setSheet(null)} />}
       {sheet && sheet.kind === 'pay' && <TxSheet s={s} initial={sheet.initial} onClose={() => setSheet(null)} />}
     </>
@@ -234,11 +246,14 @@ function homePrompts(s, today, hour, en, pending, onPay) {
   const out = [];
   if (inRecovery(s, today)) out.push({ key: 'recovery', el: <RecoveryPrompt /> });
   if (s.health[today]?.sleep == null && hour < 15) out.push({ key: 'sleep', el: <SleepPrompt s={s} today={today} /> });
+  if (hour >= 5 && hour < 12 && s.mind && !s.mind.intents[today]) out.push({ key: 'intent', el: <IntentPrompt /> });
   const money = moneyDue(s, today);
   if (money.length) out.push({ key: 'money', el: <MoneyPrompt items={money} today={today} onPay={onPay} /> });
   if (en.left <= 1 && pending.length) out.push({ key: 'potion', el: <PotionPrompt /> });
   if (winPromptDue(s, today)) out.push({ key: 'win', el: <WinPrompt /> });
   if (hour >= 18 && !s.inn[today]) out.push({ key: 'inn', el: <InnPrompt /> });
+  if (s.mind && reviewDue(s, today, hour)) out.push({ key: 'review', el: <ReviewPrompt /> });
+  else if (s.mind && hour >= 17 && wellbeingInfo(s, today).due && (s.profile.created || today) <= addDays(today, -6)) out.push({ key: 'who5', el: <Who5Prompt s={s} today={today} /> });
   if (openAlerts(s, today).length) out.push({ key: 'record', el: <RecordAlertsNote /> });
   const person = duePeople(s, today)[0];
   if (person) out.push({ key: 'person', el: <PersonPrompt p={person.p} /> });
@@ -384,33 +399,11 @@ function QuickLog({ s, today, onOpen }) {
   );
 }
 
-function MoodSheet({ onClose }) {
-  const [quad, setQuad] = useState(null);
-  const [words, setWords] = useState([]);
-  const save = () => {
-    if (quad == null) return;
-    act((st, t, ev) => addMood(st, { quad, words }, t, ev));
-    toast('Check-in guardado', 'face');
-    onClose();
-  };
-  const toggle = (w) => setWords(words.includes(w) ? words.filter((x) => x !== w) : words.length >= 3 ? [...words.slice(1), w] : [...words, w]);
+function MoodSheet({ onClose, onAction }) {
   return (
     <Sheet onClose={onClose} label="¿Cómo te sientes?">
-      <SheetHead title="¿Cómo te sientes?" onClose={onClose} />
-      <div class="mood-grid">
-        {MOOD_QUADS.map((q) => (
-          <button key={q.key} type="button" class={q.tone} aria-pressed={quad === q.key ? 'true' : 'false'} aria-label={`${q.label}: ${q.desc}`} onClick={() => { setQuad(q.key); setWords([]); }} style={{ minHeight: 84 }}>
-            <span class="strong">{q.label}</span><span class="tiny muted">{q.desc}</span>
-          </button>
-        ))}
-      </div>
-      {quad != null && (
-        <div class="stack-sm">
-          <span class="label">Ponle nombre (opcional, hasta 3)</span>
-          <div class="chips">{MOOD_QUADS[quad].words.map((w) => <TChip key={w} sm on={words.includes(w)} onClick={() => toggle(w)}>{w}</TChip>)}</div>
-        </div>
-      )}
-      <button type="button" class="btn block" disabled={quad == null} onClick={save}><Icon name="check" size={20} />Guardar · +15 XP de Temple</button>
+      <SheetHead title="Check-in" onClose={onClose} />
+      <CheckIn compact onDone={onClose} onAction={onAction} />
       <a class="link-btn muted" href="#/animo" style={{ alignSelf: 'center' }}>Check-in completo y tus patrones<Icon name="right" size={15} /></a>
     </Sheet>
   );

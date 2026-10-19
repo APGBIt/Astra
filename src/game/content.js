@@ -125,7 +125,7 @@ export const GOALS = {
         { title: 'Primeros pasos', tasks: ['Haz 5 minutos de respiración', 'Elige tu momento fijo del día'] },
         { title: 'Profundiza', tasks: ['Completa 7 días seguidos', 'Prueba una sesión de 15 minutos'] },
       ],
-      missions: [{ title: '5 minutos de respiración', cost: 1, feed: 'calm' }],
+      missions: [{ title: '5 minutos de respiración', cost: 1, auto: { metric: 'calm', gte: 5 } }],
     },
     {
       id: 'conocete', title: 'Conócete', desc: '21 check-ins de ánimo para ver tus patrones.',
@@ -218,12 +218,14 @@ export const DEADLINES = [
 ];
 
 // Metas diarias que cada persona puede cambiar (Ajustes → Metas diarias).
-export const DEFAULT_GOALS = { steps: 8000, water: 8, exercise: 30 };
+export const DEFAULT_GOALS = { steps: 8000, water: 8, exercise: 30, veg: 5, calm: 10 };
 export const GOAL_PRESETS = {
   sleep: [6, 7, 8, 9],
   steps: [5000, 8000, 10000, 12000],
   water: [6, 8, 10],
   exercise: [20, 30, 45, 60],
+  veg: [3, 4, 5, 6],
+  calm: [5, 10, 15, 20],
 };
 
 // ---------- Pendientes ----------
@@ -431,10 +433,10 @@ export const RECOVERY_QUESTS = [
 
 // Check-in de ánimo: cuadrantes (energía × agrado).
 export const MOOD_QUADS = [
-  { key: 0, label: 'Tenso', desc: 'Mucha energía · desagradable', tone: 'q-red', words: ['Estresado', 'Ansioso', 'Frustrado', 'Irritado', 'Preocupado', 'Abrumado', 'Molesto', 'Nervioso'] },
-  { key: 1, label: 'Animado', desc: 'Mucha energía · agradable', tone: 'q-yellow', words: ['Motivado', 'Entusiasmado', 'Alegre', 'Orgulloso', 'Inspirado', 'Con ganas', 'Emocionado', 'Optimista'] },
-  { key: 2, label: 'Bajo', desc: 'Poca energía · desagradable', tone: 'q-blue', words: ['Cansado', 'Triste', 'Desanimado', 'Aburrido', 'Solo', 'Agotado', 'Decepcionado', 'Apagado'] },
-  { key: 3, label: 'Tranquilo', desc: 'Poca energía · agradable', tone: 'q-green', words: ['En calma', 'Agradecido', 'Satisfecho', 'Relajado', 'Cómodo', 'Esperanzado', 'En paz', 'Sereno'] },
+  { key: 0, label: 'Tenso', desc: 'Mucha energía · desagradable', tone: 'q-red', words: ['Estrés', 'Ansiedad', 'Preocupación', 'Frustración', 'Irritación', 'Agobio', 'Nervios', 'Enojo'] },
+  { key: 1, label: 'Animado', desc: 'Mucha energía · agradable', tone: 'q-yellow', words: ['Alegría', 'Motivación', 'Entusiasmo', 'Ganas', 'Optimismo', 'Orgullo', 'Emoción', 'Inspiración'] },
+  { key: 2, label: 'Bajo', desc: 'Poca energía · desagradable', tone: 'q-blue', words: ['Cansancio', 'Tristeza', 'Desánimo', 'Agotamiento', 'Aburrimiento', 'Soledad', 'Decepción', 'Apatía'] },
+  { key: 3, label: 'Tranquilo', desc: 'Poca energía · agradable', tone: 'q-green', words: ['Calma', 'Gratitud', 'Paz', 'Satisfacción', 'Relajación', 'Serenidad', 'Bienestar', 'Esperanza'] },
 ];
 export const INFLUENCES = [
   { key: 'familia', label: 'Familia', icon: 'people' },
@@ -446,6 +448,18 @@ export const INFLUENCES = [
   { key: 'salud', label: 'Salud', icon: 'heart' },
   { key: 'pareja', label: 'Pareja', icon: 'heart' },
   { key: 'estudio', label: 'Estudio', icon: 'book' },
+  { key: 'tareas', label: 'Tareas y pendientes', icon: 'list' },
+  { key: 'descanso', label: 'Descanso', icon: 'bed' },
+  { key: 'autocuidado', label: 'Autocuidado', icon: 'sparkle' },
+  { key: 'comida', label: 'Comida', icon: 'utensils' },
+  { key: 'pantallas', label: 'Pantallas y redes', icon: 'phone' },
+  { key: 'hogar', label: 'Casa', icon: 'home' },
+  { key: 'pasatiempos', label: 'Pasatiempos', icon: 'star' },
+  { key: 'espiritualidad', label: 'Fe o espiritualidad', icon: 'sun' },
+  { key: 'comunidad', label: 'Comunidad', icon: 'people' },
+  { key: 'clima', label: 'Clima', icon: 'cloud' },
+  { key: 'noticias', label: 'Noticias', icon: 'mail' },
+  { key: 'viajes', label: 'Viajes', icon: 'plane' },
 ];
 
 export const CIRCLES = ['Familia', 'Amistad', 'Pareja', 'Trabajo', 'Otro'];

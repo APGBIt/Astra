@@ -7,13 +7,17 @@ import { GoalsSheet } from './Goals.jsx';
 import { HogarCard } from './Hogar.jsx';
 import { WinsCard } from './Wins.jsx';
 import { SleepSheet, SleepWeek, SleepInsights } from './Sleep.jsx';
+import { HealthHighlights, WellbeingCard, WheelCard, ValuesCard } from './Reflect.jsx';
+import { JournalCard } from './Journal.jsx';
 import { vibrate } from '../app/env.js';
+import { go } from '../app/router.js';
 import { act, useApp } from '../app/store.js';
 import { addDays, relDay, DAYS_SHORT, weekday, fmtShort } from '../app/dates.js';
-import { AREAS, AREA, AREA_ROUTE, MOOD_QUADS, INFLUENCES, CIRCLES, EXERCISE_TYPES } from '../game/content.js';
+import { AREAS, AREA, AREA_ROUTE, CIRCLES, EXERCISE_TYPES } from '../game/content.js';
+import { calmMinutes, calmStreak, journalDays } from '../game/mind.js';
 import {
   attrLevel, talentsFor, dayMissions, isDone, completeMission, undoMission, logHealth, fmtHours, dailyGoal, todosForArea,
-  addMood, moodInsight, moodCounts, logCalm, addPerson, updatePerson, removePerson, contactPerson, personStatus, duePeople,
+  addPerson, updatePerson, removePerson, contactPerson, personStatus, duePeople,
   upcomingBirthdays, waLink, addBook, logPages, addCard, dueCards, reviewCard, logPractice, finishFocus, closeWorkday, bossHP,
   exerciseWeek,
 } from '../game/logic.js';
@@ -45,6 +49,7 @@ export function Areas() {
             );
           })}
         </div>
+        <MindCard s={s} />
         <HogarCard />
         <WinsCard />
         <RecordCard />
@@ -54,7 +59,27 @@ export function Areas() {
   );
 }
 
-function AreaHeader({ area, right }) {
+// Calma y Diario a un toque desde el mapa de áreas.
+function MindCard({ s }) {
+  const today = s.energy.day;
+  const min = calmMinutes(s, today);
+  const streak = calmStreak(s, today);
+  const jd = journalDays(s);
+  return (
+    <section class="card tight" aria-label="Mente en calma">
+      <div class="row" style={{ gap: 10 }}>
+        <span class="tile" style={{ background: areaSoft('emocional'), color: areaColor('emocional') }}><Icon name="sparkle" /></span>
+        <span class="stack-xs grow"><span class="strong">Mente en calma</span><span class="tiny muted semi">{min ? `${min} min de calma hoy` : 'Respira, medita o escribe'}{streak > 1 ? ` · ${streak} días seguidos` : ''}</span></span>
+      </div>
+      <div class="row" style={{ gap: 8 }}>
+        <a class="btn sm soft grow" href="#/calma"><Icon name="sparkle" size={16} />Calma</a>
+        <a class="btn sm soft grow" href="#/diario"><Icon name="book" size={16} />Diario{jd ? ` · ${jd} días` : ''}</a>
+      </div>
+    </section>
+  );
+}
+
+export function AreaHeader({ area, right }) {
   const s = useApp();
   const lv = attrLevel(s.attrs[area] || 0);
   const a = AREA[area];
@@ -70,7 +95,7 @@ function AreaHeader({ area, right }) {
   );
 }
 
-function AreaMissions({ area }) {
+export function AreaMissions({ area }) {
   const s = useApp();
   const today = s.energy.day;
   const { pending, done } = dayMissions(s, today);
@@ -110,7 +135,8 @@ export function Health() {
   const [sheet, setSheet] = useState(null);
   const [sleepDay, setSleepDay] = useState(today);
   const goal = dailyGoal(s, 'sleep');
-  const g = { steps: dailyGoal(s, 'steps'), water: dailyGoal(s, 'water'), exercise: dailyGoal(s, 'exercise') };
+  const g = { steps: dailyGoal(s, 'steps'), water: dailyGoal(s, 'water'), exercise: dailyGoal(s, 'exercise'), veg: dailyGoal(s, 'veg'), calm: dailyGoal(s, 'calm') };
+  const calmToday = calmMinutes(s, today);
   const ex = exerciseWeek(s, today);
   const save = (patch, msg) => { act((st, t, ev) => logHealth(st, t, patch, t, ev)); if (msg) toast(msg, 'check'); setSheet(null); };
   const editSleep = (d) => { setSleepDay(d); setSheet('sleep'); };
@@ -119,7 +145,11 @@ export function Health() {
     { key: 'sleep', icon: 'moon', label: 'Sueño', value: h.sleep != null ? fmtHours(h.sleep) : '—', sub: `meta ${fmtHours(goal)}`, pct: (h.sleep || 0) / goal },
     { key: 'water', icon: 'drop', label: 'Agua', value: h.water != null ? String(h.water) : '0', sub: `de ${g.water} vasos`, pct: (h.water || 0) / g.water },
     { key: 'exercise', icon: 'dumbbell', label: 'Ejercicio', value: h.exercise != null ? `${h.exercise} min` : '0 min', sub: `meta ${g.exercise} min`, pct: (h.exercise || 0) / g.exercise },
+    { key: 'veg', icon: 'sprout', label: 'Frutas y verduras', value: String(h.veg || 0), sub: `de ${g.veg} porciones`, pct: (h.veg || 0) / g.veg },
+    { key: 'calm', icon: 'sparkle', label: 'Calma', value: `${calmToday} min`, sub: `meta ${g.calm} min`, pct: calmToday / g.calm },
   ];
+  const tap = (k) => (k === 'water' ? save({ water: (h.water || 0) + 1 }, 'Un vaso más') : k === 'veg' ? save({ veg: (h.veg || 0) + 1 }, 'Una porción más de frutas o verduras') : k === 'sleep' ? editSleep(today) : k === 'calm' ? go('/calma') : setSheet(k));
+  const minus = { water: ['Quitar un vaso', 'Un vaso menos'], veg: ['Quitar una porción', 'Una porción menos'] };
   return (
     <>
       <main class="screen">
@@ -128,16 +158,17 @@ export function Health() {
         <div class="grid2">
           {tiles.map((t) => (
             <div key={t.key} style={{ position: 'relative' }}>
-              <button type="button" class="card tight" onClick={() => (t.key === 'water' ? save({ water: (h.water || 0) + 1 }, 'Un vaso más') : t.key === 'sleep' ? editSleep(today) : setSheet(t.key))} style={{ textAlign: 'left', color: 'var(--ink)', width: '100%', height: '100%' }}
-                aria-label={t.key === 'water' ? `Agua: ${t.value} de ${g.water} vasos. Tocar para sumar uno` : `${t.label}: ${t.value}. Tocar para registrar`}>
+              <button type="button" class="card tight" onClick={() => tap(t.key)} style={{ textAlign: 'left', color: 'var(--ink)', width: '100%', height: '100%' }}
+                aria-label={t.key === 'water' ? `Agua: ${t.value} de ${g.water} vasos. Tocar para sumar uno` : t.key === 'veg' ? `Frutas y verduras: ${t.value} de ${g.veg} porciones. Tocar para sumar una` : t.key === 'calm' ? `Calma: ${t.value} hoy. Tocar para abrir Calma` : `${t.label}: ${t.value}. Tocar para registrar`}>
                 <div class="between-c"><span style={{ color: areaColor('salud'), display: 'flex' }}><Icon name={t.icon} /></span><Ring value={t.pct} size={30} stroke={5} color={areaColor('salud')} /></div>
                 <span class="display-num" style={{ fontSize: 24 }}>{t.value}</span>
                 <span class="tiny muted semi">{t.label} · {t.sub}</span>
               </button>
-              {t.key === 'water' && (h.water || 0) > 0 && <button type="button" class="icon-btn plain" aria-label="Quitar un vaso" onClick={() => save({ water: (h.water || 0) - 1 }, 'Un vaso menos')} style={{ position: 'absolute', right: 6, bottom: 6, width: 36, height: 36 }}><Icon name="minus" size={18} /></button>}
+              {minus[t.key] && (h[t.key] || 0) > 0 && <button type="button" class="icon-btn plain" aria-label={minus[t.key][0]} onClick={() => save({ [t.key]: (h[t.key] || 0) - 1 }, minus[t.key][1])} style={{ position: 'absolute', right: 6, bottom: 6, width: 36, height: 36 }}><Icon name="minus" size={18} /></button>}
             </div>
           ))}
         </div>
+        <HealthHighlights s={s} today={today} />
         <section class="card" aria-label="Tu sueño">
           <div class="between-c"><h2 class="h2">Tu sueño</h2><span class="small muted">meta {fmtHours(goal)}</span></div>
           <SleepWeek s={s} today={today} onEdit={editSleep} />
@@ -154,6 +185,8 @@ export function Health() {
           )}
           <button type="button" class="btn sm soft" style={{ alignSelf: 'flex-start' }} onClick={() => setSheet('exercise')}><Icon name="dumbbell" size={18} />Registrar actividad</button>
         </section>
+        <WellbeingCard s={s} today={today} />
+        <span class="small muted">Frutas y verduras: la OMS recomienda al menos 400 g al día, unas 5 porciones. Una porción es una fruta mediana o media taza de vegetales.</span>
         <div class="note"><Icon name="info" size={18} /><span>En la versión para Android (APK), tus pasos y tu sueño llegarán solos desde Health Connect. Por ahora los registras aquí o con «Cuéntame qué hiciste».</span></div>
         <AreaMissions area="salud" />
         <AreaTodos area="salud" />
@@ -198,121 +231,6 @@ function ExerciseSheet({ onClose, onSave }) {
       <span class="small muted">Se suma a tu ejercicio de hoy y da XP de Vigor.</span>
       <button type="button" class="btn block" disabled={!min} onClick={() => onSave(min, type)}><Icon name="check" size={20} />Guardar</button>
     </Sheet>
-  );
-}
-
-// ---------- Emocionales: check-in de ánimo ----------
-
-export function Mood() {
-  const s = useApp();
-  const today = s.energy.day;
-  const [quad, setQuad] = useState(null);
-  const [words, setWords] = useState([]);
-  const [infl, setInfl] = useState([]);
-  const [note, setNote] = useState('');
-  const [breathing, setBreathing] = useState(false);
-  const insight = moodInsight(s);
-  const counts = moodCounts(s, 30, today);
-  const total = counts.reduce((a, b) => a + b, 0);
-
-  const save = () => {
-    if (quad == null) return;
-    act((st, t, ev) => addMood(st, { quad, words, influences: infl, note }, t, ev));
-    toast('Check-in guardado', 'check');
-    setQuad(null); setWords([]); setInfl([]); setNote('');
-  };
-  const toggleIn = (list, set, k, max) => set(list.includes(k) ? list.filter((x) => x !== k) : list.length >= max ? [...list.slice(1), k] : [...list, k]);
-
-  return (
-    <>
-      <main class="screen">
-        <TopBar backTo="/areas" />
-        <AreaHeader area="emocional" />
-        <section class="stack" aria-label="Check-in">
-          <h2 class="h2">¿Dónde estás ahora mismo?</h2>
-          <div class="between tiny strong muted"><span>Desagradable</span><span>Agradable</span></div>
-          <div class="row" style={{ alignItems: 'stretch', gap: 8 }}>
-            <div class="stack-xs tiny strong muted" style={{ width: 16, justifyContent: 'space-between', alignItems: 'center' }}><span>+</span><span style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>Energía</span><span>−</span></div>
-            <div class="mood-grid grow">
-              {MOOD_QUADS.map((q) => (
-                <button key={q.key} type="button" class={q.tone} aria-pressed={quad === q.key ? 'true' : 'false'} aria-label={`${q.label}: ${q.desc}`} onClick={() => { setQuad(q.key); setWords([]); }}>
-                  <span class="strong">{q.label}</span><span class="tiny muted">{q.desc}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </section>
-        {quad != null && (
-          <>
-            <section class="stack-sm" aria-label="Ponle nombre">
-              <span class="label">Ponle nombre (hasta 3)</span>
-              <div class="chips">{MOOD_QUADS[quad].words.map((w) => <TChip key={w} sm on={words.includes(w)} onClick={() => toggleIn(words, setWords, w, 3)}>{w}</TChip>)}</div>
-            </section>
-            <section class="stack-sm" aria-label="Qué influyó">
-              <span class="label">¿Qué influyó?</span>
-              <div class="chips">{INFLUENCES.map((i) => <TChip key={i.key} sm on={infl.includes(i.key)} icon={i.icon} onClick={() => toggleIn(infl, setInfl, i.key, 6)}>{i.label}</TChip>)}</div>
-            </section>
-            <div class="field"><label for="mnote">Nota (opcional)</label><textarea id="mnote" class="input" rows={2} value={note} maxLength={500} onInput={(e) => setNote(e.currentTarget.value)} placeholder="¿Algo que quieras recordar?" /></div>
-            <button type="button" class="btn block" onClick={save}><Icon name="check" size={20} />Guardar check-in · +15 XP</button>
-          </>
-        )}
-        <button type="button" class="card tight" onClick={() => setBreathing(true)} style={{ flexDirection: 'row', alignItems: 'center', textAlign: 'left', color: 'var(--ink)' }}>
-          <span class="tile" style={{ background: areaSoft('emocional'), color: areaColor('emocional') }}><Icon name="sparkle" /></span>
-          <span class="stack-xs grow"><span class="strong">Respira un minuto</span><span class="small muted">Inhala 4 segundos, exhala 6. Cuenta como sesión de calma.</span></span>
-          <Icon name="play" size={20} />
-        </button>
-        {s.moods.length > 0 && (
-          <section class="card" aria-label="Tus patrones">
-            <h2 class="h2">Tus patrones</h2>
-            {insight && <div class="note" style={{ background: areaSoft('emocional'), color: areaInk('emocional') }}><Icon name="sparkle" size={18} /><span>{insight}</span></div>}
-            {total > 0 && (
-              <div class="stack-sm">
-                <span class="small muted semi">Últimos 30 días</span>
-                <div class="row" style={{ height: 14, gap: 3 }} role="img" aria-label={MOOD_QUADS.map((q) => `${q.label}: ${counts[q.key]}`).join(', ')}>
-                  {MOOD_QUADS.map((q) => counts[q.key] > 0 && <span key={q.key} class={q.tone} style={{ flex: `${counts[q.key]} 1 0`, height: 14, borderRadius: 4, display: 'block', border: '1px solid var(--line-2)' }} />)}
-                </div>
-                <div class="row wrap tiny muted" style={{ gap: 10 }}>{MOOD_QUADS.map((q) => <span key={q.key}>{q.label} {counts[q.key]}</span>)}</div>
-              </div>
-            )}
-            <div>
-              {s.moods.slice(0, 8).map((m) => (
-                <div class="lrow" key={m.id}>
-                  <span class={MOOD_QUADS[m.quad].tone} style={{ width: 14, height: 14, borderRadius: 7, border: '1px solid var(--line-2)', flexShrink: 0 }} />
-                  <span class="stack-xs grow"><span class="semi">{m.words.length ? m.words.join(', ') : MOOD_QUADS[m.quad].label}</span>{m.note && <span class="small muted">{m.note}</span>}</span>
-                  <span class="tiny muted">{relDay(m.day, today)}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-        <AreaMissions area="emocional" />
-        <AreaTodos area="emocional" />
-      </main>
-      <Nav active="areas" />
-      {breathing && <Breathe onDone={(ok) => { setBreathing(false); if (ok) { act((st, t, ev) => logCalm(st, 1, t, ev)); toast('Sesión de calma completada', 'sparkle'); } }} />}
-    </>
-  );
-}
-
-function Breathe({ onDone }) {
-  const [t, setT] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setT((x) => x + 1), 1000);
-    return () => clearInterval(id);
-  }, []);
-  useEffect(() => { if (t >= 60) onDone(true); }, [t]);
-  const inCycle = t % 10;
-  const inhale = inCycle < 4;
-  const scale = inhale ? 0.6 + (inCycle / 4) * 0.4 : 1 - ((inCycle - 4) / 6) * 0.4;
-  return (
-    <div class="focus-full" role="dialog" aria-modal="true" aria-label="Respiración">
-      <span class="eyebrow" style={{ color: '#A6A8AF' }}>{60 - t} segundos</span>
-      <div style={{ width: 220, height: 220, borderRadius: 110, background: 'rgba(178,107,252,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', transform: `scale(${scale})`, transition: 'transform 1s linear' }}>
-        <div style={{ width: 140, height: 140, borderRadius: 70, background: '#B26BFC' }} />
-      </div>
-      <span class="h1" aria-live="polite">{inhale ? 'Inhala' : 'Exhala'}</span>
-      <button type="button" class="btn ghost" style={{ color: '#F2F2EF', borderColor: '#42454C' }} onClick={() => onDone(false)}>Terminar</button>
-    </div>
   );
 }
 
@@ -439,6 +357,9 @@ export function Learn() {
       <main class="screen">
         <TopBar backTo="/areas" />
         <AreaHeader area="crecimiento" />
+        <JournalCard s={s} today={today} />
+        <WheelCard s={s} today={today} />
+        <ValuesCard s={s} />
         <section class="card" aria-label="Lectura">
           <div class="between-c"><h2 class="h2">Lectura</h2><button type="button" class="link-btn" onClick={() => setSheet({ kind: 'book' })}>Nuevo libro<Icon name="plus" size={16} /></button></div>
           {current ? (

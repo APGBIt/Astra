@@ -2,6 +2,30 @@
 
 Tu vida en modo juego de rol. App web instalable (y futura APK) para crecer en seis áreas de la vida con barras de vitalidad y energía, caminos, misiones y jefes.
 
+## Novedades de la versión 1.6 (Bienestar: calma, emociones, diario y crecimiento)
+
+Ideas tomadas de comparar How We Feel, Daylio, el registro de ánimo de Apple Salud, Bearable, Headspace, Calm, Insight Timer, Medito, Finch, Stoic, MindShift y Five Minute Journal. El contenido se apoya en prácticas con evidencia y funciona sin internet.
+
+- **Calma** (Áreas → Temple → Calma, o desde Hoy):
+  - **Respiraciones** con un círculo que se expande y se contrae y voz opcional: suspiro cíclico (dos inhalaciones y una exhalación larga), 4-6, caja, coherente 5-5 y 4-7-8.
+  - **Diez meditaciones guiadas** de 3 a 10 minutos con voz: respiración consciente, pausa de tres pasos, 5-4-3-2-1 con los sentidos, observar pensamientos, escaneo corporal, bondad, autocompasión, gratitud, relajación para dormir y caminar con atención.
+  - **Meditación libre** con campana al inicio, a intervalos y al final, y sonido de fondo (lluvia, olas o ruido suave) generado en el teléfono, sin descargas. La pantalla se queda encendida.
+  - **Pausa SOS de 3 minutos** para momentos de ansiedad, con acceso directo a ayuda.
+  - Programa **«Siete días para empezar»**, racha de calma, minutos de la semana y, al terminar, «¿cómo te sientes ahora?» (mejor, igual o peor).
+- **Emociones**: el check-in tiene 80 emociones (20 por cuadrante) con su definición, para ponerle nombre exacto a lo que sientes; 21 cosas que pudieron influir y dónde lo sientes en el cuerpo. Al guardar, sugiere qué hacer según cómo estás: respirar, una pausa, descarga mental o replantear un pensamiento.
+- **Tu año en píxeles** y **patrones**: cómo cambia tu ánimo cuando duermes tu meta, te mueves o haces una pausa de calma, lo que más pesa, el día de la semana y las emociones que más sientes. Cada ánimo tiene forma y color propios, también para daltonismo.
+- **Para tu mente**:
+  - **Descarga mental**: escribes lo que te preocupa y lo separas en lo que depende de ti (se vuelve un pendiente con su siguiente paso) y lo que no (lo sueltas).
+  - **Replantear un pensamiento**: situación, pensamiento, emoción e intensidad, diez trampas del pensamiento, evidencia y una forma más justa de verlo; al final mides cuánto bajó la intensidad.
+- **Diario**: escritura libre, una pregunta del día (40 preguntas), gratitud y lo que aprendiste, con buscador. **Intención del día** en la mañana, que repasas en la posada, y la posada pide ahora **tres cosas buenas de hoy**.
+- **Crecimiento personal**:
+  - **Índice de bienestar OMS-5** cada dos semanas: cinco preguntas, resultado de 0 a 100 y su historial. Si sale bajo, lo dice con cuidado y muestra dónde pedir ayuda (911 y la Línea 811 en República Dominicana). No es un diagnóstico.
+  - **Rueda de la vida** (ocho áreas del 1 al 10), con un botón para crear una meta en la más baja.
+  - **Tus valores** (de 3 a 5 entre 30) y **revisión de la semana** (de viernes a domingo): lo que salió bien, lo que aprendiste, en qué te enfocas (puede volverse pendiente) y cuánto viviste según tus valores.
+- **Salud**: frutas y verduras (meta de 5 porciones al día, como recomienda la OMS), minutos de calma y **lo destacado de la semana** (sueño, pasos y actividad frente a la semana anterior).
+- **Juego**: las misiones de meditar y de escribir en el diario se completan solas. Siete insignias nuevas: Calma 7 días seguidos, 300 minutos de calma, Programa completo, 25 emociones distintas, 10 entradas del diario, 21 días de gratitud y Rueda de la vida.
+- **Drive**: tablas nuevas «Calma» y «Bienestar». El diario, las preocupaciones y los pensamientos no se copian a las tablas; solo van en tu archivo de datos, igual que el expediente.
+
 ## Novedades de la versión 1.5 (Finanzas: saldos, tarjetas, sueldo y plan)
 
 Ideas tomadas de comparar YNAB, Monarch, Copilot, Simplifi, PocketGuard, Rocket Money, Money Manager, Mobills, Wallet, Money Lover y Emma, adaptadas a pesos y dólares y a cómo funcionan las tarjetas en República Dominicana.
@@ -63,8 +87,8 @@ Ideas tomadas de comparar YNAB, Monarch, Copilot, Simplifi, PocketGuard, Rocket 
 - **Misiones**: hábitos, tareas únicas y malos hábitos a evitar. Se agregan en una línea: la app sugiere atributo, costo de energía y XP. Algunas se completan solas (pasos, sueño, gastos, ánimo, contactos, enfoque).
 - **Registrar**: escribe o dicta lo que hiciste («gasté 850 en el súper y caminé 40 minutos») y la app lo convierte en registros.
 - **Finanzas**: saldo de cuentas y tarjetas, corte y pago de cada tarjeta, sueldo y pagos programados, lo que viene en los próximos días, plan del mes y presupuestos. Tres formas de registrar: recibo con IA (incluye RNC, e-NCF e ITBIS; lee el QR de facturas electrónicas), alerta del banco pegada y entrada manual o por voz.
-- **Áreas**: salud (pasos, sueño, agua, ejercicio), ánimo (check-in de dos ejes, patrones, respiración), relaciones (frecuencia por persona, cumpleaños, WhatsApp), crecimiento (libros, tarjetas de repaso, práctica) y enfoque (sesiones que se agrietan si sales de la app, cierre de jornada).
-- **Posada** (cierre del día), **Tienda** (recompensas propias con oro, protectores de racha), **Crónica** (semana, gráfico de vitalidad, XP por atributo, insignias, títulos).
+- **Áreas**: salud (pasos, sueño, agua, ejercicio, frutas y verduras, calma), ánimo (check-in de dos ejes con 80 emociones, año en píxeles, patrones), calma (respiraciones, meditaciones guiadas y libres, pausa SOS, descarga mental, replantear pensamientos), relaciones (frecuencia por persona, cumpleaños, WhatsApp), crecimiento (libros, tarjetas de repaso, práctica, diario, rueda de la vida, valores, bienestar OMS-5) y enfoque (sesiones que se agrietan si sales de la app, cierre de jornada).
+- **Posada** (cierre del día, tres cosas buenas e intención), **Tienda** (recompensas propias con oro, protectores de racha), **Crónica** (semana, revisión semanal, gráfico de vitalidad, XP por atributo, insignias, títulos).
 - Modo claro y oscuro, sin conexión después de la primera visita, copia de seguridad descargable y sincronización con tu propio Google Drive.
 
 ## Privacidad

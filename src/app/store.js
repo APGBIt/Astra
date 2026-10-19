@@ -1,6 +1,7 @@
 // Estado persistente de Astra. Se guarda solo en este navegador.
 import { useEffect, useReducer } from 'preact/hooks';
 import { defaultState, reconcile, ensureRecord, ensureMoney, ensureHome } from '../game/logic.js';
+import { ensureMind } from '../game/mind.js';
 import { dayKey } from './dates.js';
 
 const KEY = 'astra.v1';
@@ -34,6 +35,8 @@ export function migrate(s) {
   ensureMoney(m);
   // Versión 4: tareas del hogar, sueño por horario y logros (no cambia nada de lo anterior).
   ensureHome(m);
+  // 1.6: calma, diario, chequeo de bienestar, rueda de la vida, valores y revisión de la semana.
+  ensureMind(m);
   m.v = 4;
   if (!Array.isArray(m.profile.classKeys)) m.profile.classKeys = [];
   if (!Array.isArray(m.streak.freezeDays)) m.streak.freezeDays = [];

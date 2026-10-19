@@ -4,12 +4,14 @@ import { act, useApp } from '../app/store.js';
 import { GOAL_PRESETS } from '../game/content.js';
 import { dailyGoal, setDailyGoal, fmtHours, setWakeGoal, bedtimeFor, fmtClock } from '../game/logic.js';
 
-// Metas diarias propias: sueño, pasos, agua y ejercicio. Opciones rápidas o el número que quieras.
+// Metas diarias propias: sueño, pasos, agua, ejercicio, frutas y verduras y calma. Opciones rápidas o el número que quieras.
 const ROWS = [
   { k: 'sleep', icon: 'moon', label: 'Sueño', help: 'Dormirla llena tu energía del día.', unit: 'horas', step: 0.25, min: 4, max: 12, format: (v) => fmtHours(v) },
   { k: 'steps', icon: 'pulse', label: 'Pasos', help: 'Cuenta para tus misiones y jefes de pasos.', unit: 'pasos', step: 1, min: 500, max: 60000, format: (v) => num(v) },
   { k: 'water', icon: 'drop', label: 'Agua', help: 'Vasos al día.', unit: 'vasos', step: 1, min: 1, max: 30, format: (v) => `${v} vasos` },
   { k: 'exercise', icon: 'dumbbell', label: 'Ejercicio', help: 'Minutos al día.', unit: 'min', step: 1, min: 5, max: 600, format: (v) => `${v} min` },
+  { k: 'veg', icon: 'sprout', label: 'Frutas y verduras', help: 'Porciones al día. La OMS recomienda al menos 5 (400 g).', unit: 'porciones', step: 1, min: 1, max: 15, format: (v) => `${v} porciones` },
+  { k: 'calm', icon: 'sparkle', label: 'Calma', help: 'Minutos de respiración o meditación al día.', unit: 'min', step: 1, min: 1, max: 120, format: (v) => `${v} min` },
 ];
 
 export function DailyGoalsEditor() {

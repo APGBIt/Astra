@@ -11,6 +11,8 @@ import {
 import { norm, guessCategory, guessIncome } from './parse.js';
 import { wordOf } from './daily.js';
 import { afterTx, ensureMoneyPlus } from './money.js';
+import { defaultMind, bestCalmStreak, distinctEmotions, goodThings, journalDays } from './mind.js';
+import { PROGRAM } from './wellness.js';
 
 export const ENERGY_CAP = 10;
 export const STEPS_GOAL = DEFAULT_GOALS.steps;
@@ -91,6 +93,7 @@ export function defaultState(today = dayKey()) {
     wordLog: {},
     photos: {},
     record: buildRecord(),
+    mind: defaultMind(),
   };
 }
 
@@ -405,6 +408,9 @@ export function metricValue(s, metric, day) {
     case 'mood': return s.moods.filter((m) => m.day === day).length;
     case 'contact': return s.contacts.filter((c) => c.day === day).length;
     case 'focus': return s.focus.filter((f) => f.day === day && !f.broken).length;
+    case 'calm': return ((s.mind && s.mind.calm) || []).filter((x) => x.day === day).reduce((a, x) => a + x.minutes, 0);
+    case 'journal': return (s.journal || []).filter((j) => j.day === day).length;
+    case 'gratitude': return ((s.inn[day] && s.inn[day].goods) || []).filter(Boolean).length + (s.journal || []).filter((j) => j.day === day).reduce((a, j) => a + ((j.items || []).length), 0);
     default: return 0;
   }
 }
@@ -426,6 +432,9 @@ export function autoLabel(m) {
     mood: 'Se completa con un check-in',
     contact: 'Se completa al contactar a alguien',
     focus: 'Se completa con una sesión de enfoque',
+    calm: `Se completa con ${m.auto.gte} min de calma`,
+    journal: 'Se completa al escribir en tu diario',
+    gratitude: 'Se completa al anotar algo bueno',
   }[m.auto.metric] || 'Automática';
 }
 
@@ -794,6 +803,11 @@ export function logHealth(s, day, patch, today, ev) {
   for (const k of ['bed', 'wake']) if (patch[k] !== undefined) h[k] = timeToMin(patch[k]) != null ? minToTime(timeToMin(patch[k])) : '';
   if (patch.quality !== undefined) h.quality = clamp(Math.round(Number(patch.quality) || 0), 0, 4) || null;
   if (patch.water != null) h.water = clamp(Math.round(Number(patch.water) || 0), 0, 30);
+  if (patch.veg != null) {
+    const before = h.veg || 0;
+    h.veg = clamp(Math.round(Number(patch.veg) || 0), 0, 20);
+    if (before < dailyGoal(s, 'veg') && h.veg >= dailyGoal(s, 'veg')) gainXP(s, 'salud', 5, day, ev);
+  }
   if (patch.exercise != null) {
     const before = h.exercise || 0;
     h.exercise = clamp(Math.round(Number(patch.exercise) || 0), 0, 600);
@@ -824,6 +838,7 @@ export function fmtHours(h) {
 
 export function addMood(s, p, today, ev) {
   const entry = { id: uid(), day: today, ts: Date.now(), quad: clamp(Number(p.quad) || 0, 0, 3), words: (p.words || []).slice(0, 4), influences: (p.influences || []).slice(0, 6), note: String(p.note || '').slice(0, 500) };
+  if (Array.isArray(p.body) && p.body.length) entry.body = p.body.map((x) => String(x).slice(0, 30)).slice(0, 5);
   s.moods.unshift(entry);
   s.moods = s.moods.slice(0, 500);
   const today2 = s.moods.filter((m) => m.day === today).length;
@@ -1037,11 +1052,27 @@ export function saveInn(s, p, today, ev) {
   const routine = (Array.isArray(p.routine) ? p.routine : []).filter((k) => SLEEP_ROUTINE.some((x) => x.key === k));
   const paid = prev ? prev.routinePaid || 0 : 0;
   const t = (v) => (timeToMin(v) != null ? minToTime(timeToMin(v)) : '');
-  s.inn[today] = { mood: p.mood || '', good: String(p.good || '').slice(0, 500), better: String(p.better || '').slice(0, 500), bed: t(p.bed), wake: t(p.wake), routine, routinePaid: Math.max(paid, routine.length) };
+  const goods = (Array.isArray(p.goods) ? p.goods : []).map((x) => String(x || '').trim().slice(0, 200)).filter(Boolean).slice(0, 3);
+  const good = goods.length ? goods.join(' · ') : String(p.good || '').slice(0, 500);
+  s.inn[today] = { mood: p.mood || '', good, goods, better: String(p.better || '').slice(0, 500), bed: t(p.bed), wake: t(p.wake), routine, routinePaid: Math.max(paid, routine.length) };
   if (first) {
     changeVit(s, 5, 'Descansaste en la posada', today, ev);
     gainXP(s, 'emocional', 10, today, ev);
   }
+  // Tres cosas buenas: +5 de Temple una vez al día (también cuenta si las anotas en el diario).
+  if (goods.length) {
+    const d = getDay(s, today);
+    if (!d.mind || typeof d.mind !== 'object') d.mind = {};
+    if (!d.mind.gratitude) { d.mind.gratitude = true; gainXP(s, 'emocional', 5, today, ev); }
+  }
+  // La intención de hoy: ¿la cumpliste?
+  if (p.intent && s.mind && s.mind.intents && s.mind.intents[today]) {
+    const it = s.mind.intents[today];
+    const was = it.done;
+    it.done = ['si', 'parte', 'no'].includes(p.intent) ? p.intent : null;
+    if (it.done === 'si' && was !== 'si') gainXP(s, 'emocional', 5, today, ev);
+  }
+  autoCheck(s, today, ev);
   // Cada paso de la rutina para dormir suma +2 XP de Vigor (una vez por paso al día).
   if (routine.length > paid) gainXP(s, 'salud', 2 * (routine.length - paid), today, ev);
 
@@ -2534,6 +2565,13 @@ export const ACHIEVEMENTS = [
   } },
   { id: 'tarjeta3', icon: 'card', title: 'Tarjeta sin intereses', desc: 'Paga el estado completo de tu tarjeta a tiempo 3 veces.', test: (s) => ((s.money && s.money.accounts) || []).reduce((a, x) => a + Object.keys(x.paidCuts || {}).length, 0) >= 3 },
   { id: 'palabras10', icon: 'book', title: 'Buen vocabulario', desc: 'Usa 10 palabras del día.', test: (s) => Object.keys(s.wordLog || {}).length >= 10 },
+  { id: 'calma7', icon: 'sparkle', title: 'Mente serena', desc: 'Una pausa de calma 7 días seguidos.', test: (s) => !!s.mind && bestCalmStreak(s) >= 7 },
+  { id: 'calma300', icon: 'clock', title: 'Trescientos minutos', desc: 'Suma 300 minutos de calma.', test: (s) => !!s.mind && s.mind.calm.reduce((a, x) => a + x.minutes, 0) >= 300 },
+  { id: 'programa7', icon: 'map', title: 'Primeros siete días', desc: 'Completa «Siete días para empezar».', test: (s) => !!s.mind && Object.keys((s.mind.program || {})[PROGRAM.id] || {}).length >= PROGRAM.days.length },
+  { id: 'emociones25', icon: 'face', title: 'Vocabulario emocional', desc: 'Nombra 25 emociones distintas.', test: (s) => distinctEmotions(s) >= 25 },
+  { id: 'diario10', icon: 'book', title: 'Diario vivo', desc: 'Escribe en tu diario 10 días distintos.', test: (s) => journalDays(s) >= 10 },
+  { id: 'gratitud21', icon: 'heart', title: 'Ojos agradecidos', desc: 'Anota 21 cosas buenas.', test: (s) => goodThings(s) >= 21 },
+  { id: 'rueda', icon: 'target', title: 'Mapa de tu vida', desc: 'Completa tu primera rueda de la vida.', test: (s) => !!s.mind && s.mind.wheel.length >= 1 },
 ];
 
 export function checkAchievements(s, today, ev) {
