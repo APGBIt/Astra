@@ -27,7 +27,7 @@ Tu vida en modo juego de rol. App web instalable (y futura APK) para crecer en s
     - un check-in de ánimo, si lo activas.
   - Cada tipo se activa por separado. Eliges la hora de la mañana, la tarde y la noche, y tus horas de silencio.
   - Llegan a su hora mientras Astra está abierta o en segundo plano. En Android, con la app instalada, el sistema la despierta cada pocas horas para mostrar lo que toca. No funcionan dentro de la vista de Claude.
-- **Más categorías de finanzas** (64 en total):
+- **Más categorías de finanzas** (67 en total):
   - café y antojos, delivery, bebidas y tabaco;
   - gas de cocina, botellones de agua, inversor y planta, muebles y electrodomésticos;
   - farmacia, terapia, cursos, libros, hijos, pasatiempos, lotería y apuestas;
