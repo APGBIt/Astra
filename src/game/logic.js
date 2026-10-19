@@ -1483,19 +1483,28 @@ export function tagTotal(s, tag) {
 // ¿Ya está? Mismo número de referencia, o mismo día, moneda, monto y comercio.
 // El comercio se compara «a lo largo»: «WENDYS 12 PLAZA» y «Wendy's Plaza» son el mismo.
 const looseName = (m) => norm(m).replace(/[^a-z]/g, '').slice(0, 6);
+// Los números de aprobación de las tarjetas se repiten con el tiempo: el mismo número solo cuenta como
+// el mismo movimiento si es de días cercanos.
 export function findDuplicate(s, it, pool = s.money.tx) {
   const ref = String(it.ref || '');
   const cur = it.currency === 'USD' ? 'USD' : 'DOP';
   const amt = r2(Math.abs(Number(it.amount) || 0));
   const mk = looseName(it.merchant || '');
-  return pool.find((t) => (ref && t.ref === ref)
+  const near = (d) => !it.day || !d || Math.abs(diffDays(d, it.day)) <= 3;
+  return pool.find((t) => (ref && t.ref === ref && near(t.day))
     || (t.day === it.day && txCur(t) === cur && Math.abs(txOrig(t) - amt) < 0.005
       && ((it.time && t.time && it.time === t.time) || !mk || !looseName(t.merchant) || looseName(t.merchant) === mk))) || null;
 }
 
-// Busca una cuenta conocida (por banco y últimos 4) o la crea.
+// Busca una cuenta conocida (por banco y últimos 4) o la crea. «efectivo» es tu efectivo (se crea si no está).
 export function resolveAccount(s, desc) {
   if (!desc) return '';
+  if (desc === 'efectivo') {
+    const cash = s.money.accounts.find((a) => a.kind === 'efectivo');
+    if (cash) return cash.id;
+    const a = addAccount(s, { name: 'Efectivo', kind: 'efectivo', currency: 'DOP' });
+    return a ? a.id : '';
+  }
   if (typeof desc === 'string') return accountOf(s, desc) ? desc : '';
   const last4 = last4Of(desc.last4);
   const hit = s.money.accounts.find((a) => (desc.id && a.id === desc.id) || (last4 && a.last4 === last4 && (!desc.bank || !a.bank || norm(a.bank) === norm(desc.bank))));
@@ -1520,8 +1529,9 @@ export function importTxs(s, pack, today, ev) {
   for (const it of pack.items || []) {
     if (it.on === false) continue;
     if (findDuplicate(s, it)) { skipped += 1; continue; }
-    const account = typeof it.account === 'string' ? accMap[it.account] || (accountOf(s, it.account) ? it.account : '') : resolveAccount(s, it.account);
-    const to = !it.to ? '' : typeof it.to === 'string' ? accMap[it.to] || (accountOf(s, it.to) ? it.to : '') : resolveAccount(s, it.to);
+    const ref = (x) => (!x ? '' : x === 'efectivo' ? resolveAccount(s, x) : typeof x === 'string' ? accMap[x] || (accountOf(s, x) ? x : '') : resolveAccount(s, x));
+    const account = ref(it.account);
+    const to = ref(it.to);
     const tx = addTx(s, {
       type: it.kind, amount: it.amount, currency: it.currency, rate: it.rate || (pack.rates && pack.rates[it.day]), cat: it.cat, merchant: it.merchant, note: it.note,
       day: it.day, time: it.time, account, to, tag: it.tag, ref: it.ref, batch, source: it.source || pack.source || 'importado',
@@ -1540,6 +1550,14 @@ export function undoImport(s, batch) {
   const before = s.money.tx.length;
   s.money.tx = s.money.tx.filter((t) => t.batch !== batch);
   if (s.money.lastImport && s.money.lastImport.batch === batch) {
+    // Los saldos que se cuadraron con el banco vuelven a como estaban.
+    for (const x of s.money.lastImport.anchors || []) {
+      const a = accountOf(s, x.id);
+      if (!a) continue;
+      a.base = x.base || null;
+      a.bankAvail = x.bankAvail || null;
+      if (x.limit !== undefined) a.limit = x.limit;
+    }
     // Las cuentas que creó esa importación se quitan si ya no tienen movimientos.
     const made = new Set(s.money.lastImport.accounts || []);
     const used = new Set(s.money.tx.flatMap((t) => [t.account, t.to]));

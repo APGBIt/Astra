@@ -321,10 +321,10 @@ test('pagos que se repiten: uno por mes, monto y día parecidos; el súper de ca
 test('«pagué … a la tarjeta»: la tarjeta por sus últimos 4, su nombre o la única que hay', () => {
   const s = fresh();
   assert.equal(M.cardForText(s, 'pagué 5000 a la tarjeta'), null);
-  const visa = L.addAccount(s, { name: 'Visa APAP', kind: 'tarjeta', bank: 'APAP', last4: '2899' });
+  const visa = L.addAccount(s, { name: 'Visa APAP', kind: 'tarjeta', bank: 'APAP', last4: '4417' });
   assert.equal(M.cardForText(s, 'pagué 5000 a la tarjeta').id, visa.id);
-  const mc = L.addAccount(s, { name: 'Mastercard Popular', kind: 'tarjeta', bank: 'Popular', last4: '3108' });
+  const mc = L.addAccount(s, { name: 'Mastercard Popular', kind: 'tarjeta', bank: 'Popular', last4: '7731' });
   assert.equal(M.cardForText(s, 'pagué 5000 a la tarjeta'), null); // dos tarjetas: no adivina
   assert.equal(M.cardForText(s, 'pagué 5000 a la tarjeta del popular').id, mc.id);
-  assert.equal(M.cardForText(s, 'abono de 3000 a la 2899').id, visa.id);
+  assert.equal(M.cardForText(s, 'abono de 3000 a la 4417').id, visa.id);
 });

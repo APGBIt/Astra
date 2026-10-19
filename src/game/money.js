@@ -73,12 +73,20 @@ export function txLegs(s, t) {
 }
 
 // ¿Cuenta este movimiento? Lo anterior al saldo que anotaste ya está dentro de ese saldo.
-function counts(a, t) {
-  const b = a.base;
+// Cada moneda puede tener su propio momento (`base.by.USD`): lo que dijo el banco de cada una.
+export function anchorOf(a, c) {
+  const b = a && a.base;
+  if (!b) return null;
+  return (b.by && b.by[c]) || b;
+}
+export function afterAnchor(b, t) {
   if (!b || !isDay(b.day)) return true;
   if (t.day !== b.day) return t.day > b.day;
   if (t.time && b.time) return t.time > b.time;
   return (Number(t.created) || 0) > (Number(b.at) || 0);
+}
+function counts(a, t, c) {
+  return afterAnchor(anchorOf(a, c), t);
 }
 
 // Saldo de cada cuenta: { id: { DOP, USD } }. En una tarjeta, negativo = lo que debes.
@@ -91,7 +99,7 @@ export function balances(s) {
   for (const t of s.money.tx) {
     for (const [id, c, v] of txLegs(s, t)) {
       const a = accountOf(s, id);
-      if (a && counts(a, t)) out[id][c] = r2(out[id][c] + v);
+      if (a && counts(a, t, c)) out[id][c] = r2(out[id][c] + v);
     }
   }
   return out;
@@ -119,7 +127,15 @@ export function moneyTotals(s, today, bal = null) {
   }
   const haveDOP = have.DOP + have.USD * rate;
   const oweDOP = owe.DOP + owe.USD * rate;
+  const credit = zero();
+  let creditKnown = false;
+  for (const a of s.money.accounts) {
+    if (!isCard(a) || a.hidden) continue;
+    const ci = cardInfo(s, a, today, b);
+    for (const c of CURS) if (ci.avail[c] != null) { credit[c] += Math.max(0, ci.avail[c]); creditKnown = true; }
+  }
   return {
+    credit: creditKnown ? { DOP: r2(credit.DOP), USD: r2(credit.USD) } : null,
     have: { DOP: r2(have.DOP), USD: r2(have.USD) }, owe: { DOP: r2(owe.DOP), USD: r2(owe.USD) },
     haveDOP: r2(haveDOP), oweDOP: r2(oweDOP), net: r2(haveDOP - oweDOP), liquid: r2(liquid), savings: r2(savings), rate,
     ready: s.money.accounts.some((a) => a.base),
@@ -130,14 +146,59 @@ const hm = (now) => { const d = new Date(now); return `${String(d.getHours()).pa
 
 // «Mi saldo de hoy es…»: guarda el saldo de este momento; lo que registres después se suma o se resta.
 // En una tarjeta se pasa lo que debes (positivo) y se guarda como saldo negativo.
-export function setAccountBalance(s, id, amounts, today, now = Date.now()) {
+// `when` (opcional): { day, time } de otro momento, como la fecha de un estado de cuenta.
+export function setAccountBalance(s, id, amounts, today, now = Date.now(), when = null) {
   const a = accountOf(s, id);
   if (!a) return null;
   const v = (c) => r2(Math.abs(Number(amounts[c]) || 0));
+  const day = when && isDay(when.day) ? when.day : today;
+  const time = when ? when.time || '' : hm(now);
   a.base = isCard(a)
-    ? { day: today, at: now, time: hm(now), DOP: -v('DOP'), USD: -v('USD') }
-    : { day: today, at: now, time: hm(now), DOP: accountCur(a) === 'DOP' ? r2(Number(amounts.DOP) || 0) : 0, USD: accountCur(a) === 'USD' ? r2(Number(amounts.USD) || 0) : 0 };
+    ? { day, at: now, time, DOP: -v('DOP'), USD: -v('USD') }
+    : { day, at: now, time, DOP: accountCur(a) === 'DOP' ? r2(Number(amounts.DOP) || 0) : 0, USD: accountCur(a) === 'USD' ? r2(Number(amounts.USD) || 0) : 0 };
   return a;
+}
+
+// Lo que dice el banco que tienes disponible (en una tarjeta, el crédito disponible) en un momento dado.
+// En una cuenta, ese es su saldo. En una tarjeta con límite, lo que debes = límite − disponible.
+// Sin límite se guarda igual y el disponible de hoy se calcula con los movimientos que vinieron después.
+// Devuelve 'balance' (ajustó el saldo), 'card' (ajustó la deuda), 'avail' (solo guardó el disponible) u '' (más viejo que lo que ya había).
+export function setAvailable(s, id, { currency = 'DOP', amount, day, time = '', limit = null, source = '' }, today, now = Date.now()) {
+  const a = moneyAccount(s, id);
+  if (!a || !isDay(day) || !Number.isFinite(Number(amount))) return '';
+  const c = currency === 'USD' ? 'USD' : 'DOP';
+  const when = { day, time };
+  const newer = (b) => !b || day > b.day || (day === b.day && (time || '') >= (b.time || ''));
+  if (!isCard(a)) {
+    if (accountCur(a) !== c || !newer(a.base)) return '';
+    setAccountBalance(s, a.id, { [c]: Number(amount) }, today, now, when);
+    a.base.src = String(source || '').slice(0, 80);
+    return 'balance';
+  }
+  if (!a.bankAvail || typeof a.bankAvail !== 'object') a.bankAvail = {};
+  if (a.bankAvail[c] && !newer(a.bankAvail[c])) return '';
+  a.bankAvail[c] = { amount: r2(amount), day, time, src: String(source || '').slice(0, 80) };
+  if (Number(limit) > 0) a.limit = { ...(a.limit || { DOP: 0, USD: 0 }), [c]: r2(limit) };
+  const lim = Number(a.limit && a.limit[c]) || 0;
+  if (!(lim > 0)) return 'avail';
+  const owed = r2(Math.max(0, lim - Number(amount)));
+  if (!a.base) a.base = { day, time, at: now, DOP: 0, USD: 0 };
+  if (!a.base.by) a.base.by = {};
+  a.base[c] = -owed;
+  a.base.by[c] = { day, time, at: now };
+  return 'card';
+}
+
+// Disponible de hoy a partir de lo último que dijo el banco y lo que pasó después (sin conocer el límite).
+function availFromBank(s, a, c) {
+  const ref = a.bankAvail && a.bankAvail[c];
+  if (!ref) return null;
+  let v = Number(ref.amount) || 0;
+  for (const t of s.money.tx) {
+    if (!afterAnchor(ref, t)) continue;
+    for (const [id, cc, d] of txLegs(s, t)) if (id === a.id && cc === c) v += d;
+  }
+  return r2(v);
 }
 
 // ----- Tarjetas de crédito: corte, pago y estado -----
@@ -174,10 +235,13 @@ export function cardInfo(s, a, today, bal = null) {
   const owed = { DOP: pos(-b.DOP), USD: pos(-b.USD) };
   const favor = { DOP: pos(b.DOP), USD: pos(b.USD) };
   const limit = { DOP: Number(a.limit && a.limit.DOP) || 0, USD: Number(a.limit && a.limit.USD) || 0 };
-  const avail = { DOP: limit.DOP ? r2(limit.DOP - owed.DOP) : null, USD: limit.USD ? r2(limit.USD - owed.USD) : null };
+  const avail = {
+    DOP: limit.DOP ? r2(limit.DOP - owed.DOP) : availFromBank(s, a, 'DOP'),
+    USD: limit.USD ? r2(limit.USD - owed.USD) : availFromBank(s, a, 'USD'),
+  };
   const use = Math.max(limit.DOP ? owed.DOP / limit.DOP : 0, limit.USD ? owed.USD / limit.USD : 0);
   const cycle = cardCycle(a, today);
-  const info = { a, owed, favor, limit, avail, use, cycle, since: zero(), paid: zero(), stmt: zero(), toPay: zero(), min: null, estimated: false, status: 'nocut', daysToDue: null };
+  const info = { a, owed, favor, limit, avail, use, cycle, bank: a.bankAvail || {}, since: zero(), paid: zero(), stmt: zero(), toPay: zero(), min: null, estimated: false, status: 'nocut', daysToDue: null };
   if (!cycle) return info;
   const after = zero();
   for (const t of s.money.tx) {
@@ -709,6 +773,7 @@ export function ensureMoneyPlus(s) {
   }
   if (!m.budgetHist || typeof m.budgetHist !== 'object' || Array.isArray(m.budgetHist)) m.budgetHist = {};
   if (!Array.isArray(m.recurNo)) m.recurNo = [];
+  if (!m.importFormats || typeof m.importFormats !== 'object' || Array.isArray(m.importFormats)) m.importFormats = {};
   for (const a of m.accounts) {
     if (a.kind !== 'tarjeta') a.currency = a.currency === 'USD' ? 'USD' : 'DOP';
     else {
@@ -718,6 +783,7 @@ export function ensureMoneyPlus(s) {
       if (!a.paidCuts || typeof a.paidCuts !== 'object') a.paidCuts = {};
     }
     if (a.base && (typeof a.base !== 'object' || !isDay(a.base.day))) a.base = null;
+    if (a.bankAvail && (typeof a.bankAvail !== 'object' || Array.isArray(a.bankAvail))) a.bankAvail = null;
   }
   // Pagos de tarjeta y retiros de antes: se busca a dónde fue el dinero.
   for (const t of m.tx) {

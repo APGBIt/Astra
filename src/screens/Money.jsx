@@ -7,8 +7,9 @@ import { accountOf, accountLabel, addAccount, updateAccount, removeAccount, catO
 import {
   balances, moneyTotals, cardInfo, isCard, accountCur, ownsBalance, setAccountBalance, setCardStatement, untilPayday, dueItems,
   forecast, monthPlan, budgetRows, planDates, addPlan, updatePlan, removePlan, skipPlanDate, unmarkPlanDate, isFundPlan, isMonthly,
-  fundInfo, addToFund, setRollover, carryFor, planFreqLabel, recurringSuggestions, dismissRecurring,
+  fundInfo, addToFund, setRollover, carryFor, planFreqLabel, recurringSuggestions, dismissRecurring, setAvailable, spentByMonth, budgetFor,
 } from '../game/money.js';
+import { monthProjection, budgetPace, budgetSuggestions, split503020, prevMonth, monthShort } from '../game/stats.js';
 import { ACCOUNT_KINDS, PLAN_TEMPLATES } from '../game/content.js';
 import { toNumber } from '../game/parse.js';
 import { CatPicker } from '../ui/catpicker.jsx';
@@ -89,6 +90,11 @@ export function MoneyOverview({ s, today, setSheet, setTab }) {
               </button>
             )}
             <div class="lrow" style={{ minHeight: 48 }}><span class="grow semi">Neto</span><span class="strong tab-num" style={{ color: t.net < 0 ? 'var(--vit-ink)' : 'var(--ink)' }}>{money(t.net)}</span></div>
+            {t.credit && (t.credit.DOP > 0 || t.credit.USD > 0) && (
+              <button type="button" class="lrow" style={{ minHeight: 48 }} onClick={() => setTab('cuentas')}>
+                <span class="stack-xs grow" style={{ gap: 0 }}><span class="semi">Crédito disponible</span><span class="tiny muted semi">En tus tarjetas: no es dinero tuyo</span></span><Amt o={t.credit} /><Icon name="right" size={16} />
+              </button>
+            )}
           </div>
         </section>
       ) : (
@@ -106,6 +112,8 @@ export function MoneyOverview({ s, today, setSheet, setTab }) {
         </button>
       )}
 
+      <ProjectionCard s={s} today={today} onMore={() => setTab('analisis')} />
+
       <section class="card flush" aria-label="Por pagar">
         <div class="between-c" style={{ padding: '14px 0 4px' }}>
           <h2 class="h2">Por pagar y cobrar</h2>
@@ -121,6 +129,36 @@ export function MoneyOverview({ s, today, setSheet, setTab }) {
         {!(s.money.plans || []).length && <button type="button" class="lrow" style={{ justifyContent: 'center', fontWeight: 700, color: 'var(--ink)' }} onClick={() => setSheet({ kind: 'plan', tpl: null, planKind: 'gasto' })}><Icon name="plus" size={18} />Agregar un pago fijo</button>}
       </section>
     </>
+  );
+}
+
+// Proyección del mes: lo gastado, lo que falta pagar y tu gasto diario por los días que quedan.
+function ProjectionCard({ s, today, onMore }) {
+  const pr = monthProjection(s, today);
+  if (!(pr.spent > 0) && !(pr.toPay > 0)) return null;
+  const base = Math.max(pr.projected, pr.projIncome, 1);
+  return (
+    <section class="card" aria-label="Proyección del mes">
+      <div class="between-c"><span class="eyebrow">Este mes, a este ritmo</span><span class="chip sm">Quedan {plural(pr.left, 'día', 'días')}</span></div>
+      <span class="stack-xs">
+        <span class="small semi muted">Gastarías en total</span>
+        <span class="display-num tab-num" style={{ fontSize: 30 }}>{money(Math.round(pr.projected))}</span>
+      </span>
+      <div class="proj-bar" role="img" aria-label={`Llevas ${money(pr.spent)}; faltan ${money(pr.toPay)} programados y unos ${money(pr.daily * pr.left)} del día a día${pr.projIncome ? `; entran ${money(pr.projIncome)}` : ''}.`}>
+        <i class="pb-spent" style={{ width: `${(pr.spent / base) * 100}%` }} />
+        <i class="pb-fixed" style={{ width: `${(pr.toPay / base) * 100}%` }} />
+        <i class="pb-daily" style={{ width: `${((pr.daily * pr.left) / base) * 100}%` }} />
+        {pr.projIncome > 0 && <b style={{ left: `${Math.min(100, (pr.projIncome / base) * 100)}%` }} />}
+      </div>
+      <div class="legend">
+        <span><i class="sw pb-spent" />Llevas {money(Math.round(pr.spent))}</span>
+        {pr.toPay > 0 && <span><i class="sw pb-fixed" />Programado {money(Math.round(pr.toPay))}</span>}
+        {pr.left > 0 && <span><i class="sw pb-daily" />Día a día {money(Math.round(pr.daily * pr.left))}</span>}
+        {pr.projIncome > 0 && <span><i class="sw mark" />Ingresos {money(Math.round(pr.projIncome))}</span>}
+      </div>
+      {pr.projIncome > 0 && <span class="small strong" style={{ color: pr.projNet < 0 ? 'var(--vit-ink)' : 'var(--finanzas-ink)' }}>{pr.projNet >= 0 ? `Te quedarían unos ${money(Math.round(pr.projNet))}.` : pr.daily + pr.projNet / Math.max(1, pr.left) > 0 ? `Te faltarían unos ${money(Math.round(-pr.projNet))}: para cuadrar, gasta hasta ${money(Math.round(pr.daily + pr.projNet / Math.max(1, pr.left)))} por día.` : `Te faltarían unos ${money(Math.round(-pr.projNet))}, aunque no gastes nada más: revisa lo programado.`}</span>}
+      <button type="button" class="link-btn" style={{ alignSelf: 'flex-start', minHeight: 32 }} onClick={onMore}><Icon name="chart" size={15} />Ver el análisis</button>
+    </section>
   );
 }
 
@@ -260,9 +298,11 @@ export function CardSheet({ s, id, onClose, onPay, onMovements }) {
   const [showStmt, setShowStmt] = useState(false);
   const [showCfg, setShowCfg] = useState(!a || !a.cut);
   const [showOwed, setShowOwed] = useState(false);
+  const [showAvail, setShowAvail] = useState(false);
   if (!a) return null;
   const ci = cardInfo(s, a, today);
   const cy = ci.cycle;
+  const bankLine = (c) => ci.bank && ci.bank[c] ? `Según el banco: ${cur(ci.bank[c].amount, c)} disponibles el ${fmtShort(ci.bank[c].day)}${ci.bank[c].time ? ` a las ${ci.bank[c].time}` : ''}.` : '';
   return (
     <Sheet onClose={onClose} label={accountLabel(a)}>
       <SheetHead title={accountLabel(a)} onClose={onClose} />
@@ -281,7 +321,15 @@ export function CardSheet({ s, id, onClose, onPay, onMovements }) {
             {ci.use > 0.3 && <span class="small" style={{ color: 'var(--xp-ink)' }}>Usas el {Math.round(ci.use * 100)} % de tu límite. Lo sano es quedarte por debajo del 30 %.</span>}
           </>
         )}
-        <button type="button" class="link-btn" style={{ alignSelf: 'flex-start', minHeight: 32 }} onClick={() => setShowOwed(!showOwed)}><Icon name="edit" size={15} />{a.base ? 'Corregir lo que debes' : 'Poner lo que debes hoy'}</button>
+        {['DOP', 'USD'].filter((c) => !(ci.limit[c] > 0) && ci.avail[c] != null).map((c) => (
+          <span key={c} class="small muted tab-num">Disponible hoy: <b style={{ color: 'var(--ink)' }}>{cur(ci.avail[c], c)}</b> (lo que dijo el banco y lo que compraste o pagaste después). Pon el límite para saber cuánto debes.</span>
+        ))}
+        {['DOP', 'USD'].map((c) => bankLine(c)).filter(Boolean).map((t) => <span key={t} class="tiny muted semi">{t}</span>)}
+        <div class="row wrap" style={{ gap: 14 }}>
+          <button type="button" class="link-btn" style={{ minHeight: 32 }} onClick={() => { setShowAvail(!showAvail); setShowOwed(false); }}><Icon name="bank" size={15} />Cuadrar con el banco</button>
+          <button type="button" class="link-btn" style={{ minHeight: 32 }} onClick={() => { setShowOwed(!showOwed); setShowAvail(false); }}><Icon name="edit" size={15} />{a.base ? 'Corregir lo que debes' : 'Poner lo que debes hoy'}</button>
+        </div>
+        {showAvail && <AvailForm a={a} ci={ci} onDone={() => setShowAvail(false)} />}
         {showOwed && <OwedForm a={a} owed={ci.owed} onDone={() => setShowOwed(false)} />}
       </section>
 
@@ -340,6 +388,38 @@ function OwedForm({ a, owed, onDone }) {
         <div class="field"><label for="ow-u">En dólares</label><div class="numrow"><span class="unit">US$</span><input id="ow-u" class="input" inputMode="decimal" value={us} placeholder="0" onInput={(e) => setUs(e.currentTarget.value)} /></div></div>
       </div>
       <button type="button" class="btn sm" onClick={() => { act((st, t) => setAccountBalance(st, a.id, { DOP: num(dop), USD: num(us) }, t)); toast('Listo: desde hoy lo calculo con tus movimientos', 'check'); onDone(); }}><Icon name="check" size={17} />Guardar</button>
+    </div>
+  );
+}
+
+// Lo que dice hoy la app del banco: crédito disponible (y el límite). Con eso calculo lo que debes.
+function AvailForm({ a, ci, onDone }) {
+  const [v, setV] = useState({ DOP: '', USD: '', limD: ci.limit.DOP ? String(ci.limit.DOP) : '', limU: ci.limit.USD ? String(ci.limit.USD) : '' });
+  const set = (k) => (e) => setV({ ...v, [k]: e.currentTarget.value });
+  const has = (x) => String(x).trim() !== '';
+  const ok = has(v.DOP) || has(v.USD);
+  const save = () => {
+    const res = act((st, t) => {
+      const now = new Date();
+      const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const out = [];
+      if (has(v.DOP)) out.push(setAvailable(st, a.id, { currency: 'DOP', amount: num(v.DOP), day: t, time, limit: num(v.limD) || null, source: 'Lo que dice tu banco' }, t));
+      if (has(v.USD)) out.push(setAvailable(st, a.id, { currency: 'USD', amount: num(v.USD), day: t, time, limit: num(v.limU) || null, source: 'Lo que dice tu banco' }, t));
+      return out;
+    });
+    toast(res.includes('card') ? 'Listo: calculé lo que debes con tu límite' : 'Disponible guardado', 'check');
+    onDone();
+  };
+  return (
+    <div class="panel stack-sm">
+      <span class="small">Copia de la app o del estado de tu banco el <b>disponible</b> de hoy. Con el límite calculo lo que debes; desde aquí cada compra y cada pago lo mueve.</span>
+      <div class="grid2">
+        <div class="field"><label for="av-d">Disponible RD$</label><input id="av-d" class="input" inputMode="decimal" value={v.DOP} onInput={set('DOP')} placeholder="0" ref={focusOnMount} /></div>
+        <div class="field"><label for="av-u">Disponible US$</label><input id="av-u" class="input" inputMode="decimal" value={v.USD} onInput={set('USD')} placeholder="0" /></div>
+        <div class="field"><label for="av-ld">Límite RD$</label><input id="av-ld" class="input" inputMode="decimal" value={v.limD} onInput={set('limD')} placeholder="Opcional" /></div>
+        <div class="field"><label for="av-lu">Límite US$</label><input id="av-lu" class="input" inputMode="decimal" value={v.limU} onInput={set('limU')} placeholder="Opcional" /></div>
+      </div>
+      <button type="button" class="btn sm" disabled={!ok} onClick={save}><Icon name="check" size={17} />Guardar</button>
     </div>
   );
 }
@@ -485,7 +565,7 @@ export function AccountSheet({ s, id, onClose, onMovements }) {
         <section class="card" style={{ gap: 8 }}>
           <span class="small semi muted">Saldo</span>
           <span class="display-num tab-num" style={{ fontSize: 34, color: v < 0 ? 'var(--vit-ink)' : 'var(--ink)' }}>{cur(v, c)}</span>
-          <span class="small muted">{a.base ? `Pusiste el saldo el ${fmtDay(a.base.day, { weekdayName: false })}; lo demás sale de tus movimientos.` : 'Calculado con tus movimientos. Pon el saldo de hoy para que cuadre con tu banco.'}</span>
+          <span class="small muted">{a.base ? `${a.base.src ? `Según «${a.base.src}»` : 'Pusiste el saldo'} el ${fmtDay(a.base.day, { weekdayName: false })}${a.base.time ? ` a las ${a.base.time}` : ''}; lo demás sale de tus movimientos.` : 'Calculado con tus movimientos. Pon el saldo de hoy para que cuadre con tu banco.'}</span>
           <div class="field">
             <label for="bal">{a.base ? 'Corregir el saldo de hoy' : 'Saldo de hoy'}</label>
             <div class="numrow"><span class="unit">{c === 'USD' ? 'US$' : 'RD$'}</span><input id="bal" class="input" inputMode="decimal" value={val} placeholder={String(v)} onInput={(e) => setVal(e.currentTarget.value)} /></div>
@@ -586,16 +666,80 @@ export function PlanTab({ s, today, setSheet }) {
       </section>
 
       <section class="card" aria-label="Presupuestos">
-        <div class="between-c"><h2 class="h2">Presupuestos</h2><button type="button" class="link-btn" onClick={() => setSheet({ kind: 'budgets' })}>Asignar<Icon name="right" size={16} /></button></div>
+        <div class="between-c"><h2 class="h2">Presupuestos</h2><span class="row" style={{ gap: 14 }}><button type="button" class="link-btn" onClick={() => setSheet({ kind: 'suggest' })}><Icon name="sparkle" size={15} />Sugerir</button><button type="button" class="link-btn" onClick={() => setSheet({ kind: 'budgets' })}>Asignar<Icon name="right" size={16} /></button></span></div>
         {mp.income > 0 && (
           <span class="small semi" style={{ color: mp.unassigned < 0 ? 'var(--vit-ink)' : 'var(--muted)' }}>
             {mp.unassigned > 0 ? `Sin asignar: ${money(mp.unassigned)} de tus ingresos del mes.` : mp.unassigned < 0 ? `Asignaste ${money(-mp.unassigned)} más de lo que entra.` : 'Cada peso del mes tiene un trabajo.'}
           </span>
         )}
         {!rows.length && <span class="small muted">Ponle un tope a lo que más se te va (comida, salidas, compras) y te aviso al llegar al 80 %.</span>}
-        {rows.map((r) => <BudgetRow key={r.c.id} r={r} onOpen={() => setSheet({ kind: 'budgetcat', id: r.c.id })} />)}
+        {rows.map((r) => <BudgetRow key={r.c.id} r={r} today={today} onOpen={() => setSheet({ kind: 'budgetcat', id: r.c.id })} />)}
       </section>
+      <Split503020 s={s} mk={mk} />
     </>
+  );
+}
+
+// 50/30/20: lo que se fue en necesidades, en gustos y en ahorro o deudas, frente a lo que entró.
+function Split503020({ s, mk }) {
+  const sp = split503020(s, mk);
+  if (!(sp.income > 0)) return null;
+  const rows = [['necesidades', 'Necesidades', 0.5, 'Casa, comida del súper, transporte, salud, servicios'], ['gustos', 'Gustos', 0.3, 'Salidas, compras, viajes, suscripciones'], ['ahorro', 'Ahorro y deudas', 0.2, 'Ahorro, inversión y abonos a deudas']];
+  return (
+    <section class="card" aria-label="Regla 50/30/20">
+      <div class="between-c"><h2 class="h2">50/30/20</h2><span class="small muted">De {money(sp.income)} que entraron</span></div>
+      <span class="small muted">Una guía sencilla: la mitad para lo necesario, un 30 % para gustos y un 20 % para ahorrar o pagar deudas.</span>
+      {rows.map(([k, l, target, d]) => {
+        const v = sp[k];
+        const share = v / sp.income;
+        const off = k === 'ahorro' ? share < target - 0.05 : share > target + 0.05;
+        return (
+          <div key={k} class="stack-xs">
+            <span class="between-c"><span class="semi">{l}</span><span class="small strong tab-num">{Math.round(share * 100)} % <span class="muted semi">· meta {Math.round(target * 100)} %</span></span></span>
+            <span class="pace"><Bar value={Math.min(1, share)} size="lg" color="var(--finanzas)" /><b style={{ left: `${target * 100}%` }} title={`Meta ${Math.round(target * 100)} %`} /></span>
+            <span class="tiny muted semi">{money(v)} · {d}{off ? (k === 'ahorro' ? ' · por debajo de la meta' : ' · por encima de la meta') : ''}</span>
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+// Presupuestos sugeridos con tu promedio de los últimos meses.
+export function BudgetSuggestSheet({ s, onClose }) {
+  const today = s.energy.day;
+  const sug = budgetSuggestions(s, today);
+  const [on, setOn] = useState(() => Object.fromEntries(sug.rows.map((r) => [r.cat, !r.current])));
+  const [vals, setVals] = useState(() => Object.fromEntries(sug.rows.map((r) => [r.cat, String(r.suggested)])));
+  const picked = sug.rows.filter((r) => on[r.cat] && num(vals[r.cat]) > 0);
+  const total = picked.reduce((a, r) => a + num(vals[r.cat]), 0);
+  const apply = () => {
+    act((st, t) => { for (const r of picked) setBudget(st, r.cat, num(vals[r.cat]), t); });
+    toast(`${plural(picked.length, 'presupuesto listo', 'presupuestos listos')}`, 'check');
+    onClose();
+  };
+  return (
+    <Sheet onClose={onClose} label="Presupuestos sugeridos">
+      <SheetHead title="Sugerir presupuestos" onClose={onClose} />
+      {!sug.rows.length ? <span class="small muted">Necesito al menos un mes completo de gastos para sugerirte montos.</span> : (
+        <>
+          <span class="small muted">Con lo que gastaste en promedio {sug.months === 1 ? 'el mes pasado' : `en los últimos ${sug.months} meses`}, redondeado. Cámbialos si quieres gastar menos.</span>
+          <section class="card flush">
+            {sug.rows.map((r) => (
+              <div key={r.cat} class="lrow" style={{ minHeight: 64 }}>
+                <label class="check" style={{ margin: '-8px -4px -8px -8px' }}>
+                  <input type="checkbox" class="sr-only" checked={!!on[r.cat]} onChange={(e) => setOn({ ...on, [r.cat]: e.currentTarget.checked })} aria-label={`Usar el presupuesto de ${catName(s, r.cat)}`} />
+                  <span aria-hidden="true" style={on[r.cat] ? { background: 'var(--ink)', borderColor: 'var(--ink)', color: 'var(--on-ink)' } : null}>{on[r.cat] && <Icon name="check" size={16} stroke={2.8} />}</span>
+                </label>
+                <span class="stack-xs grow" style={{ minWidth: 0 }}><span class="semi clamp2" style={{ lineHeight: 1.25 }}>{catName(s, r.cat)}</span><span class="tiny muted semi">Promedio {money(r.avg)}{r.current ? ` · hoy tienes ${money(r.current)}` : ''}</span></span>
+                <div class="numrow" style={{ width: 112, flexShrink: 0, gap: 6 }}><span class="unit">RD$</span><input class="input tab-num" style={{ minWidth: 0, paddingLeft: 10, paddingRight: 10 }} inputMode="decimal" value={vals[r.cat]} aria-label={`Monto para ${catName(s, r.cat)}`} onInput={(e) => setVals({ ...vals, [r.cat]: e.currentTarget.value })} /></div>
+              </div>
+            ))}
+          </section>
+          <button type="button" class="btn block" disabled={!picked.length} onClick={apply}><Icon name="check" size={20} />Usar {plural(picked.length, 'presupuesto', 'presupuestos')} · {money(total)}</button>
+        </>
+      )}
+    </Sheet>
   );
 }
 
@@ -635,9 +779,16 @@ function PlanRow({ s, p, today, onOpen, onFund }) {
   );
 }
 
-function BudgetRow({ r, onOpen }) {
+// «RD$5,000 de RD$12,000 + RD$3,000 que sobró el mes pasado»
+function budgetLine(r) {
+  const extra = !r.carry ? '' : r.carry > 0 ? ` + ${money(r.carry)} que sobró el mes pasado` : ` − ${money(-r.carry)} que te pasaste el mes pasado`;
+  return `${money(r.spent)} de ${money(r.budget)}${extra}`;
+}
+
+function BudgetRow({ r, today, onOpen }) {
   const color = r.over ? 'var(--vit)' : r.pct >= 0.8 ? 'var(--xp)' : areaColor('finanzas');
   const pacePct = r.pace != null && r.avail > 0 ? Math.min(1, r.pace / r.avail) : null;
+  const bp = r.pace != null && today ? budgetPace(r, today) : null;
   return (
     <button type="button" class="stack-sm budget-row" onClick={onOpen} aria-label={`${r.c.name}: ${r.over ? `${money(-r.left)} de más` : `quedan ${money(r.left)}`}`}>
       <span class="between"><span class="strong" style={{ minWidth: 0 }}>{r.c.name}</span><span class="small strong" style={{ color: r.over ? 'var(--vit-ink)' : 'var(--muted)', whiteSpace: 'nowrap' }}>{r.over ? `${money(-r.left)} de más` : `Quedan ${money(r.left)}`}</span></span>
@@ -646,9 +797,10 @@ function BudgetRow({ r, onOpen }) {
         {pacePct != null && <b style={{ left: `${pacePct * 100}%` }} title="Lo esperado a hoy" />}
       </span>
       <span class="tiny muted semi tab-num">
-        {money(r.spent)} de {money(r.avail)}{r.carry ? ` (${r.carry > 0 ? '+' : '−'}${money(Math.abs(r.carry))} del mes pasado)` : ''}
+        {budgetLine(r)}
         {r.pace != null && !r.over ? (r.ahead > r.avail * 0.05 ? ` · vas ${money(Math.round(r.ahead))} por encima del ritmo` : ' · vas a buen ritmo') : ''}
       </span>
+      {bp && bp.over > r.avail * 0.05 && !r.over && <span class="tiny strong" style={{ color: 'var(--xp-ink)' }}>A este ritmo terminarías en {money(Math.round(bp.proj))}: {money(Math.round(bp.over))} de más.</span>}
     </button>
   );
 }
@@ -661,10 +813,37 @@ export function BudgetCatSheet({ s, id, onClose, onMovements }) {
   if (!c) return null;
   const r = budgetRows(s, monthKey(today), today).find((x) => x.c.id === id);
   const carry = carryFor(s, c, monthKey(today));
+  const sp = spentByMonth(s);
+  const months = [monthKey(today)];
+  while (months.length < 6) months.unshift(prevMonth(months[0]));
+  // La raya sale desde el primer mes en que pusiste este presupuesto (antes no lo sé).
+  const bh = s.money.budgetHist || {};
+  const since = Object.keys(bh).filter((k) => bh[k] && bh[k][id] != null).sort()[0] || monthKey(today);
+  const hist = months.map((m) => ({ m, v: (sp[m] && sp[m][id]) || 0, b: m >= since ? budgetFor(s, c, m) : 0 }));
+  const full = hist.slice(0, -1).filter((h) => h.v > 0);
+  const avg = full.length ? full.reduce((a, h) => a + h.v, 0) / full.length : 0;
+  const hmax = Math.max(...hist.map((h) => Math.max(h.v, h.b)), 1);
   return (
     <Sheet onClose={onClose} label={`Presupuesto de ${c.name}`}>
       <SheetHead title={c.name} onClose={onClose} />
-      {r && <span class="small muted tab-num">Este mes: {money(r.spent)} de {money(r.avail)}{r.pace != null ? ` · a hoy lo esperado era ${money(r.pace)}` : ''}.</span>}
+      {r && <span class="small muted tab-num">Este mes: {budgetLine(r)}{r.pace != null ? ` · a hoy lo esperado era ${money(r.pace)}` : ''}.</span>}
+      {hist.some((h) => h.v > 0) && (
+        <section class="card" aria-label={`Lo gastado en ${c.name} los últimos 6 meses`} style={{ gap: 8 }}>
+          <span class="small semi muted">Últimos 6 meses{avg ? ` · promedio ${money(Math.round(avg))}` : ''}</span>
+          <div class="bud-hist" role="img" aria-label={hist.map((h) => `${monthShort(h.m)}: ${money(h.v)}${h.b ? ` de ${money(h.b)}` : ''}`).join(', ')}>
+            {hist.map((h) => (
+              <div key={h.m} class="cb" title={`${monthShort(h.m)}: ${money(h.v)}${h.b ? ` de ${money(h.b)}` : ''}`}>
+                <span class="bh-col">
+                  {h.v > 0 && <i style={{ height: `${Math.max(3, (h.v / hmax) * 70)}px` }} />}
+                  {h.b > 0 && <b style={{ bottom: `${(h.b / hmax) * 70}px` }} />}
+                </span>
+                <span class="tiny muted semi" style={{ textTransform: 'capitalize' }}>{monthShort(h.m)}</span>
+              </div>
+            ))}
+          </div>
+          <span class="tiny muted">Barras: lo gastado. Raya: el presupuesto de ese mes.</span>
+        </section>
+      )}
       <div class="field">
         <label for="bud">Presupuesto de cada mes</label>
         <div class="numrow"><span class="unit">RD$</span><input id="bud" class="input" inputMode="decimal" value={val} placeholder="0" onInput={(e) => setVal(e.currentTarget.value)} ref={focusOnMount} /></div>

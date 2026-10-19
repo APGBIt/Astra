@@ -399,8 +399,21 @@ const MONTHS_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio
 const pad = (n) => String(n).padStart(2, '0');
 
 // «DL MINIMARKET / BAKERY #12» → «DL Minimarket / Bakery». Las siglas cortas se quedan en mayúsculas.
+const KNOWN_MERCHANTS = [
+  [/^ubr?\s*\*?\s*pending/i, 'Uber (retención)'], [/^uber\s*\*?\s*pending/i, 'Uber (retención)'], [/^uber\s*\*?\s*eats/i, 'Uber Eats'], [/^uber\b/i, 'Uber'],
+  [/^smart\s*fit/i, 'Smart Fit'], [/^netflix/i, 'Netflix'], [/^spotify/i, 'Spotify'], [/^(amazon|amzn)/i, 'Amazon'], [/^apple\.?com/i, 'Apple'], [/^paypal/i, 'PayPal'],
+  [/^google\s*\*?\s*youtube/i, 'YouTube'], [/^google\b/i, 'Google'], [/^didi\b/i, 'DiDi'], [/^pedidosya/i, 'PedidosYa'],
+];
+// Siglas que se escriben en mayúsculas aunque tengan vocales.
+const KEEP_UPPER = new Set(['ATM', 'ACH', 'APAP', 'BHD', 'LBTR', 'POS', 'USD', 'DOP', 'RD', 'SRL', 'EIRL', 'SA', 'ITBIS', 'DGII', 'TSS', 'AFP', 'ARS', 'CAASD', 'INFOTEP', 'UASD', 'INTEC', 'PUCMM', 'UNIBE', 'APEC', 'UTESA', 'UNPHU', 'BBQ', 'KFC', 'TV', 'VIP']);
 export function prettyMerchant(raw) {
-  let t = String(raw || '').replace(/\*/g, ' ').replace(/#\s*\d+/g, ' ').replace(/\s+/g, ' ').trim();
+  const known = KNOWN_MERCHANTS.find(([re]) => re.test(String(raw || '').trim()));
+  if (known) return known[1];
+  let t = String(raw || '')
+    .replace(/\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b/g, ' ') // teléfonos
+    .replace(/\b[\w.-]+\.(?:com|net|org)\b/gi, ' ') // direcciones web
+    .replace(/\s+(?:santo\s+domingo(?:do)?|sto\.?\s*dgo\.?|santiago(?:\s+de\s+los\s+caballeros)?|punta\s+cana|la\s+romana)\b.*$/i, '')
+    .replace(/\*/g, ' ').replace(/#\s*\d+/g, ' ').replace(/\s+/g, ' ').trim();
   // Números de sucursal («WENDYS 12 PLAZA», «STORE 101»), salvo que el nombre sea solo eso.
   const words = t.split(' ');
   if (words.length > 1) t = words.filter((w, i) => i === 0 || !/^\d{1,5}$/.test(w)).join(' ');
@@ -410,6 +423,7 @@ export function prettyMerchant(raw) {
   return t.split(' ').map((w, i) => {
     const lw = w.toLowerCase();
     if (i > 0 && small.has(lw)) return lw;
+    if (KEEP_UPPER.has(w.replace(/[.,]/g, ''))) return w;
     if (/^[A-Z]{2,3}$/.test(w) && !/[AEIOU]/.test(w)) return w;
     return lw.charAt(0).toUpperCase() + lw.slice(1);
   }).join(' ').slice(0, 60);
@@ -421,10 +435,15 @@ function personName(raw) {
 }
 
 // Valor de un campo «Etiqueta: valor» (también en tablas «| Etiqueta: | valor |» o en la línea siguiente).
+// Si el aviso viene en una sola línea, el valor termina donde empieza la etiqueta siguiente.
+const NEXT_LABEL = /\s(?:fecha(?: de transacci[oó]n)?|hora|moneda|monto|comercio|establecimiento|estado|balance disponible|n[uú]mero de (?:aprobaci[oó]n|transacci[oó]n|referencia)|origen|destino|impuestos?|transacci[oó]n|oficina de atenci[oó]n|cajero|cuenta(?: est[aá]ndar)?|s[ií]rvase pagar a|comentario|valor retirado en|monto comisi[oó]n)\s*:/i;
 function field(raw, label) {
   const re = new RegExp(`(?:^|[\\n|]|\\s)${label}\\s*:?[\\s|]*([^\\n|]+)`, 'i');
   const m = raw.match(re);
-  return m ? m[1].trim() : '';
+  if (!m) return '';
+  const v = m[1];
+  const stop = v.search(NEXT_LABEL);
+  return (stop > 0 ? v.slice(0, stop) : v).trim();
 }
 
 function dateIn(raw) {
@@ -434,7 +453,7 @@ function dateIn(raw) {
     const d = Number(m[1]); const mo = Number(m[2]);
     if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) return `${y}-${pad(mo)}-${pad(d)}`;
   }
-  m = norm(raw).match(/(\d{1,2}) de (enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)(?: de)? (\d{4})/);
+  m = norm(raw).match(/(\d{1,2}) de (enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)(?: del?)? (\d{4})/);
   if (m) return `${m[3]}-${pad(MONTHS_ES.indexOf(m[2]) + 1)}-${pad(m[1])}`;
   return null;
 }
@@ -453,7 +472,7 @@ function timeIn(raw) {
 // Corta un texto con varios avisos pegados en un aviso por pedazo.
 function splitAlerts(raw) {
   const starts = [];
-  const re = /(?:hola\s+[^,\n|]{2,60},|¡?\s*transacci[oó]n realizada\s*!?|¡?\s*pago realizado\s*!?|estimado cliente|comprobante de pago\b)/gi;
+  const re = /(?:hola\s+[^,\n|]{2,60},|¡?\s*transacci[oó]n realizada\s*!?|¡?\s*pago realizado\s*!?|estimado cliente|comprobante de pago\b|notificaci[oó]n de consumo\b|(?:tu|su) tarjeta\b[^.\n|]{0,80}?presenta (?:una transacci[oó]n|un consumo)|tu titular\b[^.\n|]{0,60}?ha recibido un pago)/gi;
   let m;
   while ((m = re.exec(raw))) {
     const prev = starts[starts.length - 1];
@@ -481,9 +500,9 @@ function accountIn(raw, t) {
     const type = /corriente/i.test(acc[0]) ? 'corriente' : 'ahorro';
     return { bank, kind: 'cuenta', last4: acc[3], name: `${type === 'corriente' ? 'Cuenta corriente' : 'Ahorro'}${bank ? ` ${bank}` : ''}` };
   }
-  const card = raw.match(/(?:tarjeta|titular|visa|mastercard|master|amex)[^.\n|]{0,60}?(?:terminada|terminaci[oó]n|que termina) en\s*\*?(\d{4})/i) || raw.match(/(?:visa|mastercard|master|amex)[^\n|]{0,30}?\*+\s*-?\s*(\d{4})/i);
+  const card = raw.match(/(?:tarjeta|titular|visa|mastercard|master|amex)[^.\n|]{0,60}?(?:terminada|terminaci[oó]n|que termina) en\s*\*?(\d{4})/i) || raw.match(/(?:visa|mastercard|master|amex)[^\n|]{0,40}?[*•·]+\s*-?\s*(\d{4})/i);
   if (card) {
-    const name = (raw.match(/(visa[^,\n|]*?|mastercard[^,\n|]*?|master[^,\n|]*?)\s+(?:apap\s+)?terminada/i) || [])[1];
+    const name = (raw.match(/(visa[^,\n|]*?|mastercard[^,\n|]*?|master[^,\n|]*?)\s+(?:apap\s+)?terminada/i) || raw.match(/((?:visa|mastercard|master|amex)[a-z0-9 ]{0,30}?)\s*[*•·]+\s*-?\s*\d{4}/i) || [])[1];
     const debit = /d[eé]bito/i.test(raw.slice(Math.max(0, card.index - 40), card.index + 40));
     const clean = String(name || 'Tarjeta').replace(/titular-?/i, '').trim();
     return { bank, kind: debit ? 'debito' : 'tarjeta', last4: card[1], name: prettyMerchant(`${clean}${bank && !clean.toLowerCase().includes(bank.toLowerCase()) ? ` ${bank}` : ''}`) };
@@ -530,11 +549,14 @@ function parseOne(raw) {
   const day = dateIn(raw);
   const time = timeIn(raw);
   const account = accountIn(raw, t);
-  const ref = (raw.match(/n[uú]mero de (?:transacci[oó]n|referencia)\s*:?[\s|]*(\d{6,})/i) || raw.match(/\breferencia\s*:?[\s|]*(\d{6,})/i) || [])[1] || '';
+  const ref = (raw.match(/n[uú]mero de (?:transacci[oó]n|referencia|aprobaci[oó]n)\s*:?[\s|]*(\d{4,})/i) || raw.match(/\b(?:referencia|aprobaci[oó]n|autorizaci[oó]n)\s*:?[\s|]*(\d{4,})/i) || [])[1] || '';
+  // Lo que el banco dice que queda disponible (APAP lo manda en cada aviso de la tarjeta).
+  const av = raw.match(/balance disponible\s*:?[\s|]*(RD\$|US\$|DOP|USD)\s*([\d.,]+\d)/i);
+  const avail = av ? { currency: /us/i.test(av[1]) ? 'USD' : 'DOP', amount: toNumber(av[2]) } : null;
   const tax = toNumber((raw.match(/impuestos?\s*:?[\s|]*(?:RD\$|DOP)?\s*([\d.,]*\d)/i) || [])[1] || '') || 0;
   const op = (raw.match(/(?:^|[\n|])\s*transacci[oó]n\s*:?[\s|]*([^\n|]{3,60})/i) || [])[1] || '';
   const opn = norm(op);
-  const base = { amount, currency, day, time, account, ref, tax: tax > 0 && tax < amount ? tax : 0 };
+  const base = { amount, currency, day, time, account, ref, avail, tax: tax > 0 && tax < amount ? tax : 0 };
   // Rechazadas: no se cobran.
   if (/(declinad|rechazad|fondos insuficientes|no aprobad|denegad)/.test(t)) {
     return { ...base, kind: 'declined', merchant: prettyMerchant(field(raw, 'Comercio')), why: 'Transacción declinada: no se cobró.' };
@@ -592,19 +614,45 @@ function parseOne(raw) {
 export function parseBankAlerts(text) {
   const raw = String(text || '');
   const out = [];
-  const seen = new Set();
+  const seen = new Map();
   for (const part of splitAlerts(raw)) {
     const it = parseOne(part);
     if (!it) continue;
-    const key = it.ref ? `r${it.ref}` : `${it.day}|${it.time}|${it.currency}|${it.amount}|${norm(it.merchant)}|${it.kind}`;
-    if (seen.has(key)) continue; // Banreservas envía el mismo aviso dos veces.
-    seen.add(key);
+    const end4 = (it.account && it.account.last4) || '';
+    const key = it.ref ? `r${end4}:${it.ref}` : `${it.day}|${it.time}|${it.currency}|${it.amount}|${norm(it.merchant)}|${it.kind}`;
+    // Banreservas envía a veces el mismo aviso dos veces: se queda uno y se anota la hora del repetido.
+    if (seen.has(key)) { const first = seen.get(key); if (it.time && it.time !== first.time) (first.again = first.again || []).push(it.time); continue; }
+    seen.set(key, it);
     out.push(it);
     if (it.tax && it.kind !== 'declined') {
       out.push({ kind: 'gasto', amount: it.tax, currency: 'DOP', day: it.day, time: it.time, account: it.account, ref: it.ref ? `${it.ref}-imp` : '', merchant: 'Impuesto a transferencias', cat: 'comisiones', note: `Impuesto de: ${it.merchant || 'la transacción'}`, tax: 0 });
     }
   }
-  return out;
+  return reviewHolds(out);
+}
+
+const isUber = (it) => /\bub(?:e)?r\b/i.test(it.merchant || '');
+const mins = (t) => { const [h, m] = String(t || '').split(':').map(Number); return h * 60 + m; };
+// Retenciones: Uber (y otros) primero retienen un monto y al final cobran el definitivo con otro número.
+// Se cuenta el cobro final; la retención y las que dicen «pending» quedan sin marcar, con una nota.
+export function reviewHolds(items) {
+  for (const it of items) {
+    if (it.kind === 'gasto' && /pending|retenci[oó]n/i.test(it.merchant || '')) {
+      it.on = false;
+      it.check = 'Retención temporal (pending): normalmente se libera. Márcala solo si te la cobraron.';
+    }
+  }
+  for (const it of items) {
+    if (it.kind !== 'gasto' || !it.again || !isUber(it) || it.on === false) continue;
+    const end4 = (it.account && it.account.last4) || '';
+    const fin = items.find((x) => x !== it && x.kind === 'gasto' && isUber(x) && x.day === it.day && ((x.account && x.account.last4) || '') === end4
+      && x.time > it.time && it.again.some((t) => Math.abs(mins(t) - mins(x.time)) <= 3) && !/pending|retenci[oó]n/i.test(x.merchant || ''));
+    if (!fin) continue;
+    it.on = false;
+    it.check = `Parece la retención inicial del viaje: a las ${fin.time} llegó el cobro final. Se cuenta solo ese.`;
+    if (!fin.check) fin.check = `Cobro final del viaje (la retención de las ${it.time} no se cuenta).`;
+  }
+  return items;
 }
 
 // Compatibilidad: el primer movimiento de un aviso, con la forma de la versión 1.

@@ -21,6 +21,8 @@ import {
   MoneyOverview, AccountsTab, PlanTab, CardSheet, AccountSheet, PlanSheet, DueSheet, FundSheet, BudgetCatSheet, payInitial, AccountForm,
 } from './Money.jsx';
 import { monthPlan, isCard } from '../game/money.js';
+import { Analysis } from './Stats.jsx';
+import { BudgetSuggestSheet } from './Money.jsx';
 
 const SRC_LABEL = { recibo: 'Recibo', alerta: 'Aviso del banco', voz: 'Registro rápido', manual: 'A mano', importado: 'Importado', correo: 'Correo del banco' };
 const KIND_LABEL = { gasto: 'Gasto', ingreso: 'Ingreso', transfer: 'Entre cuentas' };
@@ -47,7 +49,7 @@ const fxWhen = (s, today) => {
   return fx.day === today ? 'Hoy' : relDay(fx.day, today);
 };
 
-const TABS = [['resumen', 'Resumen'], ['cuentas', 'Cuentas'], ['plan', 'Plan'], ['movimientos', 'Movimientos']];
+const TABS = [['resumen', 'Resumen'], ['cuentas', 'Cuentas'], ['plan', 'Plan'], ['analisis', 'Análisis'], ['movimientos', 'Movimientos']];
 
 export function Finance({ query }) {
   const s = useApp();
@@ -65,10 +67,10 @@ export function Finance({ query }) {
   const imp = s.money.lastImport;
   const setTab = (t) => { setTabState(t); go(`/finanzas?tab=${t}`, { replace: true }); window.scrollTo(0, 0); };
   // Desde una cuenta, una tarjeta o un presupuesto: sus movimientos de este mes.
-  const showMovements = (account = null, cat = null) => {
+  const showMovements = (account = null, cat = null, month = null) => {
     setSheet(null);
     setFilter({ kind: 'all', cat, account, tag: null });
-    setMk(monthKey(today));
+    setMk(month || monthKey(today));
     setTab('movimientos');
   };
   const pay = (it) => setSheet(payInitial(s, it, today));
@@ -93,12 +95,13 @@ export function Finance({ query }) {
           <div class="note tone-good" role="status">
             <Icon name="check" size={20} />
             <span class="stack-sm grow">
-              <span>Agregaste {plural(imp.n, 'movimiento', 'movimientos')} de «{imp.label}».</span>
+              <span>{imp.n ? `Agregaste ${plural(imp.n, 'movimiento', 'movimientos')} de «${imp.label}».` : `Cuadraste tus saldos con «${imp.label}».`}{imp.n && imp.anchors && imp.anchors.length ? ` También cuadraste ${plural(imp.anchors.length, 'cuenta', 'cuentas')} con lo que dice el banco.` : ''}</span>
               <span class="row wrap" style={{ gap: 14 }}>
                 <button type="button" class="link-btn" style={{ color: 'inherit', minHeight: 32 }} onClick={async () => {
-                  if (!(await ask(`¿Quitar los ${imp.n} movimientos que agregaste de «${imp.label}»?`, { ok: 'Quitar', danger: true }))) return;
+                  const q = imp.n ? `¿Quitar los ${imp.n} movimientos que agregaste de «${imp.label}»?${imp.anchors && imp.anchors.length ? ' Los saldos vuelven a como estaban.' : ''}` : '¿Volver tus saldos a como estaban antes?';
+                  if (!(await ask(q, { ok: imp.n ? 'Quitar' : 'Volver', danger: true }))) return;
                   const n = act((st) => undoImport(st, imp.batch));
-                  toast(`Se quitaron ${plural(n, 'movimiento', 'movimientos')}`, 'undo');
+                  toast(imp.n ? `Se quitaron ${plural(n, 'movimiento', 'movimientos')}` : 'Los saldos volvieron a como estaban', 'undo');
                 }}><Icon name="undo" size={15} />Deshacer</button>
                 <button type="button" class="link-btn" style={{ color: 'inherit', minHeight: 32 }} onClick={() => act((st) => { st.money.lastImport = null; })}>Listo</button>
               </span>
@@ -129,12 +132,14 @@ export function Finance({ query }) {
         )}
         {tab === 'cuentas' && <AccountsTab s={s} today={today} setSheet={setSheet} />}
         {tab === 'plan' && <PlanTab s={s} today={today} setSheet={setSheet} />}
+        {tab === 'analisis' && <Analysis s={s} today={today} onCat={(cat, period) => showMovements(null, cat, period ? period.mks[period.mks.length - 1] : null)} />}
         {tab === 'movimientos' && <Movements s={s} today={today} mk={mk} setMk={setMk} filter={filter} setFilter={setFilter} setSheet={setSheet} />}
       </main>
       <Nav active="areas" fab={{ onClick: () => setSheet({ kind: 'tx' }), label: 'Nuevo movimiento' }} />
       {sheet && sheet.kind === 'tx' && <TxSheet key={sheet.tx ? sheet.tx.id : `nuevo-${sheet.link ? sheet.link.plan + sheet.link.date : sheet.to || ''}`} s={s} initial={sheet} tx={sheet.tx} onClose={() => setSheet(null)} />}
       {sheet && sheet.kind === 'alert' && <AlertSheet onClose={() => setSheet(null)} />}
       {sheet && sheet.kind === 'budgets' && <BudgetSheet s={s} rate={rate} onClose={() => setSheet(null)} />}
+      {sheet && sheet.kind === 'suggest' && <BudgetSuggestSheet s={s} onClose={() => setSheet(null)} />}
       {sheet && sheet.kind === 'budgetcat' && <BudgetCatSheet s={s} id={sheet.id} onClose={() => setSheet(null)} onMovements={showMovements} />}
       {sheet && sheet.kind === 'fx' && <FxSheet s={s} onClose={() => setSheet(null)} />}
       {sheet && sheet.kind === 'more' && <MoreSheet s={s} mk={mk} onPick={(k) => (k === 'accounts' ? (setSheet(null), setTab('cuentas')) : setSheet({ kind: k }))} onClose={() => setSheet(null)} />}
@@ -648,7 +653,7 @@ function csvOf(s, mk) {
 
 function MoreSheet({ s, mk, onPick, onClose }) {
   const items = [
-    ['download', 'Importar movimientos', 'De un archivo de Astra o de avisos del banco', () => { onClose(); go('/importar'); }],
+    ['download', 'Importar movimientos', 'Estado de cuenta en Excel o CSV, avisos del banco o un archivo de Astra', () => { onClose(); go('/importar'); }],
     ['tag', 'Categorías', `${catsOfType(s, 'gasto').length} de gastos y ${catsOfType(s, 'ingreso').length} de ingresos`, () => onPick('cats')],
     ['card', 'Cuentas y tarjetas', plural(s.money.accounts.length, 'cuenta', 'cuentas'), () => onPick('accounts')],
     ['swap', 'Dólares y pesos', `US$1 = ${rateText(fxRate(s, s.energy.day))}`, () => onPick('fx')],

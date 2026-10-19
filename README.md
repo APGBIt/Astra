@@ -2,6 +2,40 @@
 
 Tu vida en modo juego de rol. App web instalable (y futura APK) para crecer en seis áreas de la vida con barras de vitalidad y energía, caminos, misiones y jefes.
 
+## Novedades de la versión 1.7 (Finanzas: análisis, estados de cuenta y disponible)
+
+Ideas tomadas de Copilot (ritmo de gasto del mes), Monarch (flujo de caja), YNAB (tendencias de gasto) y Actual Budget (importar estados de cuenta con columnas que se eligen).
+
+- **Análisis** (pestaña nueva en Finanzas): este mes, el pasado, 3, 6 o 12 meses.
+  - Ingresos, gastos y cuánto guardaste.
+  - **Ritmo del mes** frente al mes anterior, con la línea de a dónde llegarías a este ritmo.
+  - **Ingresos y gastos** por mes con el porcentaje que guardaste.
+  - **Categorías frente a tu promedio** a esta altura del mes, comercios donde más gastas, calendario de cada día, días de la semana y con qué cuenta o tarjeta pagaste.
+  - Frases con lo que cambió.
+  - Todo tiene vista de tabla y colores pensados para daltonismo, en claro y oscuro.
+- **Este mes, a este ritmo** (en Resumen): lo que llevas, lo programado que falta y el día a día hasta fin de mes, frente a lo que entra; si no alcanza, cuánto puedes gastar por día para cuadrar.
+- **Disponible de cuentas y tarjetas**:
+  - «Cuadrar con el banco» pone el disponible que dice el banco.
+  - En una tarjeta con límite, Astra calcula lo que debes.
+  - En una tarjeta sin límite, lleva el disponible.
+  - Los avisos del banco que traen «balance disponible» lo ofrecen al importar.
+  - «Crédito disponible» aparece en el resumen.
+- **Importar estados de cuenta** en CSV o Excel (.xlsx o .xls de Banreservas, APAP y la mayoría de los bancos):
+  - Astra encuentra solas las columnas de fecha, descripción, débito, crédito, monto y balance; tú las cambias con vista previa.
+  - Entiende si las compras de la tarjeta vienen en positivo.
+  - Separa pagos de tarjeta, retiros, transferencias propias y comisiones.
+  - Usa el balance final como saldo de la cuenta y recuerda el formato para la próxima vez.
+  - El PDF no se puede leer: descárgalo en Excel o CSV desde la banca en línea.
+- **Archivo de revisión**: importa el Excel con tus movimientos revisados (columnas Incluir, Monto, Categoría, Cuenta…) y su hoja de saldos disponibles. En la revisión puedes cambiar el monto y la moneda de cada movimiento.
+- **Presupuestos**:
+  - «Sugerir» propone montos con tu promedio de los últimos 3 meses.
+  - Cada presupuesto muestra a dónde llegarías a este ritmo y su historial de 6 meses.
+  - Hay una guía 50/30/20 con lo que se fue en necesidades, gustos y ahorro.
+- **Avisos del banco más finos**:
+  - Un aviso repetido con el mismo número de aprobación se cuenta una vez.
+  - La retención de Uber se descarta cuando llega el cobro final.
+  - Los nombres de los comercios se limpian («UBER*RIDES SANTO DOMINGO» → «Uber»).
+
 ## Novedades de la versión 1.6 (Bienestar: calma, emociones, diario y crecimiento)
 
 Ideas tomadas de comparar How We Feel, Daylio, el registro de ánimo de Apple Salud, Bearable, Headspace, Calm, Insight Timer, Medito, Finch, Stoic, MindShift y Five Minute Journal. El contenido se apoya en prácticas con evidencia y funciona sin internet.
@@ -86,7 +120,7 @@ Ideas tomadas de comparar YNAB, Monarch, Copilot, Simplifi, PocketGuard, Rocket 
 - **Caminos y metas**: eliges hasta dos caminos y una meta (plantilla o propia). Se convierte en una campaña con capítulos, tareas y un **jefe final** con barra de vida.
 - **Misiones**: hábitos, tareas únicas y malos hábitos a evitar. Se agregan en una línea: la app sugiere atributo, costo de energía y XP. Algunas se completan solas (pasos, sueño, gastos, ánimo, contactos, enfoque).
 - **Registrar**: escribe o dicta lo que hiciste («gasté 850 en el súper y caminé 40 minutos») y la app lo convierte en registros.
-- **Finanzas**: saldo de cuentas y tarjetas, corte y pago de cada tarjeta, sueldo y pagos programados, lo que viene en los próximos días, plan del mes y presupuestos. Tres formas de registrar: recibo con IA (incluye RNC, e-NCF e ITBIS; lee el QR de facturas electrónicas), alerta del banco pegada y entrada manual o por voz.
+- **Finanzas**: saldo y disponible de cuentas y tarjetas, corte y pago de cada tarjeta, sueldo y pagos programados, lo que viene en los próximos días, plan del mes, presupuestos sugeridos, proyección del mes y análisis (ritmo, flujo de caja, categorías, comercios, calendario). Importa estados de cuenta en CSV o Excel. Tres formas de registrar: recibo con IA (incluye RNC, e-NCF e ITBIS; lee el QR de facturas electrónicas), alerta del banco pegada y entrada manual o por voz.
 - **Áreas**: salud (pasos, sueño, agua, ejercicio, frutas y verduras, calma), ánimo (check-in de dos ejes con 80 emociones, año en píxeles, patrones), calma (respiraciones, meditaciones guiadas y libres, pausa SOS, descarga mental, replantear pensamientos), relaciones (frecuencia por persona, cumpleaños, WhatsApp), crecimiento (libros, tarjetas de repaso, práctica, diario, rueda de la vida, valores, bienestar OMS-5) y enfoque (sesiones que se agrietan si sales de la app, cierre de jornada).
 - **Posada** (cierre del día, tres cosas buenas e intención), **Tienda** (recompensas propias con oro, protectores de racha), **Crónica** (semana, revisión semanal, gráfico de vitalidad, XP por atributo, insignias, títulos).
 - Modo claro y oscuro, sin conexión después de la primera visita, copia de seguridad descargable y sincronización con tu propio Google Drive.
