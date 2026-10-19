@@ -443,6 +443,9 @@ function describe(e) {
     case 'streakLost': return { icon: 'flame', text: `Tu racha de ${e.count} días se reinició. Hoy empieza otra.` };
     case 'freezeUsed': return { icon: 'shield', text: e.n === 1 ? 'Un protector cuidó tu racha.' : `${e.n} protectores cuidaron tu racha.` };
     case 'book': return { icon: 'book', text: `Terminaste «${e.title}» · +50 XP` };
+    case 'budget': return { icon: 'chart', text: e.level >= 100 ? `Llegaste al presupuesto de ${e.name}` : `Ya usaste el 80 % de ${e.name}` };
+    case 'cardPaid': return { icon: 'card', text: `Pagaste todo el estado de ${e.name} a tiempo · +15 XP` };
+    case 'planLinked': return { icon: 'calendar', text: `«${e.name}» quedó como ${e.kind === 'ingreso' ? 'recibido' : 'pagado'}` };
     default: return null;
   }
 }

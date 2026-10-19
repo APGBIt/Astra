@@ -495,6 +495,19 @@ function accountIn(raw, t) {
   return bank ? { bank, kind: 'cuenta', last4: '', name: bank } : null;
 }
 
+// La cuenta o tarjeta a la que llegó el dinero (el «Destino» de una transferencia o de un pago).
+function destIn(dest, bank) {
+  if (!dest) return null;
+  const end4 = (dest.match(/\*{1,}\s*-?\s*(\d{4})/) || dest.match(/(\d{4})\s*$/) || [])[1];
+  if (!end4) return null;
+  if (/tarjeta|visa|master|amex|cr[eé]dito/i.test(dest)) {
+    const nm = prettyMerchant(dest.replace(/^[^,]*,\s*/, '').replace(/\*+\s*-?\s*\d{4}\s*$/, '').replace(/\b(dop|usd)\b/ig, '').trim()) || 'Tarjeta';
+    return { bank, kind: 'tarjeta', last4: end4, name: `${nm}${bank && !nm.toLowerCase().includes(bank.toLowerCase()) ? ` ${bank}` : ''}` };
+  }
+  const type = /corriente/i.test(dest) ? 'corriente' : 'ahorro';
+  return { bank, kind: 'cuenta', last4: end4, currency: /\busd\b|d[oó]lar/i.test(dest) ? 'USD' : 'DOP', name: `${type === 'corriente' ? 'Cuenta corriente' : 'Ahorro'}${bank ? ` ${bank}` : ''}` };
+}
+
 function parseOne(raw) {
   const t = norm(raw);
   if (!/(monto|rd\$|us\$|\bdop\b|\busd\b|\$)/i.test(raw)) return null;
@@ -529,7 +542,12 @@ function parseOne(raw) {
     const dest = field(raw, 'Destino');
     const end4 = (dest.match(/(\d{4})\s*$/) || [])[1];
     const card = dest ? `${prettyMerchant(dest.replace(/\*+\s*-?\s*\d{4}\s*$/, ''))}${end4 ? ` ·${end4}` : ''}`.trim() : '';
-    return { ...base, kind: 'transfer', cat: 'pago_tarjeta', merchant: card ? `Pago a ${card}` : 'Pago de tarjeta', why: 'Pago de tarjeta: las compras ya se cuentan una por una.' };
+    // A dónde fue: la tarjeta del «Destino»; si el aviso es de la misma tarjeta (APAP), esa tarjeta.
+    let account = base.account;
+    let to = dest ? destIn(dest, bankIn(raw)) : null;
+    if (to) to.kind = 'tarjeta';
+    if (!to && account && account.kind === 'tarjeta') { to = account; account = null; }
+    return { ...base, account, to, kind: 'transfer', cat: 'pago_tarjeta', merchant: card ? `Pago a ${card}` : 'Pago de tarjeta', why: 'Pago de tarjeta: baja lo que debes en ella. Las compras ya se cuentan una por una.' };
   }
   // Transferencias (Banreservas y otros): a tu cuenta, a otra persona o recibidas.
   if (/transferencia|transf\b/.test(opn) || /transferencia/.test(t)) {
@@ -542,14 +560,14 @@ function parseOne(raw) {
       return { ...base, kind: 'ingreso', cat: guessIncome(`${note} ${t}`), merchant: origin ? personName(origin.split(',')[0]) : 'Transferencia recibida', note };
     }
     if (origin && dest && who(origin) && who(origin) === who(dest)) {
-      return { ...base, kind: 'transfer', cat: 'entre_cuentas', merchant: 'Entre tus cuentas', note, why: 'Entre tus cuentas: el dinero sigue siendo tuyo.' };
+      return { ...base, to: destIn(dest, bankIn(raw)), kind: 'transfer', cat: 'entre_cuentas', merchant: 'Entre tus cuentas', note, why: 'Entre tus cuentas: el dinero sigue siendo tuyo.' };
     }
     const name = dest ? personName(dest.split(',')[0]) : 'Transferencia';
     const cat = bestWord(`${note}`, { familia: CATEGORY_WORDS.familia }) ? 'familia' : (bestWord(note, CATEGORY_WORDS) || 'terceros');
     return { ...base, kind: 'gasto', cat, merchant: name, note: note ? `Concepto: ${note}` : '', check: cat === 'terceros' ? '¿Para qué fue esta transferencia?' : '' };
   }
   if (/retiro|cajero|atm\b/.test(t) && !/comercio/.test(t)) {
-    return { ...base, kind: 'transfer', cat: 'retiro', merchant: 'Retiro de efectivo', why: 'Retiro: pasa de tu cuenta a efectivo.' };
+    return { ...base, to: 'efectivo', kind: 'transfer', cat: 'retiro', merchant: 'Retiro de efectivo', why: 'Retiro: pasa de tu cuenta a efectivo.' };
   }
   // Depósitos e ingresos.
   if (/(deposito|credito a (?:tu|su) cuenta|abono a (?:tu|su) cuenta|nomina|pago recibido en tu cuenta)/.test(t)) {

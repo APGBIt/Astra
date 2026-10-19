@@ -222,6 +222,10 @@ test('aviso de APAP: un pago a la tarjeta no es gasto y una declinada no se cobr
   assert.equal(p.cat, 'pago_tarjeta');
   assert.equal(p.currency, 'DOP');
   assert.equal(p.amount, 15000);
+  // El pago va hacia esa tarjeta (no sale de ella).
+  assert.equal(p.to.last4, '1234');
+  assert.equal(p.to.kind, 'tarjeta');
+  assert.equal(p.account, null);
   const [d] = parseBankAlerts(APAP_DECLINADA);
   assert.equal(d.kind, 'declined');
   assert.equal(d.time, '11:03');
@@ -245,6 +249,9 @@ test('aviso de Banreservas: entre tus cuentas, y avisos repetidos se cuentan una
   const [t] = parseBankAlerts(BR_PROPIA);
   assert.equal(t.kind, 'transfer');
   assert.equal(t.cat, 'entre_cuentas');
+  assert.equal(t.account.last4, '5555');
+  assert.equal(t.to.last4, '7777');
+  assert.equal(t.to.kind, 'cuenta');
   assert.equal(t.time, '19:49');
   const many = parseBankAlerts([APAP_CONSUMO, BR_TERCERO, BR_TERCERO, BR_PROPIA, APAP_DECLINADA].join('\n\n'));
   assert.equal(many.filter((x) => x.ref === '100000000001').length, 1);

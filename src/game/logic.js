@@ -10,6 +10,7 @@ import {
 } from './content.js';
 import { norm, guessCategory, guessIncome } from './parse.js';
 import { wordOf } from './daily.js';
+import { afterTx, ensureMoneyPlus } from './money.js';
 
 export const ENERGY_CAP = 10;
 export const STEPS_GOAL = DEFAULT_GOALS.steps;
@@ -173,7 +174,7 @@ function gainPlayerXP(s, base, today, ev, { applyMods = true } = {}) {
   return amt;
 }
 
-function addGold(s, n, today) {
+export function addGold(s, n, today) {
   s.gold = Math.max(0, s.gold + n);
   getDay(s, today).gold += n;
 }
@@ -1066,8 +1067,13 @@ export function defaultMoney() {
     rules: {},
     fx: { rate: FX_DEFAULT.rate, day: FX_DEFAULT.day, source: FX_DEFAULT.source, auto: true, manual: null, history: { [FX_DEFAULT.day]: FX_DEFAULT.rate }, fetched: null },
     lastImport: null,
+    plans: [],
+    budgetHist: {},
   };
 }
+
+// «Lo que sobra pasa al mes siguiente» (1.5): se conserva al poner al día las categorías.
+const rollOf = (o) => (o && o.roll && /^\d{4}-\d{2}$/.test(o.rollFrom || '') ? { roll: true, rollFrom: o.rollFrom } : {});
 
 // Pone al día los datos de dinero guardados por versiones anteriores (sin perder nada).
 export function ensureMoney(s) {
@@ -1079,12 +1085,13 @@ export function ensureMoney(s) {
   const byId = Object.fromEntries(old.map((c) => [c.id, c]));
   const builtin = CATEGORIES.map((c) => {
     const o = byId[c.id];
-    return { ...c, budget: o ? Math.max(0, Math.round(Number(o.budget) || 0)) : 0, name: o && o.renamed ? String(o.name).slice(0, 40) : c.name, renamed: !!(o && o.renamed), hidden: !!(o && o.hidden) };
+    return { ...c, budget: o ? Math.max(0, Math.round(Number(o.budget) || 0)) : 0, name: o && o.renamed ? String(o.name).slice(0, 40) : c.name, renamed: !!(o && o.renamed), hidden: !!(o && o.hidden), ...rollOf(o) };
   });
   const ids = new Set(CATEGORIES.map((c) => c.id));
   const custom = old.filter((c) => !ids.has(c.id)).map((c) => ({
     id: c.id, name: String(c.name || 'Sin nombre').slice(0, 40), group: CATEGORY_GROUPS.some((g) => g.id === c.group) ? c.group : 'otros',
     icon: c.icon || 'tag', type: TX_KINDS.includes(c.type) ? c.type : 'gasto', budget: Math.max(0, Math.round(Number(c.budget) || 0)), custom: true, hidden: !!c.hidden,
+    ...rollOf(c),
   }));
   m.categories = [...builtin, ...custom];
   if (!Array.isArray(m.accounts) || !m.accounts.length) m.accounts = d.accounts;
@@ -1112,6 +1119,7 @@ export function ensureMoney(s) {
     if (t.kind === 'ingreso' && !m.categories.some((c) => c.id === t.cat && c.type === 'ingreso')) t.cat = 'ingreso';
   }
   if (m.lastImport && (typeof m.lastImport !== 'object' || !m.lastImport.batch)) m.lastImport = null;
+  ensureMoneyPlus(s);
   return m;
 }
 
@@ -1216,9 +1224,17 @@ export function removeCategory(s, id) {
   return true;
 }
 
-export function setBudget(s, catId, amount) {
+export function setBudget(s, catId, amount, today = null) {
   const c = s.money.categories.find((x) => x.id === catId);
-  if (c && c.type === 'gasto') c.budget = Math.max(0, Math.round(Number(amount) || 0));
+  if (!c || c.type !== 'gasto') return;
+  const v = Math.max(0, Math.round(Number(amount) || 0));
+  if (today && v !== (Number(c.budget) || 0)) {
+    if (!s.money.budgetHist) s.money.budgetHist = {};
+    const mk = monthKey(today);
+    if (!s.money.budgetHist[mk]) s.money.budgetHist[mk] = {};
+    s.money.budgetHist[mk][catId] = v;
+  }
+  c.budget = v;
 }
 
 // ----- Comercio → categoría (lo que aprendes al corregir) -----
@@ -1263,22 +1279,47 @@ export function addAccount(s, p) {
   const kind = ['tarjeta', 'debito', 'cuenta', 'efectivo'].includes(p.kind) ? p.kind : 'cuenta';
   const a = { id: p.id && !accountOf(s, p.id) ? String(p.id).slice(0, 40) : `a${uid()}`, name, kind, bank, last4 };
   s.money.accounts.push(a);
+  accountExtras(s, a, p);
   return a;
+}
+
+const dayNum = (v) => (Number(v) >= 1 && Number(v) <= 31 ? Math.round(Number(v)) : 0);
+// Lo propio de cada tipo de cuenta (1.5).
+function accountExtras(s, a, p) {
+  if (a.kind === 'tarjeta') {
+    delete a.currency;
+    delete a.of;
+    const lim = p.limit || a.limit || {};
+    a.limit = { DOP: Math.max(0, Number(lim.DOP) || 0), USD: Math.max(0, Number(lim.USD) || 0) };
+    if (p.cut !== undefined) a.cut = dayNum(p.cut); else if (a.cut === undefined) a.cut = 0;
+    if (p.due !== undefined) a.due = dayNum(p.due); else if (a.due === undefined) a.due = 0;
+    if (p.payFrom !== undefined) a.payFrom = p.payFrom && accountOf(s, p.payFrom) && p.payFrom !== a.id ? p.payFrom : '';
+    if (!a.paidCuts) a.paidCuts = {};
+  } else {
+    if (p.currency) a.currency = p.currency === 'USD' ? 'USD' : 'DOP'; else if (!a.currency) a.currency = 'DOP';
+    if (a.kind === 'debito') { if (p.of !== undefined) a.of = p.of && accountOf(s, p.of) && p.of !== a.id ? p.of : ''; } else delete a.of;
+    if (p.save !== undefined) a.save = !!p.save && a.kind === 'cuenta';
+    delete a.limit; delete a.cut; delete a.due; delete a.payFrom;
+  }
+  if (p.hidden !== undefined) a.hidden = !!p.hidden;
 }
 
 export function updateAccount(s, id, p) {
   const a = accountOf(s, id);
   if (!a) return null;
   if (p.name != null && String(p.name).trim().length >= 2) a.name = String(p.name).trim().slice(0, 40);
-  if (p.kind) a.kind = p.kind;
+  if (p.kind && ['tarjeta', 'debito', 'cuenta', 'efectivo'].includes(p.kind)) a.kind = p.kind;
   if (p.bank != null) a.bank = String(p.bank).trim().slice(0, 30);
   if (p.last4 != null) a.last4 = last4Of(p.last4);
+  accountExtras(s, a, p);
   return a;
 }
 
 export function removeAccount(s, id) {
   s.money.accounts = s.money.accounts.filter((a) => a.id !== id);
-  for (const t of s.money.tx) if (t.account === id) t.account = '';
+  for (const t of s.money.tx) { if (t.account === id) t.account = ''; if (t.to === id) t.to = ''; }
+  for (const a of s.money.accounts) { if (a.of === id) a.of = ''; if (a.payFrom === id) a.payFrom = ''; }
+  for (const p of s.money.plans || []) if (p.account === id) p.account = '';
 }
 
 // ----- Registrar, corregir y borrar -----
@@ -1293,6 +1334,7 @@ function buildTx(s, p, prev = null) {
   const valid = s.money.categories.some((c) => c.id === p.cat && c.type === kind);
   const cat = valid ? p.cat : kind === 'gasto' ? guessTxCat(s, { merchant: p.merchant, text: p.note, type: 'gasto' }) : FALLBACK_CAT[kind];
   const account = p.account && accountOf(s, p.account) ? p.account : '';
+  const to = kind === 'transfer' && p.to && accountOf(s, p.to) && p.to !== account ? p.to : '';
   return {
     id: prev ? prev.id : uid(),
     day,
@@ -1306,6 +1348,7 @@ function buildTx(s, p, prev = null) {
     merchant: String(p.merchant || '').trim().slice(0, 60),
     note: String(p.note || '').slice(0, 200),
     account,
+    to,
     tag: String(p.tag || '').trim().slice(0, 30),
     source: p.source || (prev && prev.source) || 'manual',
     ref: String(p.ref || (prev && prev.ref) || '').slice(0, 80),
@@ -1328,6 +1371,7 @@ export function addTx(s, p, today, ev) {
   if (!tx.orig) return null;
   s.money.tx.unshift(tx);
   sortTx(s);
+  afterTx(s, tx, today, ev, p.link || null);
   if (tx.kind === 'transfer') return tx;
   const d = getDay(s, today);
   d.txXp = (d.txXp || 0) + 1;
@@ -1350,7 +1394,7 @@ export function updateTx(s, id, p, { learn = true } = {}) {
     rate: p.rate != null ? p.rate : prev.rate, cat: p.cat || prev.cat, merchant: p.merchant != null ? p.merchant : prev.merchant,
     note: p.note != null ? p.note : prev.note, day: p.day || prev.day, time: p.time != null ? p.time : prev.time,
     account: p.account != null ? p.account : prev.account, tag: p.tag != null ? p.tag : prev.tag,
-    photos: p.photos != null ? p.photos : prev.photos,
+    photos: p.photos != null ? p.photos : prev.photos, to: p.to != null ? p.to : prev.to,
   };
   if (!(Math.abs(Number(merged.amount) || 0) > 0)) return null;
   const tx = buildTx(s, merged, prev);
@@ -1362,6 +1406,8 @@ export function updateTx(s, id, p, { learn = true } = {}) {
 
 export function removeTx(s, id) {
   s.money.tx = s.money.tx.filter((t) => t.id !== id);
+  // Si era el pago de algo programado, esa fecha vuelve a quedar pendiente.
+  for (const p of s.money.plans || []) for (const [d, v] of Object.entries(p.done || {})) if (v === id) delete p.done[d];
 }
 
 // ----- Resumen del mes -----
@@ -1444,14 +1490,15 @@ export function importTxs(s, pack, today, ev) {
     if (it.on === false) continue;
     if (findDuplicate(s, it)) { skipped += 1; continue; }
     const account = typeof it.account === 'string' ? accMap[it.account] || (accountOf(s, it.account) ? it.account : '') : resolveAccount(s, it.account);
+    const to = !it.to ? '' : typeof it.to === 'string' ? accMap[it.to] || (accountOf(s, it.to) ? it.to : '') : resolveAccount(s, it.to);
     const tx = addTx(s, {
       type: it.kind, amount: it.amount, currency: it.currency, rate: it.rate || (pack.rates && pack.rates[it.day]), cat: it.cat, merchant: it.merchant, note: it.note,
-      day: it.day, time: it.time, account, tag: it.tag, ref: it.ref, batch, source: it.source || pack.source || 'importado',
+      day: it.day, time: it.time, account, to, tag: it.tag, ref: it.ref, batch, source: it.source || pack.source || 'importado',
     }, today, ev);
     if (tx) added += 1;
   }
   // Las cuentas que trajo el paquete y que no se usaron no se quedan.
-  const used = new Set(s.money.tx.map((t) => t.account));
+  const used = new Set(s.money.tx.flatMap((t) => [t.account, t.to]));
   const created = s.money.accounts.filter((a) => !before.has(a.id));
   s.money.accounts = s.money.accounts.filter((a) => before.has(a.id) || used.has(a.id));
   if (added) s.money.lastImport = { batch, label: String(pack.label || 'Movimientos importados').slice(0, 80), n: added, day: today, accounts: created.filter((a) => used.has(a.id)).map((a) => a.id) };
@@ -1464,7 +1511,7 @@ export function undoImport(s, batch) {
   if (s.money.lastImport && s.money.lastImport.batch === batch) {
     // Las cuentas que creó esa importación se quitan si ya no tienen movimientos.
     const made = new Set(s.money.lastImport.accounts || []);
-    const used = new Set(s.money.tx.map((t) => t.account));
+    const used = new Set(s.money.tx.flatMap((t) => [t.account, t.to]));
     s.money.accounts = s.money.accounts.filter((a) => !made.has(a.id) || used.has(a.id));
     s.money.lastImport = null;
   }
@@ -2477,6 +2524,15 @@ export const ACHIEVEMENTS = [
     return best >= 7;
   } },
   { id: 'logros10', icon: 'trophy', title: 'Hoja de vida viva', desc: 'Anota 10 logros.', test: (s) => (s.wins || []).length >= 10 },
+  { id: 'aldia10', icon: 'calendar', title: 'Cuentas al día', desc: 'Paga a tiempo 10 pagos programados.', test: (s) => {
+    let n = 0;
+    for (const p of (s.money && s.money.plans) || []) {
+      if (p.kind !== 'gasto') continue;
+      for (const [d, id] of Object.entries(p.done || {})) { const t = id !== 'skip' && s.money.tx.find((x) => x.id === id); if (t && t.day <= d) n += 1; }
+    }
+    return n >= 10;
+  } },
+  { id: 'tarjeta3', icon: 'card', title: 'Tarjeta sin intereses', desc: 'Paga el estado completo de tu tarjeta a tiempo 3 veces.', test: (s) => ((s.money && s.money.accounts) || []).reduce((a, x) => a + Object.keys(x.paidCuts || {}).length, 0) >= 3 },
   { id: 'palabras10', icon: 'book', title: 'Buen vocabulario', desc: 'Usa 10 palabras del día.', test: (s) => Object.keys(s.wordLog || {}).length >= 10 },
 ];
 

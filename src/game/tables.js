@@ -1,8 +1,10 @@
 // Tablas legibles para la hoja «Base de datos de Astra» (o los CSV de la carpeta Tablas).
 // Se rehacen en cada sincronización a partir de los datos. No incluyen el expediente ni tus claves.
 import {
-  AREA, CHORE_XP, EXERCISE_TYPES, INFLUENCES, MOOD_QUADS, SLEEP_QUALITY, SLEEP_ROUTINE, WIN_SCOPES, WIN_TYPES,
+  ACCOUNT_KINDS, AREA, CHORE_XP, EXERCISE_TYPES, INFLUENCES, MOOD_QUADS, SLEEP_QUALITY, SLEEP_ROUTINE, WIN_SCOPES, WIN_TYPES,
 } from './content.js';
+import { addDays } from '../app/dates.js';
+import { balances, cardInfo, fundInfo, isCard, isFundPlan, moneyAccount, planDates, planFreqLabel, planStatus } from './money.js';
 import {
   accountLabel, catName, choreStatus, freqLabel, repeatLabel, todoCategory, txCur, txDOP, txKind, txOrig, txRate,
 } from './logic.js';
@@ -21,10 +23,37 @@ export function buildTables(s, today) {
   const days = Object.keys(s.health || {}).sort().reverse().slice(0, 730);
   const dayKeys = Object.keys(s.days || {}).sort().reverse();
   const innKeys = Object.keys(s.inn || {}).sort().reverse();
+  const bal = s.money ? balances(s) : {};
+  const plans = (s.money && s.money.plans) || [];
   return {
     Movimientos: table(
-      ['Fecha', 'Hora', 'Tipo', 'Monto RD$', 'Moneda', 'Monto original', 'Tasa', 'Categoría', 'Comercio', 'Cuenta', 'Etiqueta', 'Nota'],
-      tx.map((t) => [t.day, t.time || '', KIND[txKind(t)] || '', round2(txDOP(t)), txCur(t), round2(txOrig(t)), txCur(t) === 'USD' ? round2(txRate(s, t)) : '', catName(s, t.cat), t.merchant || '', acc(t.account), t.tag || '', t.note || '']),
+      ['Fecha', 'Hora', 'Tipo', 'Monto RD$', 'Moneda', 'Monto original', 'Tasa', 'Categoría', 'Comercio', 'Cuenta', 'Hacia', 'Etiqueta', 'Nota'],
+      tx.map((t) => [t.day, t.time || '', KIND[txKind(t)] || '', round2(txDOP(t)), txCur(t), round2(txOrig(t)), txCur(t) === 'USD' ? round2(txRate(s, t)) : '', catName(s, t.cat), t.merchant || '', acc(t.account), txKind(t) === 'transfer' && t.to ? acc(t.to) : '', t.tag || '', t.note || '']),
+    ),
+    // Saldos de hoy. En una tarjeta, el saldo en negativo es lo que debes.
+    Cuentas: table(
+      ['Cuenta', 'Tipo', 'Saldo RD$', 'Saldo US$', 'Saldo desde', 'Límite RD$', 'Límite US$', 'Día de corte', 'Día de pago', 'Por pagar RD$', 'Por pagar US$', 'Pagar antes del', 'Nota'],
+      accounts.filter((a) => !a.hidden).map((a) => {
+        const kind = `${label(ACCOUNT_KINDS, a.kind)}${a.save ? ' (ahorro)' : ''}`;
+        const own = moneyAccount(s, a.id);
+        if (own && own.id !== a.id) return [accountLabel(a), kind, '', '', '', '', '', '', '', '', '', '', `Usa el saldo de ${accountLabel(own)}`];
+        const b = bal[a.id] || { DOP: 0, USD: 0 };
+        const row = [accountLabel(a), kind, round2(b.DOP), round2(b.USD), a.base ? a.base.day : ''];
+        if (!isCard(a)) return [...row, '', '', '', '', '', '', '', a.base ? '' : 'Sin saldo inicial: solo suma lo registrado'];
+        const ci = cardInfo(s, a, today, bal);
+        const c = ci.cycle;
+        return [...row, ci.limit.DOP || '', ci.limit.USD || '', a.cut || '', a.due || '', c ? ci.toPay.DOP : '', c ? ci.toPay.USD : '', c && c.due ? c.due : '', 'En negativo: lo que debes'];
+      }),
+    ),
+    // Pagos y cobros programados, con su próxima fecha y, en los pagos de cada cierto tiempo, lo apartado.
+    Pagos: table(
+      ['Pago o cobro', 'Tipo', 'Monto', 'Moneda', 'Aproximado', 'Frecuencia', 'Próxima fecha', 'Atrasado desde', 'Categoría', 'Cuenta', 'Apartado RD$', 'Estado'],
+      plans.map((p) => {
+        const next = p.paused ? '' : planDates(p, today, addDays(today, 800))[0] || '';
+        const late = p.paused ? '' : planDates(p, addDays(today, -35), addDays(today, -1)).find((d) => planStatus(p, d, today) === 'late') || '';
+        const fund = isFundPlan(p) ? fundInfo(s, p, today) : null;
+        return [p.name, p.kind === 'ingreso' ? 'Cobro' : 'Pago', round2(p.amount), p.currency === 'USD' ? 'USD' : 'DOP', p.variable ? 'Sí' : '', planFreqLabel(p), next, late, catName(s, p.cat), acc(p.account), fund ? round2(fund.saved) : '', p.paused ? 'En pausa' : next || late ? 'Activo' : 'Terminado'];
+      }),
     ),
     Pendientes: table(
       ['Pendiente', 'Categoría', 'Para', 'Importante', 'Estado', 'Se repite', 'Nota'],

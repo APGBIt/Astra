@@ -8,8 +8,9 @@ import { parseCapture } from '../game/parse.js';
 import { MOOD_QUADS } from '../game/content.js';
 import {
   dayMissions, addTx, logHealth, completeMission, addPerson, contactPerson, addMood, finishFocus, logCalm, logPages, addBook, catName, fmtHours, uid,
-  addTodo, todoCategory, repeatLabel,
+  addTodo, todoCategory, repeatLabel, accountLabel,
 } from '../game/logic.js';
+import { cardForText } from '../game/money.js';
 import { aiProvider, aiJSON, capturePrompt, aiErrorText } from '../ai/ai.js';
 
 const SHORTCUTS = [
@@ -23,7 +24,11 @@ const SHORTCUTS = [
 
 export function describeItem(s, it) {
   switch (it.kind) {
-    case 'tx': return { icon: 'coins', area: 'finanzas', title: `${it.type === 'ingreso' ? 'Ingreso' : 'Gasto'} · ${cur(it.amount, it.currency)}`, sub: `${catName(s, it.cat)}${it.merchant ? ` · ${it.merchant}` : ''}` };
+    case 'tx': {
+      const card = it.type === 'gasto' && it.cat === 'deuda' && /tarjeta|visa|master|amex/i.test(it.text || '') ? cardForText(s, it.text) : null;
+      if (card) return { icon: 'card', area: 'finanzas', title: `Pago a la tarjeta · ${cur(it.amount, it.currency)}`, sub: `${accountLabel(card)} · baja lo que debes` };
+      return { icon: 'coins', area: 'finanzas', title: `${it.type === 'ingreso' ? 'Ingreso' : 'Gasto'} · ${cur(it.amount, it.currency)}`, sub: `${catName(s, it.cat)}${it.merchant ? ` · ${it.merchant}` : ''}` };
+    }
     case 'health': {
       const map = { steps: ['Pasos', `${Number(it.value).toLocaleString('en-US')} pasos`], sleep: ['Sueño', fmtHours(it.value)], water: ['Agua', `${it.value} vasos`], exercise: ['Ejercicio', `${it.value} minutos`] };
       const [t, v] = map[it.field];
@@ -48,7 +53,12 @@ export function applyItems(st, items, today, ev) {
   for (const it of items) {
     n += 1;
     switch (it.kind) {
-      case 'tx': addTx(st, { type: it.type, amount: it.amount, currency: it.currency, cat: it.cat, merchant: it.merchant ? it.merchant[0].toUpperCase() + it.merchant.slice(1) : '', source: 'voz' }, today, ev); break;
+      case 'tx': {
+        const card = it.type === 'gasto' && it.cat === 'deuda' && /tarjeta|visa|master|amex/i.test(it.text || '') ? cardForText(st, it.text) : null;
+        if (card) addTx(st, { type: 'transfer', amount: it.amount, currency: it.currency, cat: 'pago_tarjeta', merchant: `Pago a ${accountLabel(card)}`, account: card.payFrom || '', to: card.id, source: 'voz' }, today, ev);
+        else addTx(st, { type: it.type, amount: it.amount, currency: it.currency, cat: it.cat, merchant: it.merchant ? it.merchant[0].toUpperCase() + it.merchant.slice(1) : '', source: 'voz' }, today, ev);
+        break;
+      }
       case 'health': logHealth(st, today, { [it.field]: it.field === 'exercise' ? (st.health[today]?.exercise || 0) + it.value : it.value }, today, ev); break;
       case 'pages': {
         let b = st.books.find((x) => !x.done);

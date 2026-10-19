@@ -2,6 +2,21 @@
 
 Tu vida en modo juego de rol. App web instalable (y futura APK) para crecer en seis áreas de la vida con barras de vitalidad y energía, caminos, misiones y jefes.
 
+## Novedades de la versión 1.5 (Finanzas: saldos, tarjetas, sueldo y plan)
+
+Ideas tomadas de comparar YNAB, Monarch, Copilot, Simplifi, PocketGuard, Rocket Money, Money Manager, Mobills, Wallet, Money Lover y Emma, adaptadas a pesos y dólares y a cómo funcionan las tarjetas en República Dominicana.
+
+- **Tu dinero hoy**: el saldo de cada cuenta y del efectivo, lo que debes en tus tarjetas y el neto, en pesos y en dólares. Pones el saldo una vez y desde ahí cada movimiento lo sube o lo baja. La tarjeta de débito usa el saldo de su cuenta, y las cuentas marcadas como ahorro no se cuentan en «Puedes gastar».
+- **Tarjetas con corte y pago**: día de corte, día límite de pago y límite en RD$ y US$. Astra calcula el saldo al corte, lo que has pagado y cuánto pagar, y antes de qué fecha, para no generar intereses. Si tu estado de cuenta dice otra cosa, copias el saldo y el pago mínimo. Muestra cuánto usas del límite (lo sano es menos del 30 %), las compras que van al próximo estado y el mejor día para comprar. Pagar la tarjeta mueve dinero entre tus cuentas (no es un gasto), y pagar el estado completo a tiempo da XP y oro.
+- **Sueldo e ingresos**: cobros fijos quincenales (15 y último día), mensuales, semanales, cada dos semanas o anuales (como la regalía pascual). «Hasta tu próximo cobro» dice qué pagas antes de cobrar y cuánto puedes gastar por día.
+- **Pagos fijos y pagos futuros**: alquiler, luz, colegio, préstamo… con monto fijo o aproximado, aviso unos días antes, saltar una vez o pausar. Lo que no se paga cada mes (marbete, seguro, inscripción, Navidad) es un pago futuro: Astra dice cuánto apartar cada mes y lleva lo apartado.
+- **Lo que viene**: los próximos 30 o 60 días con el saldo que te quedaría después de cada pago y cobro, y un aviso si algún día quedarías en rojo.
+- **Plan del mes**: ingresos − pagos fijos − apartados − gastos del día a día = lo que te queda, por día hasta fin de mes, y el dinero que falta por asignar.
+- **Presupuestos**: si lo activas, lo que sobra (o lo que te pasaste) pasa al mes siguiente. Una marca muestra lo esperado a hoy para saber si vas a buen ritmo, y hay avisos al 80 % y al 100 %.
+- **Pagos que se repiten**: Astra encuentra en tus movimientos lo que pagas o cobras cada mes y te ofrece agregarlo a tu plan.
+- **Al registrar**: un movimiento que se parece a un pago programado lo marca como pagado. «Pagué 5,000 a la tarjeta» baja lo que debes en esa tarjeta. Los avisos de pago de tarjeta, retiros y transferencias entre tus cuentas dicen a qué cuenta fue el dinero.
+- **En Hoy** aparece lo que vence (y la tarjeta tres días antes de su fecha límite) con un botón para pagarlo. En Drive hay dos tablas nuevas: «Cuentas» y «Pagos».
+
 ## Novedades de la versión 1.4 (sincronización con Drive)
 
 - **Cada persona conecta su propio Drive** en Personaje → Ajustes → Sincronización. Los datos de cada quien, expediente incluido, van solo a su cuenta de Google. Hay dos conectores:
@@ -47,7 +62,7 @@ Tu vida en modo juego de rol. App web instalable (y futura APK) para crecer en s
 - **Caminos y metas**: eliges hasta dos caminos y una meta (plantilla o propia). Se convierte en una campaña con capítulos, tareas y un **jefe final** con barra de vida.
 - **Misiones**: hábitos, tareas únicas y malos hábitos a evitar. Se agregan en una línea: la app sugiere atributo, costo de energía y XP. Algunas se completan solas (pasos, sueño, gastos, ánimo, contactos, enfoque).
 - **Registrar**: escribe o dicta lo que hiciste («gasté 850 en el súper y caminé 40 minutos») y la app lo convierte en registros.
-- **Finanzas**: ingresos, gastos, presupuesto por categoría y dinero por asignar. Tres formas de registrar: recibo con IA (incluye RNC, e-NCF e ITBIS; lee el QR de facturas electrónicas), alerta del banco pegada y entrada manual o por voz.
+- **Finanzas**: saldo de cuentas y tarjetas, corte y pago de cada tarjeta, sueldo y pagos programados, lo que viene en los próximos días, plan del mes y presupuestos. Tres formas de registrar: recibo con IA (incluye RNC, e-NCF e ITBIS; lee el QR de facturas electrónicas), alerta del banco pegada y entrada manual o por voz.
 - **Áreas**: salud (pasos, sueño, agua, ejercicio), ánimo (check-in de dos ejes, patrones, respiración), relaciones (frecuencia por persona, cumpleaños, WhatsApp), crecimiento (libros, tarjetas de repaso, práctica) y enfoque (sesiones que se agrietan si sales de la app, cierre de jornada).
 - **Posada** (cierre del día), **Tienda** (recompensas propias con oro, protectores de racha), **Crónica** (semana, gráfico de vitalidad, XP por atributo, insignias, títulos).
 - Modo claro y oscuro, sin conexión después de la primera visita, copia de seguridad descargable y sincronización con tu propio Google Drive.
@@ -76,7 +91,7 @@ npm run build   # genera dist/, docs/ (GitHub Pages), artifact/ y astra-web.zip
 npm test        # pruebas de la lógica del juego y del analizador de texto
 ```
 
-- `src/game`: reglas del juego (`logic.js`), contenido (`content.js`), analizador de frases y alertas (`parse.js`), frase y palabra del día (`daily.js`, `quotes.js`, `words.js`), fusión de cambios entre equipos (`merge.js`) y tablas legibles (`tables.js`).
+- `src/game`: reglas del juego (`logic.js`), dinero (`money.js`: saldos, tarjetas, pagos programados, flujo y presupuestos), contenido (`content.js`), analizador de frases y alertas (`parse.js`), frase y palabra del día (`daily.js`, `quotes.js`, `words.js`), fusión de cambios entre equipos (`merge.js`) y tablas legibles (`tables.js`).
 - `src/app`: estado y almacenamiento (`store.js`), sincronización (`sync.js`, `transports.js`, `google.js`), conector de Apps Script (`connector.js`), fotos (`photos.js`, `idb.js`) y configuración pública (`config.js`: ID de cliente de Google para «Conectar con Google»).
 - `src/ai`: lectura de recibos y frases con IA.
 - `src/screens` y `src/ui`: pantallas y componentes (Preact).

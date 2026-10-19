@@ -516,6 +516,35 @@ export const CATEGORIES = [
   { id: 'retiro', name: 'Retiro de efectivo', group: 'movimientos', icon: 'cash', type: 'transfer', budget: 0 },
 ];
 
+// Pagos y cobros programados (1.5). `freq`: mensual (día), quincenal (días 15 y último), anual (mes y día) o una vez.
+// Los anuales y los de una sola vez se ven como «pagos futuros»: la app dice cuánto apartar cada mes.
+export const PLAN_TEMPLATES = {
+  ingreso: [
+    { name: 'Sueldo', cat: 'salario', icon: 'briefcase', freq: 'quincenal' },
+    { name: 'Honorarios', cat: 'honorarios', icon: 'edit', freq: 'mensual', day: 30 },
+    { name: 'Remesa', cat: 'remesas', icon: 'download', freq: 'mensual', day: 1 },
+    { name: 'Alquiler que cobro', cat: 'ingreso', icon: 'home', freq: 'mensual', day: 1 },
+    { name: 'Regalía pascual', cat: 'salario', icon: 'gift', freq: 'anual', md: '12-20' },
+  ],
+  gasto: [
+    { name: 'Alquiler o hipoteca', cat: 'vivienda', icon: 'home', freq: 'mensual', day: 1 },
+    { name: 'Luz', cat: 'servicios', icon: 'bolt', freq: 'mensual', day: 15, variable: true },
+    { name: 'Agua', cat: 'servicios', icon: 'drop', freq: 'mensual', day: 15, variable: true },
+    { name: 'Internet y cable', cat: 'telecom', icon: 'wifi', freq: 'mensual', day: 10 },
+    { name: 'Celular', cat: 'telecom', icon: 'phone', freq: 'mensual', day: 10 },
+    { name: 'Seguro médico', cat: 'seguros', icon: 'shield', freq: 'mensual', day: 5 },
+    { name: 'Colegio', cat: 'educacion', icon: 'cap', freq: 'mensual', day: 5 },
+    { name: 'Préstamo', cat: 'deuda', icon: 'card', freq: 'mensual', day: 15 },
+    { name: 'Gimnasio', cat: 'deporte', icon: 'dumbbell', freq: 'mensual', day: 1 },
+    { name: 'Streaming', cat: 'suscripciones', icon: 'play', freq: 'mensual', day: 1 },
+    { name: 'Ayuda doméstica', cat: 'domestico', icon: 'broom', freq: 'quincenal' },
+    { name: 'Marbete', cat: 'impuestos', icon: 'receipt', freq: 'anual', md: '01-31' },
+    { name: 'Seguro del carro', cat: 'seguros', icon: 'car', freq: 'anual', md: '03-15' },
+    { name: 'Inscripción del colegio', cat: 'educacion', icon: 'cap', freq: 'anual', md: '08-01' },
+    { name: 'Navidad y regalos', cat: 'regalos', icon: 'gift', freq: 'anual', md: '12-20' },
+  ],
+};
+
 // Íconos para las categorías que crees.
 export const CATEGORY_ICONS = ['tag', 'cart', 'utensils', 'home', 'car', 'heart', 'gift', 'people', 'bag', 'briefcase', 'cap', 'plane', 'paw', 'shirt', 'laptop', 'coins'];
 

@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
-import { Nav, Segs, Bar, Bolts, Avatar, AreaDot, Sheet, SheetHead, TChip, toast, useHour, areaColor, areaSoft, money } from '../ui/kit.jsx';
+import { Nav, Segs, Bar, Bolts, Avatar, AreaDot, Sheet, SheetHead, TChip, toast, useHour, areaColor, areaSoft, money, cur } from '../ui/kit.jsx';
 import { TodoRow } from './Todos.jsx';
 import { RecordAlertsNote, openAlerts } from './Record.jsx';
 import { SleepForm, SleepSheet } from './Sleep.jsx';
@@ -8,13 +8,15 @@ import { WinPrompt } from './Wins.jsx';
 import { DailyCard } from './Word.jsx';
 import { TxSheet } from './Finance.jsx';
 import { SyncBadge } from './Sync.jsx';
+import { both, whenText, payInitial } from './Money.jsx';
+import { dueItems } from '../game/money.js';
 import { act, useApp } from '../app/store.js';
-import { fmtDay } from '../app/dates.js';
+import { fmtDay, addDays, diffDays } from '../app/dates.js';
 import { AREA, MOOD_QUADS } from '../game/content.js';
 import {
   playerLevel, className, energyInfo, statuses, dayMissions, isDone, completeMission, undoMission, slipMission,
   missionXP, activeCampaigns, campaignProgress, currentChapter, inRecovery, autoLabel, logHealth, dailyGoal,
-  usePotion, fmtHours, bossHP, todosDue, pendingTodos, sortTodos, duePeople, winPromptDue, addMood, txKind, txDOP,
+  usePotion, fmtHours, bossHP, todosDue, pendingTodos, sortTodos, duePeople, winPromptDue, addMood, txKind, txDOP, accountLabel,
 } from '../game/logic.js';
 
 // Hoy: lo esencial en una sola pantalla. Un aviso a la vez, registro rápido sin salir de aquí
@@ -48,7 +50,7 @@ export function Home() {
   const openTodos = pendingTodos(s).length;
   const camps = activeCampaigns(s);
   const toggle = (m) => act((st, t, ev) => (isDone(st, m, t) ? undoMission(st, m.id, t) : completeMission(st, m.id, t, ev)));
-  const prompts = homePrompts(s, today, hour, en, pending);
+  const prompts = homePrompts(s, today, hour, en, pending, (it) => setSheet({ kind: 'pay', initial: payInitial(s, it, today) }));
 
   return (
     <>
@@ -182,6 +184,7 @@ export function Home() {
       {sheet === 'sleep' && <SleepSheet s={s} day={today} today={today} onClose={() => setSheet(null)} />}
       {sheet === 'mood' && <MoodSheet onClose={() => setSheet(null)} />}
       {sheet === 'tx' && <TxSheet s={s} initial={{}} onClose={() => setSheet(null)} />}
+      {sheet && sheet.kind === 'pay' && <TxSheet s={s} initial={sheet.initial} onClose={() => setSheet(null)} />}
     </>
   );
 }
@@ -227,10 +230,12 @@ function StatusCard({ s, lvl, en, sts }) {
 
 // ---------- Un aviso a la vez ----------
 
-function homePrompts(s, today, hour, en, pending) {
+function homePrompts(s, today, hour, en, pending, onPay) {
   const out = [];
   if (inRecovery(s, today)) out.push({ key: 'recovery', el: <RecoveryPrompt /> });
   if (s.health[today]?.sleep == null && hour < 15) out.push({ key: 'sleep', el: <SleepPrompt s={s} today={today} /> });
+  const money = moneyDue(s, today);
+  if (money.length) out.push({ key: 'money', el: <MoneyPrompt items={money} today={today} onPay={onPay} /> });
   if (en.left <= 1 && pending.length) out.push({ key: 'potion', el: <PotionPrompt /> });
   if (winPromptDue(s, today)) out.push({ key: 'win', el: <WinPrompt /> });
   if (hour >= 18 && !s.inn[today]) out.push({ key: 'inn', el: <InnPrompt /> });
@@ -304,6 +309,33 @@ function InnPrompt() {
       <span class="stack-xs grow"><span class="strong">Cierra el día en la posada</span><span class="small">Repasa tu día, prepara la noche y recupera +5 de vitalidad.</span></span>
       <Icon name="right" size={18} />
     </a>
+  );
+}
+
+// Pagos que vencen (o se pasaron) y cobros de hoy: lo de las tarjetas, 3 días antes.
+function moneyDue(s, today) {
+  return dueItems(s, today, addDays(today, 3), today)
+    .filter((it) => !it.estimate && (it.status === 'late' || it.status === 'today' || (it.type === 'card' ? diffDays(today, it.date) <= 3 : it.status === 'soon' && it.kind === 'gasto' && diffDays(today, it.date) <= 1)))
+    .sort((a, b) => ((b.status === 'late') - (a.status === 'late')) || (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
+
+function MoneyPrompt({ items, today, onPay }) {
+  const it = items[0];
+  const card = it.type === 'card';
+  const inc = it.kind === 'ingreso';
+  const late = it.status === 'late';
+  const name = card ? `Tarjeta ${accountLabel(it.a)}` : it.p.name;
+  const title = inc ? `¿Ya recibiste ${name.toLowerCase()}?` : late ? `Venció: ${name}` : it.date === today ? `Hoy vence: ${name}` : `${name} vence ${whenText(it.date, today).toLowerCase()}`;
+  const amount = card ? both(it.toPay) : `${it.p.variable ? '≈ ' : ''}${inc ? '+' : ''}${cur(it.amount, it.currency)}`;
+  const tone = late ? 'vit' : inc ? 'good' : 'finanzas';
+  return (
+    <div class="row" style={{ gap: 12, padding: 16, borderRadius: 20, background: `var(--${tone}-soft)`, color: `var(--${tone}-ink)` }}>
+      <a href="#/finanzas" class="row grow" style={{ gap: 12, color: 'inherit', textDecoration: 'none', minWidth: 0 }}>
+        <span class="tile" style={{ background: 'var(--surface)', color: `var(--${tone === 'finanzas' ? 'finanzas' : tone})` }}><Icon name={card ? 'card' : inc ? 'coins' : 'calendar'} /></span>
+        <span class="stack-xs grow" style={{ minWidth: 0 }}><span class="strong">{title}</span><span class="small tab-num">{amount}{items.length > 1 ? ` · y ${items.length - 1} más` : ''}</span></span>
+      </a>
+      <button type="button" class="btn xs" onClick={() => onPay(it)}>{inc ? 'Recibí' : 'Pagar'}</button>
+    </div>
   );
 }
 

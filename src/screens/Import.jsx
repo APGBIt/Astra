@@ -38,11 +38,10 @@ function prepare(s, raw) {
   if (!raw || typeof raw !== 'object' || !Array.isArray(raw.items)) throw new Error('Ese archivo no tiene movimientos de Astra.');
   if (raw.app && !/^astra/.test(String(raw.app))) throw new Error('Ese archivo no es de Astra.');
   const accounts = Array.isArray(raw.accounts) ? raw.accounts.filter((a) => a && a.name) : [];
-  // Si estás peleando contra un jefe de deudas, los pagos de tarjeta cuentan como golpes (pago de deuda).
-  const debtBoss = s.bosses.find((b) => b.status === 'active' && b.source === 'debtPay');
-  const items = raw.items.slice(0, 500).map((it0, i) => {
-    const it = debtBoss && it0.kind === 'transfer' && it0.cat === 'pago_tarjeta'
-      ? { ...it0, kind: 'gasto', cat: 'deuda', on: true, why: `Cuenta como golpe a «${debtBoss.title}».` } : it0;
+  // Si llevas el saldo de tus cuentas, los pagos de tarjeta y lo que mueves entre cuentas también se
+  // agregan (mueven saldos). Un pago de tarjeta además cuenta como golpe al jefe de deudas.
+  const balances = s.money.accounts.some((a) => a.base);
+  const items = raw.items.slice(0, 500).map((it, i) => {
     const kind = ['gasto', 'ingreso', 'transfer', 'declined'].includes(it.kind) ? it.kind : 'gasto';
     const currency = it.currency === 'USD' ? 'USD' : 'DOP';
     const amount = Math.abs(Number(it.amount) || 0);
@@ -51,9 +50,9 @@ function prepare(s, raw) {
     const cat = it.cat && catOf(s, it.cat).type === (kind === 'declined' ? 'gasto' : kind) ? it.cat : guessTxCat(s, { merchant: it.merchant, text: it.note, type: kind === 'declined' ? 'gasto' : kind });
     return {
       key: `${i}`, kind, currency, amount, day, time: it.time || '', merchant: String(it.merchant || '').slice(0, 60), cat,
-      account: it.account || null, tag: it.tag || '', note: it.note || '', ref: it.ref || '', rate: Number(it.rate) || null,
+      account: it.account || null, to: it.to || null, tag: it.tag || '', note: it.note || '', ref: it.ref || '', rate: Number(it.rate) || null,
       why: it.why || (dup ? 'Ya está en Astra.' : ''), check: it.check || '', dup,
-      on: kind !== 'declined' && !dup && it.on !== false && (kind !== 'transfer' || it.on === true),
+      on: kind !== 'declined' && !dup && it.on !== false && (kind !== 'transfer' || it.on === true || balances),
     };
   }).filter((it) => it.amount > 0);
   return { label: String(raw.label || 'Movimientos').slice(0, 80), source: raw.source || 'importado', accounts, rates: raw.rates || {}, rateSource: raw.rateSource || '', items };
@@ -76,10 +75,12 @@ function newAccounts(s, pack) {
   const seen = new Set();
   for (const it of pack.items) {
     if (!it.on) continue;
-    const a = typeof it.account === 'string' ? pack.accounts.find((x) => x.id === it.account) : it.account;
-    if (!a || known(a)) continue;
-    const k = `${a.bank}|${a.last4}|${a.name}`;
-    if (!seen.has(k)) { seen.add(k); out.push(a); }
+    for (const ref of [it.account, it.to]) {
+      const a = typeof ref === 'string' ? pack.accounts.find((x) => x.id === ref) : ref;
+      if (!a || known(a)) continue;
+      const k = `${a.bank}|${a.last4}|${a.name}`;
+      if (!seen.has(k)) { seen.add(k); out.push(a); }
+    }
   }
   return out;
 }
@@ -199,7 +200,7 @@ export function Import({ query }) {
             {d.list.map((it) => {
               const c = catOf(s, it.cat);
               const off = it.kind === 'declined';
-              const acc = accName(s, pack, it.account);
+              const acc = it.kind === 'transfer' && it.to ? [accName(s, pack, it.account), accName(s, pack, it.to)].filter(Boolean).join(' → ') : accName(s, pack, it.account);
               return (
                 <div key={it.key} class="lrow imp-row" style={{ opacity: it.on || off ? 1 : 0.72 }}>
                   <label class="check" style={{ margin: '-8px -4px -8px -8px' }}>
@@ -221,7 +222,7 @@ export function Import({ query }) {
             })}
           </section>
         ))}
-        <p class="small muted" style={{ textAlign: 'center' }}>Los pagos de tarjeta y lo que mueves entre tus cuentas van sin marcar: no son gastos nuevos. Las transacciones declinadas no se cobraron.</p>
+        <p class="small muted" style={{ textAlign: 'center' }}>Los pagos de tarjeta y lo que mueves entre tus cuentas no son gastos nuevos: {s.money.accounts.some((a) => a.base) ? 'se agregan para que tus saldos cuadren' : 'van sin marcar'}. Las transacciones declinadas no se cobraron.</p>
       </main>
       <div class="cta-bar">
         <button type="button" class="btn block" disabled={!sel.length} onClick={doImport}><Icon name="check" size={20} />Agregar {plural(sel.length, 'movimiento', 'movimientos')}</button>
