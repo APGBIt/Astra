@@ -318,6 +318,8 @@ export function templateItems(rows, det, cats) {
   const c = det.cols;
   const byName = new Map(cats.map((x) => [key(x.name), x]));
   const byId = new Map(cats.map((x) => [x.id, x]));
+  // Nombres de antes de la 1.8, para archivos hechos con la lista vieja.
+  for (const [old, id] of [['salud y farmacia', 'salud'], ['luz, agua y gas', 'servicios'], ['educacion', 'educacion'], ['ahorro e inversion', 'ahorro']]) if (!byName.has(key(old)) && byId.has(id)) byName.set(key(old), byId.get(id));
   const items = [];
   let skipped = 0;
   for (const r of rows.slice(det.header + 1)) {

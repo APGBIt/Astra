@@ -444,6 +444,12 @@ function describe(e) {
     case 'freezeUsed': return { icon: 'shield', text: e.n === 1 ? 'Un protector cuidó tu racha.' : `${e.n} protectores cuidaron tu racha.` };
     case 'book': return { icon: 'book', text: `Terminaste «${e.title}» · +50 XP` };
     case 'budget': return { icon: 'chart', text: e.level >= 100 ? `Llegaste al presupuesto de ${e.name}` : `Ya usaste el 80 % de ${e.name}` };
+    case 'quitDays': return e.n >= 7
+      ? { big: true, icon: 'flag', color: 'var(--good)', title: `${e.n} días sin ${e.name.charAt(0).toLowerCase()}${e.name.slice(1)}`, text: `Ganas ${e.xp} XP. Cada día cuenta, sigue así.` }
+      : { icon: 'flag', text: `${e.n === 1 ? 'Un día' : `${e.n} días`} sin ${e.name.charAt(0).toLowerCase()}${e.name.slice(1)} · +${e.xp} XP` };
+    case 'targetStep': return { icon: 'target', text: `${e.name}: llegaste al ${e.pct} % · +${e.xp} XP` };
+    case 'targetDone': return { big: true, icon: 'target', color: 'var(--xp)', title: '¡Meta cumplida!', text: `Llegaste a «${e.name}». Ganas ${e.xp} XP y 30 de oro.` };
+    case 'dreamDone': return { big: true, icon: 'star', color: 'var(--xp)', title: '¡Lo lograste!', text: `«${e.name}» ya es parte de tu historia. Ganas ${e.xp} XP y 40 de oro.` };
     case 'cardPaid': return { icon: 'card', text: `Pagaste todo el estado de ${e.name} a tiempo · +15 XP` };
     case 'planLinked': return { icon: 'calendar', text: `«${e.name}» quedó como ${e.kind === 'ingreso' ? 'recibido' : 'pagado'}` };
     default: return null;

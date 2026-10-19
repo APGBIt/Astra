@@ -61,8 +61,13 @@ test('alerta de consumo del banco', () => {
 });
 
 test('categorías', () => {
-  assert.equal(guessCategory('farmacia carol'), 'salud');
-  assert.equal(guessCategory('pedidosya'), 'comida');
+  assert.equal(guessCategory('farmacia carol'), 'farmacia');
+  assert.equal(guessCategory('consulta con el dentista'), 'salud');
+  assert.equal(guessCategory('JUAN VALDEZ CAFE'), 'cafe');
+  assert.equal(guessCategory('tanque de gas propano'), 'gas');
+  assert.equal(guessCategory('loteria leidsa'), 'loteria');
+  assert.equal(guessIncome('regalia pascual'), 'regalia');
+  assert.equal(guessCategory('pedidosya'), 'delivery');
 });
 
 test('título limpio y sin falsos emparejamientos', async () => {

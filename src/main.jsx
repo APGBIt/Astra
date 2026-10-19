@@ -1,6 +1,7 @@
 import { render } from 'preact';
 import { useEffect } from 'preact/hooks';
-import { useApp, runReconcile, applyTheme, getState } from './app/store.js';
+import { useApp, runReconcile, applyTheme, getState, onChange } from './app/store.js';
+import { startNotifications } from './app/notify.js';
 import { useRoute, go } from './app/router.js';
 import { initPWA } from './app/pwa.js';
 import { Toasts, Celebrations, Confirmer } from './ui/kit.jsx';
@@ -23,6 +24,7 @@ import { Character, Inn, Shop, Chronicle, Recovery } from './screens/Character.j
 import { Settings } from './screens/Settings.jsx';
 import { Hogar } from './screens/Hogar.jsx';
 import { Wins } from './screens/Wins.jsx';
+import { Growth } from './screens/Growth.jsx';
 import { WordScreen } from './screens/Word.jsx';
 import { SyncScreen } from './screens/Sync.jsx';
 import { startSync, syncNow, connectGoogle, syncConfig } from './app/sync.js';
@@ -88,6 +90,7 @@ function Screen({ route }) {
     case 'ajustes': return <Settings />;
     case 'hogar': return <Hogar query={q} />;
     case 'logros': return <Wins query={q} />;
+    case 'metas': return <Growth query={q} />;
     case 'palabra': return <WordScreen />;
     case 'sincronizar': return <SyncScreen />;
     default: return <Home />;
@@ -106,6 +109,7 @@ function App() {
     const id = setInterval(runReconcile, 60000);
     if (!getState().profile.onboarded && location.hash && location.hash !== '#/crear' && location.hash !== '#/sincronizar') go('/', { replace: true });
     startSync();
+    startNotifications(getState, onChange);
     if (googleBack) {
       if (!googleBack.ok) toast(googleBack.error === 'access_denied' ? 'No diste permiso para usar tu Drive' : 'No se pudo iniciar sesión con Google', 'info');
       else if (googleBack.intent === 'connect' || syncConfig().provider !== 'google') connectGoogle().catch((e) => toast((e && e.message) || 'No se pudo conectar con Google Drive', 'info'));

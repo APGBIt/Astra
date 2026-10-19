@@ -2,6 +2,39 @@
 
 Tu vida en modo juego de rol. App web instalable (y futura APK) para crecer en seis áreas de la vida con barras de vitalidad y energía, caminos, misiones y jefes.
 
+## Novedades de la versión 1.8 (metas de crecimiento, notificaciones y más categorías)
+
+- **Tus metas** (Áreas → Crecimiento → Tus metas), con tres listas:
+  - **Dejar de hacer**: malos hábitos que quieres soltar (plantillas como refrescos, delivery, redes en la cama o compras por impulso).
+    - Cuenta los días seguidos sin hacerlo y celebra los hitos de 1, 3, 7, 14, 21, 30, 60, 90, 180 y 365 días con XP y oro.
+    - Si pones lo que te cuesta al día, dice cuánto vas ahorrando.
+    - Al recaer anotas qué lo provocó y te recuerda qué hacer en su lugar. Tu mejor racha y tus días limpios no se borran.
+  - **Metas y progreso**: metas medibles que vas sumando (ahorro, libros, kilómetros) o que marcas con un valor (tu peso).
+    - Con fecha límite, dice si vas a tiempo y cuánto te toca por semana.
+    - Un fondo de ahorro puede seguir solo el saldo de una cuenta.
+    - Cada cuarto del camino da XP.
+  - **Por lograr**: tu lista de cosas por vivir (este año, en 1 a 3 años o algún día).
+    - Las divides en pasos y pasas un paso a tus pendientes.
+    - Al lograrla, la puedes guardar en tus logros.
+  - Tres insignias nuevas: Treinta días libre, Meta cumplida y De la lista a la vida.
+  - En Drive, la tabla «Metas»; lo que quieres dejar de hacer no se copia a las tablas.
+- **Notificaciones en el teléfono** (Personaje → Ajustes → Notificaciones):
+  - Qué avisa:
+    - el resumen de la mañana;
+    - pagos, cobros y tarjetas, unos días antes y el mismo día;
+    - las misiones que faltan en la tarde y el cierre del día;
+    - los hitos de lo que quieres dejar y tus metas sin avance;
+    - un check-in de ánimo, si lo activas.
+  - Cada tipo se activa por separado. Eliges la hora de la mañana, la tarde y la noche, y tus horas de silencio.
+  - Llegan a su hora mientras Astra está abierta o en segundo plano. En Android, con la app instalada, el sistema la despierta cada pocas horas para mostrar lo que toca. No funcionan dentro de la vista de Claude.
+- **Más categorías de finanzas** (64 en total):
+  - café y antojos, delivery, bebidas y tabaco;
+  - gas de cocina, botellones de agua, inversor y planta, muebles y electrodomésticos;
+  - farmacia, terapia, cursos, libros, hijos, pasatiempos, lotería y apuestas;
+  - préstamos que das, inversiones, intereses y mora, imprevistos;
+  - en ingresos: regalía pascual, bonos, alquileres que cobras, pensión, préstamos que te devuelven y premios.
+  - Las palabras para adivinar la categoría se ajustaron a cada una.
+
 ## Novedades de la versión 1.7 (Finanzas: análisis, estados de cuenta y disponible)
 
 Ideas tomadas de Copilot (ritmo de gasto del mes), Monarch (flujo de caja), YNAB (tendencias de gasto) y Actual Budget (importar estados de cuenta con columnas que se eligen).
@@ -121,7 +154,7 @@ Ideas tomadas de comparar YNAB, Monarch, Copilot, Simplifi, PocketGuard, Rocket 
 - **Misiones**: hábitos, tareas únicas y malos hábitos a evitar. Se agregan en una línea: la app sugiere atributo, costo de energía y XP. Algunas se completan solas (pasos, sueño, gastos, ánimo, contactos, enfoque).
 - **Registrar**: escribe o dicta lo que hiciste («gasté 850 en el súper y caminé 40 minutos») y la app lo convierte en registros.
 - **Finanzas**: saldo y disponible de cuentas y tarjetas, corte y pago de cada tarjeta, sueldo y pagos programados, lo que viene en los próximos días, plan del mes, presupuestos sugeridos, proyección del mes y análisis (ritmo, flujo de caja, categorías, comercios, calendario). Importa estados de cuenta en CSV o Excel. Tres formas de registrar: recibo con IA (incluye RNC, e-NCF e ITBIS; lee el QR de facturas electrónicas), alerta del banco pegada y entrada manual o por voz.
-- **Áreas**: salud (pasos, sueño, agua, ejercicio, frutas y verduras, calma), ánimo (check-in de dos ejes con 80 emociones, año en píxeles, patrones), calma (respiraciones, meditaciones guiadas y libres, pausa SOS, descarga mental, replantear pensamientos), relaciones (frecuencia por persona, cumpleaños, WhatsApp), crecimiento (libros, tarjetas de repaso, práctica, diario, rueda de la vida, valores, bienestar OMS-5) y enfoque (sesiones que se agrietan si sales de la app, cierre de jornada).
+- **Áreas**: salud (pasos, sueño, agua, ejercicio, frutas y verduras, calma), ánimo (check-in de dos ejes con 80 emociones, año en píxeles, patrones), calma (respiraciones, meditaciones guiadas y libres, pausa SOS, descarga mental, replantear pensamientos), relaciones (frecuencia por persona, cumpleaños, WhatsApp), crecimiento (dejar de hacer, metas con progreso, cosas por lograr, libros, tarjetas de repaso, práctica, diario, rueda de la vida, valores, bienestar OMS-5) y enfoque (sesiones que se agrietan si sales de la app, cierre de jornada).
 - **Posada** (cierre del día, tres cosas buenas e intención), **Tienda** (recompensas propias con oro, protectores de racha), **Crónica** (semana, revisión semanal, gráfico de vitalidad, XP por atributo, insignias, títulos).
 - Modo claro y oscuro, sin conexión después de la primera visita, copia de seguridad descargable y sincronización con tu propio Google Drive.
 

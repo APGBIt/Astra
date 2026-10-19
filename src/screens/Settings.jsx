@@ -12,6 +12,7 @@ import { DailyGoalsEditor } from './Goals.jsx';
 import { fmtDay } from '../app/dates.js';
 import { APP_VERSION } from '../app/config.js';
 import { SyncCard } from './Sync.jsx';
+import { NotifyCard } from './NotifyCard.jsx';
 
 const MODELS = [
   { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5 (recomendado)' },
@@ -79,6 +80,8 @@ export function Settings() {
         <h2 class="h2">Perfil</h2>
         <div class="field"><label for="nm">Nombre</label><input id="nm" class="input" value={name} maxLength={30} onInput={(e) => setName(e.currentTarget.value)} onBlur={() => set((st) => { st.profile.name = name.trim() || st.profile.name; })} /></div>
       </section>
+
+      <NotifyCard />
 
       <section class="card" aria-label="Metas diarias">
         <div class="stack-xs"><h2 class="h2">Metas diarias</h2><span class="small muted">Elige una opción o toca «Otro» para escribir tu propio número.</span></div>

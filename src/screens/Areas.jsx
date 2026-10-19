@@ -12,6 +12,7 @@ import { JournalCard } from './Journal.jsx';
 import { vibrate } from '../app/env.js';
 import { go } from '../app/router.js';
 import { act, useApp } from '../app/store.js';
+import { GrowthCard } from './Growth.jsx';
 import { addDays, relDay, DAYS_SHORT, weekday, fmtShort } from '../app/dates.js';
 import { AREAS, AREA, AREA_ROUTE, CIRCLES, EXERCISE_TYPES } from '../game/content.js';
 import { calmMinutes, calmStreak, journalDays } from '../game/mind.js';
@@ -357,6 +358,7 @@ export function Learn() {
       <main class="screen">
         <TopBar backTo="/areas" />
         <AreaHeader area="crecimiento" />
+        <GrowthCard s={s} today={today} />
         <JournalCard s={s} today={today} />
         <WheelCard s={s} today={today} />
         <ValuesCard s={s} />

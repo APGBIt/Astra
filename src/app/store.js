@@ -2,6 +2,8 @@
 import { useEffect, useReducer } from 'preact/hooks';
 import { defaultState, reconcile, ensureRecord, ensureMoney, ensureHome } from '../game/logic.js';
 import { ensureMind } from '../game/mind.js';
+import { ensureGrowth, claimQuit } from '../game/growth.js';
+import { ensureNotify } from '../game/reminders.js';
 import { dayKey } from './dates.js';
 
 const KEY = 'astra.v1';
@@ -37,6 +39,9 @@ export function migrate(s) {
   ensureHome(m);
   // 1.6: calma, diario, chequeo de bienestar, rueda de la vida, valores y revisión de la semana.
   ensureMind(m);
+  // 1.8: dejar de hacer, metas con progreso y cosas por lograr.
+  ensureGrowth(m);
+  ensureNotify(m);
   m.v = 4;
   if (!Array.isArray(m.profile.classKeys)) m.profile.classKeys = [];
   if (!Array.isArray(m.streak.freezeDays)) m.streak.freezeDays = [];
@@ -116,7 +121,7 @@ export function runReconcile() {
   const today = dayKey();
   if (state.processed === today && state.energy && state.energy.day === today) return [];
   let ev = [];
-  act((s, t) => { ev = reconcile(s, t); });
+  act((s, t, e) => { ev = reconcile(s, t); claimQuit(s, t, e); });
   return ev;
 }
 

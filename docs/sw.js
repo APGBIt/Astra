@@ -1,5 +1,5 @@
 // Astra · caché para usar sin conexión (no guarda datos personales)
-const CACHE = 'astra-255dd50609';
+const CACHE = 'astra-43a0756156';
 const CORE = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
@@ -17,4 +17,46 @@ self.addEventListener('fetch', (e) => {
       return hit || net;
     }));
   }
+});
+
+// Avisos (1.8): la app deja guardados los de hoy y mañana; aquí se muestran los que ya tocan
+// cuando el sistema despierta al service worker (sincronización periódica) o cuando la app lo pide.
+function kv(mode, fn) {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('astra', 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+      if (!db.objectStoreNames.contains('photos')) db.createObjectStore('photos', { keyPath: 'id' });
+    };
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      const t = req.result.transaction('kv', mode);
+      const r = fn(t.objectStore('kv'));
+      t.oncomplete = () => resolve(r && r.result);
+      t.onerror = () => reject(t.error);
+    };
+  });
+}
+async function dueReminders() {
+  const box = await kv('readonly', (st) => st.get('reminders')).catch(() => null);
+  const sent = new Set((await kv('readonly', (st) => st.get('remindersSent')).catch(() => null)) || []);
+  const now = Date.now();
+  const due = ((box && box.items) || []).filter((r) => r.at <= now && r.at > now - 6 * 60 * 60 * 1000 && !sent.has(r.id));
+  for (const r of due) {
+    await self.registration.showNotification(r.title, { body: r.body, tag: r.tag || r.id, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', data: { url: r.url || '#/' }, lang: 'es' });
+    sent.add(r.id);
+  }
+  if (due.length) await kv('readwrite', (st) => st.put([...sent].slice(-300), 'remindersSent')).catch(() => {});
+}
+self.addEventListener('periodicsync', (e) => { if (e.tag === 'astra-avisos') e.waitUntil(dueReminders()); });
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = new URL((e.notification.data && e.notification.data.url) || '#/', self.registration.scope).href;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => {
+    for (const c of cs) {
+      if ('focus' in c) { if ('navigate' in c) c.navigate(url).catch(() => {}); return c.focus(); }
+    }
+    return self.clients.openWindow(url);
+  }));
 });

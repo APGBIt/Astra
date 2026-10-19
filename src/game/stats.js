@@ -247,8 +247,9 @@ export function budgetSuggestions(s, today) {
 }
 
 // 50/30/20: necesidades, gustos y ahorro (o deudas) frente a tus ingresos del mes.
-const NEEDS = new Set(['super', 'combustible', 'transporte', 'peajes', 'vehiculo', 'vivienda', 'servicios', 'telecom', 'hogar', 'domestico', 'salud', 'educacion', 'seguros', 'impuestos', 'comisiones', 'familia', 'mascotas', 'trabajo']);
-const SAVE = new Set(['ahorro', 'deuda']);
+const NEEDS = new Set(['super', 'combustible', 'transporte', 'peajes', 'vehiculo', 'vivienda', 'servicios', 'gas', 'agua_botellon', 'energia', 'telecom', 'hogar', 'domestico', 'salud', 'farmacia', 'terapia', 'educacion', 'cursos', 'libros', 'hijos', 'seguros', 'impuestos', 'comisiones', 'intereses_pagados', 'familia', 'mascotas', 'trabajo', 'imprevistos']);
+// Ahorro, inversión y deudas; lo que prestas también, porque es dinero que debe volver.
+const SAVE = new Set(['ahorro', 'inversion', 'deuda', 'prestamo_dado']);
 export const groupOf503020 = (cat) => (SAVE.has(cat) ? 'ahorro' : NEEDS.has(cat) ? 'necesidades' : 'gustos');
 export function split503020(s, mk) {
   const out = { necesidades: 0, gustos: 0, ahorro: 0, income: 0 };

@@ -13,6 +13,8 @@ import { wordOf } from './daily.js';
 import { afterTx, ensureMoneyPlus } from './money.js';
 import { defaultMind, bestCalmStreak, distinctEmotions, goodThings, journalDays } from './mind.js';
 import { PROGRAM } from './wellness.js';
+import { defaultGrowth } from './growth.js';
+import { defaultNotify } from './reminders.js';
 
 export const ENERGY_CAP = 10;
 export const STEPS_GOAL = DEFAULT_GOALS.steps;
@@ -55,7 +57,7 @@ export function defaultState(today = dayKey()) {
   return {
     v: 4,
     profile: { name: '', emblem: 'star', onboarded: false, created: today, classKeys: [], sleepGoal: 7, wakeGoal: '', selfRating: {}, goals: { ...DEFAULT_GOALS } },
-    settings: { theme: 'auto', aiMode: 'auto', aiKey: '', aiModel: 'claude-sonnet-5-5', serverUrl: '', serverToken: '', lastBackup: null, hideNumbers: true, showDaily: true },
+    settings: { theme: 'auto', aiMode: 'auto', aiKey: '', aiModel: 'claude-sonnet-5-5', serverUrl: '', serverToken: '', lastBackup: null, hideNumbers: true, showDaily: true, notify: defaultNotify() },
     xp: 0,
     attrs: Object.fromEntries(AREA_KEYS.map((k) => [k, 0])),
     gold: 0,
@@ -94,6 +96,7 @@ export function defaultState(today = dayKey()) {
     photos: {},
     record: buildRecord(),
     mind: defaultMind(),
+    growth: defaultGrowth(),
   };
 }
 
@@ -2590,6 +2593,9 @@ export const ACHIEVEMENTS = [
   { id: 'diario10', icon: 'book', title: 'Diario vivo', desc: 'Escribe en tu diario 10 días distintos.', test: (s) => journalDays(s) >= 10 },
   { id: 'gratitud21', icon: 'heart', title: 'Ojos agradecidos', desc: 'Anota 21 cosas buenas.', test: (s) => goodThings(s) >= 21 },
   { id: 'rueda', icon: 'target', title: 'Mapa de tu vida', desc: 'Completa tu primera rueda de la vida.', test: (s) => !!s.mind && s.mind.wheel.length >= 1 },
+  { id: 'libre30', icon: 'flag', title: 'Treinta días libre', desc: 'Pasa 30 días seguidos sin algo que quieres dejar.', test: (s) => !!s.growth && s.growth.quit.some((q) => Object.values(q.claimed || {}).some((a) => Array.isArray(a) && a.includes(30))) },
+  { id: 'meta1', icon: 'target', title: 'Meta cumplida', desc: 'Llega al 100 % de una meta con progreso.', test: (s) => !!s.growth && s.growth.targets.some((t) => t.done) },
+  { id: 'sueno1', icon: 'star', title: 'De la lista a la vida', desc: 'Logra algo de tu lista de cosas por lograr.', test: (s) => !!s.growth && s.growth.dreams.some((d) => d.done) },
 ];
 
 export function checkAchievements(s, today, ev) {

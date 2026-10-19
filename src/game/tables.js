@@ -97,6 +97,18 @@ export function buildTables(s, today) {
         ...((s.mind && s.mind.wheel) || []).map((w) => [w.day, 'Rueda de la vida', Math.round((WHEEL.reduce((a, x) => a + (w.scores[x.id] || 0), 0) / WHEEL.length) * 10) / 10, WHEEL.map((x) => `${x.label} ${w.scores[x.id]}`).join(', ')]),
       ].sort((a, b) => (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0)),
     ),
+    // Metas con progreso y lo que quieres lograr. Lo que quieres dejar de hacer no va a las tablas: es solo tuyo.
+    Metas: table(
+      ['Tipo', 'Meta', 'Área', 'Lleva', 'Meta final', 'Unidad', 'Fecha límite', 'Estado', 'Creada'],
+      [
+        ...((s.growth && s.growth.targets) || []).map((g) => [
+          'Meta con progreso', g.name, (AREA[g.area] || {}).area || '', g.link ? 'según la cuenta' : round2(g.mode === 'sum' ? (g.start || 0) + g.log.reduce((x, l) => x + Number(l.v), 0) : (g.log[0] ? g.log[0].v : g.start)), g.target, g.unit || '', g.due || '', g.done ? `Cumplida el ${g.done}` : g.archived ? 'Archivada' : 'En curso', g.created || '',
+        ]),
+        ...((s.growth && s.growth.dreams) || []).map((d) => [
+          'Por lograr', d.title, (AREA[d.area] || {}).area || '', `${d.steps.filter((x) => x.done).length} de ${d.steps.length} pasos`, '', '', d.due || '', d.done ? `Logrado el ${d.done}` : 'Pendiente', d.created || '',
+        ]),
+      ],
+    ),
     Posada: table(
       ['Fecha', 'Cómo terminó el día', 'Cosas buenas', 'Para mejorar', 'Me acuesto', 'Me levanto', 'Rutina para dormir'],
       innKeys.map((d) => {
