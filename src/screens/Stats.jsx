@@ -7,10 +7,12 @@ import { DAYS, DAYS_SHORT, fmtShort, monthKey, monthName, weekday } from '../app
 import { catOf } from '../game/logic.js';
 import {
   PERIODS, periodOf, cashflow, totals, categoryStats, merchantStats, accountStats, weekdayStats, dailyTotals, paceSeries,
-  monthProjection, insights, monthShort, prevMonth,
+  monthProjection, insights, monthShort, prevMonth, compareTotals, groupStats, incomeStats, smallSpends, bankCosts, healthSnapshot,
 } from '../game/stats.js';
+import { workInfo, workHours, fmtWork } from '../game/ledger.js';
+import { WorkCalc } from './FinTools.jsx';
 
-const pct = (v) => { const n = Math.round((v || 0) * 100); return `${n < 0 ? '−' : ''}${Math.abs(n)} %`; };
+const pct = (v) => { const n = Math.round((v || 0) * 100); return `${n < 0 ? '−' : ''}${Math.abs(n)} %`; };
 // «12 mil», «1.5 mil», «850».
 export const short = (v) => {
   const a = Math.abs(v);
@@ -28,13 +30,16 @@ const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 // «los lunes», «los sábados».
 const daysPlural = (d) => (/s$/.test(d) ? d : `${d}s`);
 
-export function Analysis({ s, today, onCat }) {
+export function Analysis({ s, today, onCat, setSheet = () => {} }) {
   const [per, setPer] = useState('mes');
   const period = periodOf(per, today);
   const tot = totals(s, period.from, period.to);
+  const cmp = compareTotals(s, period, today);
+  const wi = workInfo(s, today);
   const single = period.mks.length === 1;
   const cfMks = period.mks.length >= 3 ? period.mks : (() => { const m = [monthKey(today)]; while (m.length < 6) m.unshift(prevMonth(m[0])); return m; })();
   const any = s.money.tx.some((t) => t.day >= period.from && t.day <= period.to);
+  const ch = (d, good) => (d == null || Math.abs(d) < 0.01 ? null : <span class="row" style={{ gap: 2, color: (d > 0) === good ? 'var(--good-ink)' : 'var(--vit-ink)' }}><Icon name={d > 0 ? 'arrowup' : 'arrowdown'} size={12} />{pct(Math.abs(d))}</span>);
   return (
     <>
       <div class="chips stat-periods" role="group" aria-label="Período">
@@ -42,20 +47,27 @@ export function Analysis({ s, today, onCat }) {
       </div>
       <section class="card" aria-label="Ingresos y gastos del período">
         <div class={`kpis3${[tot.income, tot.spent, tot.net].some((v) => whole(Math.abs(v)).length > 10) ? ' stack' : ''}`}>
-          <div class="stack-xs"><span class="tiny semi muted">Ingresos</span><span class="strong tab-num kpi-v">{whole(tot.income)}</span></div>
-          <div class="stack-xs"><span class="tiny semi muted">Gastos</span><span class="strong tab-num kpi-v">{whole(tot.spent)}</span></div>
+          <div class="stack-xs"><span class="tiny semi muted">Ingresos</span><span class="strong tab-num kpi-v">{whole(tot.income)}</span>{cmp.any && <span class="tiny semi">{ch(cmp.dIncome, true)}</span>}</div>
+          <div class="stack-xs"><span class="tiny semi muted">Gastos</span><span class="strong tab-num kpi-v">{whole(tot.spent)}</span>{cmp.any && <span class="tiny semi">{ch(cmp.dSpent, false)}</span>}</div>
           <div class="stack-xs"><span class="tiny semi muted">{tot.net >= 0 ? 'Te quedó' : 'Gastaste de más'}</span><span class="strong tab-num kpi-v" style={{ color: tot.net < 0 ? 'var(--vit-ink)' : 'var(--ink)' }}>{whole(Math.abs(tot.net))}</span></div>
         </div>
         <span class="small muted">
           {tot.rate != null ? (tot.rate >= 0 ? `Guardaste el ${pct(tot.rate)} de lo que entró. ` : 'Salió más de lo que entró. ') : ''}
           {tot.n ? `${plural(tot.n, 'gasto', 'gastos')} · ${whole(tot.perDay)} por día en promedio.` : 'Sin gastos en este período.'}
+          {cmp.any ? ` Las flechas comparan con ${cmp.label} (${whole(cmp.prev.spent)} de gastos).` : ''}
         </span>
+        {wi.ready && tot.spent > 0 && <span class="small semi row hrs" style={{ color: 'var(--finanzas-ink)' }}><Icon name="clock" size={14} />Lo que gastaste son {fmtWork(workHours(tot.spent, wi), wi)} de tu trabajo.</span>}
       </section>
 
       {per === 'mes' && <Insights s={s} today={today} onCat={onCat} />}
       {per === 'mes' && <PaceCard s={s} today={today} />}
+      <HealthCard s={s} today={today} />
       <CashflowCard s={s} mks={cfMks} />
-      {any && <CategoriesCard s={s} period={period} today={today} onCat={onCat} />}
+      {any && <CategoriesCard s={s} period={period} today={today} onCat={onCat} wi={wi} />}
+      {any && <IncomeCard s={s} period={period} />}
+      {any && <WorkCard s={s} period={period} wi={wi} onSet={() => setSheet({ kind: 'work' })} />}
+      {any && <AntsCard s={s} period={period} wi={wi} onCat={onCat} />}
+      {any && <BankCard s={s} period={period} wi={wi} onTax={() => setSheet({ kind: 'tax' })} />}
       {any && <MerchantsCard s={s} period={period} />}
       {single && any && <CalendarCard s={s} mk={period.mks[0]} today={today} />}
       {any && <WeekdayCard s={s} period={period} />}
@@ -223,25 +235,30 @@ function CashflowCard({ s, mks }) {
 
 // ---------- Categorías ----------
 
-function CategoriesCard({ s, period, today, onCat }) {
-  const rows = categoryStats(s, period, today);
+function CategoriesCard({ s, period, today, onCat, wi }) {
+  const [by, setBy] = useState('categoria');
   const [all, setAll] = useState(false);
+  const fam = by === 'familia';
+  const rows = fam ? groupStats(s, period, today).map((g) => ({ ...g, key: `g:${g.group}`, label: g.name })) : categoryStats(s, period, today).map((r) => ({ ...r, key: r.cat, label: catOf(s, r.cat).name }));
   const top = rows[0] ? rows[0].total : 1;
   const list = all ? rows : rows.slice(0, 7);
   const cmp = period.mks.length === 1 && period.mks[0] === monthKey(today) ? 'de lo que sueles llevar a esta altura' : 'de tu promedio';
   return (
     <section class="card flush" aria-label="Gastos por categoría">
-      <div class="stack-xs" style={{ padding: '14px 0 4px' }}><h2 class="h2">Por categoría</h2><span class="small muted">Comparado {cmp} (3 meses antes).</span></div>
+      <div class="stack-xs" style={{ padding: '14px 0 6px' }}>
+        <div class="between-c"><h2 class="h2">Por {fam ? 'familia' : 'categoría'}</h2><div class="seg mini" role="tablist" aria-label="Ver por">{[['categoria', 'Categorías'], ['familia', 'Familias']].map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={by === k ? 'true' : 'false'} onClick={() => { setBy(k); setAll(false); }}>{l}</button>)}</div></div>
+        <span class="small muted">Comparado {cmp} (3 meses antes). Toca para ver el detalle.</span>
+      </div>
       {list.map((r) => {
-        const c = catOf(s, r.cat);
         const d = r.delta;
+        const hrs = wi && wi.ready ? fmtWork(workHours(r.total, wi), wi) : '';
         return (
-          <button key={r.cat} type="button" class="lrow cat-stat" onClick={() => onCat(r.cat, period)} aria-label={`${c.name}: ${money(r.total)}, ${pct(r.share)} del gasto${d != null ? `, ${d >= 0 ? 'más' : 'menos'} ${pct(Math.abs(d))} ${cmp}` : ''}`}>
+          <button key={r.key} type="button" class="lrow cat-stat" onClick={() => onCat(r.key, period)} aria-label={`${r.label}: ${money(r.total)}, ${pct(r.share)} del gasto${d != null ? `, ${d >= 0 ? 'más' : 'menos'} ${pct(Math.abs(d))} ${cmp}` : ''}. Ver detalle`}>
             <span class="stack-xs grow" style={{ minWidth: 0, gap: 6 }}>
-              <span class="between-c" style={{ gap: 8 }}><span class="semi clip">{c.name}</span><span class="strong tab-num" style={{ whiteSpace: 'nowrap' }}>{whole(r.total)}</span></span>
+              <span class="between-c" style={{ gap: 8 }}><span class="semi clip">{r.label}</span><span class="strong tab-num" style={{ whiteSpace: 'nowrap' }}>{whole(r.total)}</span></span>
               <span class="hbar"><i style={{ width: `${Math.max(2, (r.total / top) * 100)}%` }} /></span>
-              <span class="tiny semi muted row" style={{ gap: 4 }}>
-                {pct(r.share)} del gasto · {plural(r.n, 'vez', 'veces')}
+              <span class="tiny semi muted row wrap" style={{ gap: 4 }}>
+                {pct(r.share)} del gasto · {plural(r.n, 'vez', 'veces')}{hrs ? ` · ${hrs}` : ''}
                 {d != null && Math.abs(d) >= 0.1 && <span class="row" style={{ gap: 2, color: 'var(--ink-2, var(--ink))' }}>· <Icon name={d > 0 ? 'arrowup' : 'arrowdown'} size={12} />{pct(Math.abs(d))}</span>}
                 {r.isNew && ' · nuevo'}
               </span>
@@ -250,6 +267,138 @@ function CategoriesCard({ s, period, today, onCat }) {
         );
       })}
       {rows.length > 7 && <button type="button" class="lrow" style={{ justifyContent: 'center', fontWeight: 700 }} onClick={() => setAll(!all)}>{all ? 'Ver menos' : `Ver las ${rows.length}`}</button>}
+    </section>
+  );
+}
+
+// ---------- De dónde viene tu dinero ----------
+
+function IncomeCard({ s, period }) {
+  const rows = incomeStats(s, period);
+  if (!rows.length) return null;
+  const top = rows[0].total;
+  return (
+    <section class="card flush" aria-label="De dónde viene tu dinero">
+      <div style={{ padding: '14px 0 4px' }}><h2 class="h2">De dónde viene tu dinero</h2></div>
+      {rows.map((r) => {
+        const c = catOf(s, r.cat);
+        return (
+          <div key={r.cat} class="lrow" style={{ minHeight: 60, alignItems: 'stretch', flexDirection: 'column', gap: 6, justifyContent: 'center' }}>
+            <span class="between-c" style={{ gap: 8 }}><span class="semi clip">{c.name}</span><span class="strong tab-num" style={{ whiteSpace: 'nowrap', color: 'var(--good-ink)' }}>{whole(r.total)}</span></span>
+            <span class="hbar"><i style={{ width: `${Math.max(2, (r.total / top) * 100)}%`, background: 'var(--good)' }} /></span>
+            <span class="tiny muted semi">{pct(r.share)} de lo que entró · {plural(r.n, 'vez', 'veces')}</span>
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+// ---------- Tu tiempo y tu dinero ----------
+
+function WorkCard({ s, period, wi, onSet }) {
+  const rows = categoryStats(s, period, period.to).slice(0, 3);
+  if (!wi.ready) {
+    return (
+      <button type="button" class="note" style={{ border: 'none', textAlign: 'left', color: 'var(--ink)', font: 'inherit' }} onClick={onSet}>
+        <Icon name="clock" size={20} /><span class="grow">¿Cuántas horas de trabajo te cuesta cada gasto? Pon tu ingreso y tus horas de trabajo.</span><Icon name="right" size={18} />
+      </button>
+    );
+  }
+  return (
+    <section class="card" aria-label="Tu tiempo y tu dinero">
+      <div class="stack-xs">
+        <h2 class="h2">Tu tiempo y tu dinero</h2>
+        <span class="between-c"><span class="small muted">Tu hora vale <b style={{ color: 'var(--ink)' }}>{money(Math.round(wi.rate))}</b>{wi.useReal ? ' (hora real)' : ''}. Lo que más trabajo te costó:</span><button type="button" class="link-btn" style={{ minHeight: 32, flexShrink: 0 }} onClick={onSet}>Ajustar<Icon name="right" size={14} /></button></span>
+      </div>
+      {rows.length > 0 && (
+        <div class="stack-xs">
+          {rows.map((r) => (
+            <div key={r.cat} class="between-c" style={{ minHeight: 34 }}>
+              <span class="semi clip">{catOf(s, r.cat).name}</span>
+              <span class="small strong tab-num row hrs" style={{ whiteSpace: 'nowrap' }}><Icon name="clock" size={13} />{fmtWork(workHours(r.total, wi), wi)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <WorkCalc s={s} wi={wi} />
+    </section>
+  );
+}
+
+// ---------- Gastos hormiga ----------
+
+function AntsCard({ s, period, wi, onCat }) {
+  const [max, setMax] = useState(500);
+  const a = smallSpends(s, period, { max });
+  if (!a.n) return null;
+  return (
+    <section class="card" aria-label="Gastos hormiga">
+      <div class="stack-xs"><h2 class="h2">Gastos hormiga</h2><span class="small muted">Compras pequeñas y seguidas que casi no se notan, pero suman.</span></div>
+      <div class="row wrap" style={{ gap: 8 }} role="group" aria-label="Compra pequeña: hasta"><span class="small semi muted">De hasta</span>{[300, 500, 1000].map((v) => <TChip key={v} sm on={max === v} onClick={() => setMax(v)}>{money(v)}</TChip>)}</div>
+      <span class="stack-xs">
+        <span class="display-num tab-num" style={{ fontSize: 28 }}>{whole(a.total)}</span>
+        <span class="small muted">{plural(a.n, 'compra', 'compras')} · {pct(a.share)} de lo que gastaste{wi.ready ? ` · ${fmtWork(workHours(a.total, wi), wi)} de trabajo` : ''}</span>
+        <span class="small strong" style={{ color: 'var(--finanzas-ink)' }}>A este ritmo, al año son unos {whole(Math.round(a.perYear / 100) * 100)}{wi.ready ? ` (${fmtWork(workHours(a.perYear, wi), wi)} de trabajo)` : ''}.</span>
+      </span>
+      <div class="stack-xs">
+        {a.cats.map((c) => (
+          <button key={c.cat} type="button" class="between-c insight" style={{ minHeight: 40 }} onClick={() => onCat(c.cat)}>
+            <span class="semi clip" style={{ textAlign: 'left' }}>{catOf(s, c.cat).name}</span>
+            <span class="small strong tab-num" style={{ whiteSpace: 'nowrap' }}>{plural(c.n, 'vez', 'veces')} · {whole(c.total)}</span>
+          </button>
+        ))}
+      </div>
+      {a.merchants.length > 0 && <span class="small muted">Donde más: {a.merchants.slice(0, 3).map((m) => `${m.name} (${m.n})`).join(', ')}.</span>}
+    </section>
+  );
+}
+
+// ---------- Lo que te cobra el banco ----------
+
+function BankCard({ s, period, wi, onTax }) {
+  const b = bankCosts(s, period);
+  if (!(b.total > 0)) return null;
+  const rows = [['Impuesto a transferencias', b.tax], ['Comisiones y cargos', b.fees], ['Intereses y mora', b.interest]].filter(([, v]) => v > 0);
+  return (
+    <section class="card" aria-label="Lo que te cobra el banco">
+      <div class="between-c"><h2 class="h2">Lo que te cobra el banco</h2><span class="strong tab-num">{whole(b.total)}</span></div>
+      <div class="stack-xs">{rows.map(([l, v]) => <div key={l} class="between-c" style={{ minHeight: 30 }}><span class="small semi muted">{l}</span><span class="small strong tab-num">{money(v)}</span></div>)}</div>
+      {wi.ready && <span class="small semi row hrs" style={{ color: 'var(--finanzas-ink)' }}><Icon name="clock" size={14} />{fmtWork(workHours(b.total, wi), wi)} de tu trabajo.</span>}
+      {b.interest > 0 && <span class="small muted">Los intereses se evitan pagando el saldo completo de la tarjeta antes de la fecha límite.</span>}
+      <button type="button" class="link-btn" style={{ alignSelf: 'flex-start', minHeight: 32 }} onClick={onTax}><Icon name="percent" size={15} />Cómo se anota el impuesto<Icon name="right" size={14} /></button>
+    </section>
+  );
+}
+
+// ---------- Salud financiera ----------
+
+function HealthCard({ s, today }) {
+  const h = healthSnapshot(s, today);
+  if (!h.months && h.cardUse == null) return null;
+  const items = [];
+  // El tono sale del mismo número que se muestra (así «20 %» no sale como «regular»).
+  const r1 = (v) => Math.round(v * 10) / 10;
+  const meses = (v) => `${v >= 10 ? Math.round(v) : r1(v)} ${r1(v) === 1 ? 'mes' : 'meses'}`;
+  if (h.saveRate != null) { const v = Math.round(h.saveRate * 100); items.push(['Guardas de lo que entra', pct(h.saveRate), v >= 20 ? 'good' : v >= 10 ? 'mid' : 'low', 'La guía: 20 % o más.']); }
+  if (h.cushion != null) { const v = r1(h.cushion); items.push(['Te alcanza lo que tienes', meses(h.cushion), v >= 3 ? 'good' : v >= 1 ? 'mid' : 'low', 'De gastos, sin cobrar. La guía: de 3 a 6.']); }
+  if (h.cardUse != null) { const v = Math.round(h.cardUse * 100); items.push(['Usas de tus tarjetas', pct(h.cardUse), v < 30 ? 'good' : v < 70 ? 'mid' : 'low', 'Del límite. Lo sano: menos del 30 %.']); }
+  if (h.oweMonths != null && h.owe > 0) { const v = r1(h.oweMonths); items.push(['Debes en tarjetas', meses(h.oweMonths), v <= 0.5 ? 'good' : v <= 1 ? 'mid' : 'low', 'De tus ingresos de un mes.']); }
+  if (!items.length) return null;
+  const tone = { good: ['var(--good-soft)', 'var(--good-ink)', 'Bien'], mid: ['var(--xp-soft)', 'var(--xp-ink)', 'Regular'], low: ['var(--vit-soft)', 'var(--vit-ink)', 'Ojo'] };
+  return (
+    <section class="card" aria-label="Tu salud financiera">
+      <div class="stack-xs"><h2 class="h2">Tu salud financiera</h2><span class="small muted">{h.months ? `Con tus últimos ${h.months === 1 ? 'mes completo' : `${h.months} meses completos`} y tus saldos de hoy.` : 'Con tus saldos de hoy.'}</span></div>
+      <div class="health-grid">
+        {items.map(([l, v, k, sub]) => (
+          <div key={l} class="health" style={{ background: tone[k][0] }}>
+            <span class="tiny semi" style={{ color: tone[k][1] }}>{l}</span>
+            <span class="strong tab-num" style={{ fontSize: 20, color: tone[k][1] }}>{v}</span>
+            <span class="tiny semi" style={{ color: tone[k][1] }}>{tone[k][2]} · {sub}</span>
+          </div>
+        ))}
+      </div>
+      {!h.ready && <span class="tiny muted">Pon el saldo de tus cuentas para saber para cuántos meses te alcanza.</span>}
     </section>
   );
 }

@@ -4,12 +4,16 @@ import { Sheet, SheetHead, TChip, Switch, Bar, money, usd, cur, toast, ask, plur
 import { act } from '../app/store.js';
 import { addDays, diffDays, fmtDay, fmtShort, monthKey, monthName, parseDay, weekday, DAYS, MONTHS } from '../app/dates.js';
 import { accountOf, accountLabel, addAccount, updateAccount, removeAccount, catOf, catName, frequentCats, setBudget } from '../game/logic.js';
+import { workInfo, workHours, fmtWork } from '../game/ledger.js';
+import { debtList, compareDebtPlans, monthAfter } from '../game/debts.js';
 import {
   balances, moneyTotals, cardInfo, isCard, accountCur, ownsBalance, setAccountBalance, setCardStatement, untilPayday, dueItems,
   forecast, monthPlan, budgetRows, planDates, addPlan, updatePlan, removePlan, skipPlanDate, unmarkPlanDate, isFundPlan, isMonthly,
   fundInfo, addToFund, setRollover, carryFor, planFreqLabel, recurringSuggestions, dismissRecurring, setAvailable, spentByMonth, budgetFor,
+  weekFlex, budgetCatOf, isGroupId, setGroupBudget, planHistory,
 } from '../game/money.js';
 import { monthProjection, budgetPace, budgetSuggestions, split503020, prevMonth, monthShort } from '../game/stats.js';
+import { CATEGORY_GROUPS } from '../game/content.js';
 import { ACCOUNT_KINDS, PLAN_TEMPLATES } from '../game/content.js';
 import { toNumber } from '../game/parse.js';
 import { CatPicker } from '../ui/catpicker.jsx';
@@ -241,6 +245,7 @@ export function AccountsTab({ s, today, setSheet }) {
         <div style={{ padding: '14px 0 4px' }}><h2 class="h2">Tarjetas de crédito</h2></div>
         {!cards.length && <p class="small muted" style={{ padding: '2px 0 12px' }}>Agrega tu tarjeta con su fecha de corte y de pago: te digo cuánto pagar y cuándo, en pesos y en dólares.</p>}
         {cards.map((a) => <CardRow key={a.id} s={s} a={a} today={today} bal={bal} onOpen={() => setSheet({ kind: 'card', id: a.id })} />)}
+        {t.oweDOP > 0 && <button type="button" class="lrow" style={{ justifyContent: 'center', fontWeight: 700, color: 'var(--ink)' }} onClick={() => setSheet({ kind: 'debts' })}><Icon name="trend" size={18} />Plan para salir de deudas</button>}
       </section>
 
       <section class="card flush" aria-label="Cuentas y efectivo">
@@ -292,7 +297,7 @@ function CardRow({ s, a, today, bal, onOpen }) {
 }
 
 // Datos de una tarjeta: estado, pagar, lo que dice tu estado de cuenta y ajustes.
-export function CardSheet({ s, id, onClose, onPay, onMovements }) {
+export function CardSheet({ s, id, onClose, onPay, onMovements, onDebts = null }) {
   const today = s.energy.day;
   const a = accountOf(s, id);
   const [showStmt, setShowStmt] = useState(false);
@@ -371,6 +376,7 @@ export function CardSheet({ s, id, onClose, onPay, onMovements }) {
       )}
 
       <button type="button" class="btn soft block" onClick={() => onMovements(a.id)}><Icon name="list" size={18} />Ver los movimientos de esta tarjeta</button>
+      {onDebts && (ci.owed.DOP > 0 || ci.owed.USD > 0) && <button type="button" class="btn ghost block" onClick={onDebts}><Icon name="trend" size={18} />Plan para salir de deudas</button>}
       <button type="button" class="link-btn" style={{ alignSelf: 'center' }} onClick={() => setShowCfg(!showCfg)}><Icon name={showCfg ? 'down' : 'gear'} size={16} />Ajustes de la tarjeta</button>
       {showCfg && <AccountForm s={s} acc={a} onDone={(rid) => { setShowCfg(false); if (rid === null) onClose(); }} />}
     </Sheet>
@@ -612,7 +618,9 @@ export function PlanTab({ s, today, setSheet }) {
           <span class="stack-xs"><span class="strong">{mp.left >= 0 ? 'Te queda' : 'Te pasaste'}</span>{mp.perDay != null && mp.left > 0 && <span class="small semi" style={{ color: 'var(--finanzas-ink)' }}>{money(mp.perDay)} por día hasta fin de mes</span>}</span>
           <span class="display-num tab-num" style={{ fontSize: 28, color: mp.left < 0 ? 'var(--vit-ink)' : 'var(--ink)' }}>{money(Math.abs(mp.left))}</span>
         </div>
+        <WeekBlock s={s} today={today} />
       </section>
+      <DebtCard s={s} today={today} onOpen={() => setSheet({ kind: 'debts' })} />
 
       <section class="card flush" aria-label="Próximos días">
         <div class="between-c" style={{ padding: '14px 0 6px', gap: 8 }}>
@@ -677,6 +685,44 @@ export function PlanTab({ s, today, setSheet }) {
       </section>
       <Split503020 s={s} mk={mk} />
     </>
+  );
+}
+
+// Esta semana (lunes a domingo): lo que te toca del día a día y lo que llevas, sin los pagos programados.
+function WeekBlock({ s, today }) {
+  const w = weekFlex(s, today);
+  if (w.allowance == null) return null;
+  const over = w.left < 0;
+  return (
+    <div class="stack-xs" style={{ borderTop: '1.5px solid var(--line)', paddingTop: 10 }} aria-label="Esta semana">
+      <div class="between-c"><span class="strong">Esta semana</span><span class="small semi muted tab-num">{money(Math.round(w.spent))} de {money(Math.round(w.allowance))}</span></div>
+      <Bar value={w.allowance > 0 ? w.spent / w.allowance : 1} size="lg" color={over ? 'var(--vit)' : w.spent / w.allowance > 0.8 ? 'var(--xp)' : areaColor('finanzas')} label={`Esta semana llevas ${money(w.spent)} de ${money(w.allowance)}`} />
+      <span class="tiny semi" style={{ color: over ? 'var(--vit-ink)' : 'var(--muted)' }}>
+        {over ? `Te pasaste ${money(Math.round(-w.left))} de lo del día a día de esta semana.` : `Quedan ${money(Math.round(w.left))}${w.perDay != null && w.daysLeft > 1 ? ` hasta el domingo (${money(Math.round(w.perDay))} por día)` : ' para hoy'}.`}
+      </span>
+    </div>
+  );
+}
+
+// Salir de deudas: cuándo terminas con tu plan (o una invitación a hacerlo si debes en tus tarjetas).
+function DebtCard({ s, today, onOpen }) {
+  const list = debtList(s, today);
+  const on = list.filter((x) => x.on !== false);
+  if (!on.length) return null;
+  const total = on.reduce((a, x) => a + x.balance, 0);
+  const ready = on.every((x) => x.min > 0);
+  const d = s.money.debts;
+  const cmp = ready ? compareDebtPlans(on, d.extra) : null;
+  const plan = cmp ? (d.method === 'snowball' ? cmp.snowball : cmp.avalanche) : null;
+  return (
+    <button type="button" class="card" style={{ textAlign: 'left', color: 'var(--ink)', font: 'inherit' }} onClick={onOpen} aria-label="Salir de deudas">
+      <div class="between-c"><h2 class="h2">Salir de deudas</h2><Icon name="right" size={18} /></div>
+      <span class="small muted">Debes {money(Math.round(total))} en {plural(on.length, 'deuda', 'deudas')}.</span>
+      {plan && plan.ok && plan.months > 0 ? (
+        <span class="small strong" style={{ color: 'var(--finanzas-ink)' }}>Con tu plan ({d.method === 'snowball' ? 'bola de nieve' : 'avalancha'}) terminas en {MONTHS[Number(monthAfter(today, plan.months).slice(5)) - 1]} de {monthAfter(today, plan.months).slice(0, 4)}{cmp.minimum.ok && cmp.minimum.interest > plan.interest ? ` y te ahorras ${money(Math.round(cmp.minimum.interest - plan.interest))} de intereses` : ''}.</span>
+      ) : plan && !plan.ok ? <span class="small strong" style={{ color: 'var(--vit-ink)' }}>Con estos pagos no terminarías: revisa tu plan.</span>
+        : <span class="small strong">Pon la tasa y el pago de cada una y te digo cuándo terminas y cuánto ahorras en intereses.</span>}
+    </button>
   );
 }
 
@@ -790,8 +836,8 @@ function BudgetRow({ r, today, onOpen }) {
   const pacePct = r.pace != null && r.avail > 0 ? Math.min(1, r.pace / r.avail) : null;
   const bp = r.pace != null && today ? budgetPace(r, today) : null;
   return (
-    <button type="button" class="stack-sm budget-row" onClick={onOpen} aria-label={`${r.c.name}: ${r.over ? `${money(-r.left)} de más` : `quedan ${money(r.left)}`}`}>
-      <span class="between"><span class="strong" style={{ minWidth: 0 }}>{r.c.name}</span><span class="small strong" style={{ color: r.over ? 'var(--vit-ink)' : 'var(--muted)', whiteSpace: 'nowrap' }}>{r.over ? `${money(-r.left)} de más` : `Quedan ${money(r.left)}`}</span></span>
+    <button type="button" class="stack-sm budget-row" onClick={onOpen} aria-label={`${r.isGroup ? 'Familia ' : ''}${r.c.name}: ${r.over ? `${money(-r.left)} de más` : `quedan ${money(r.left)}`}`}>
+      <span class="between"><span class="strong row" style={{ minWidth: 0, gap: 6 }}>{r.c.name}{r.isGroup && <span class="chip sm">Familia</span>}</span><span class="small strong" style={{ color: r.over ? 'var(--vit-ink)' : 'var(--muted)', whiteSpace: 'nowrap' }}>{r.over ? `${money(-r.left)} de más` : `Quedan ${money(r.left)}`}</span></span>
       <span class="pace">
         <Bar value={r.pct} size="lg" color={color} />
         {pacePct != null && <b style={{ left: `${pacePct * 100}%` }} title="Lo esperado a hoy" />}
@@ -806,9 +852,10 @@ function BudgetRow({ r, today, onOpen }) {
 }
 
 // Un presupuesto: monto, sobrante que pasa al mes siguiente y movimientos.
-export function BudgetCatSheet({ s, id, onClose, onMovements }) {
+export function BudgetCatSheet({ s, id, onClose, onMovements, onDetail = null }) {
   const today = s.energy.day;
-  const c = s.money.categories.find((x) => x.id === id);
+  const c = budgetCatOf(s, id);
+  const group = isGroupId(id);
   const [val, setVal] = useState(c ? String(c.budget || '') : '');
   if (!c) return null;
   const r = budgetRows(s, monthKey(today), today).find((x) => x.c.id === id);
@@ -826,6 +873,7 @@ export function BudgetCatSheet({ s, id, onClose, onMovements }) {
   return (
     <Sheet onClose={onClose} label={`Presupuesto de ${c.name}`}>
       <SheetHead title={c.name} onClose={onClose} />
+      {group && <span class="small muted">Familia: {s.money.categories.filter((x) => x.group === c.group && x.type === 'gasto' && !x.hidden).map((x) => x.name).join(', ')}.</span>}
       {r && <span class="small muted tab-num">Este mes: {budgetLine(r)}{r.pace != null ? ` · a hoy lo esperado era ${money(r.pace)}` : ''}.</span>}
       {hist.some((h) => h.v > 0) && (
         <section class="card" aria-label={`Lo gastado en ${c.name} los últimos 6 meses`} style={{ gap: 8 }}>
@@ -845,15 +893,16 @@ export function BudgetCatSheet({ s, id, onClose, onMovements }) {
         </section>
       )}
       <div class="field">
-        <label for="bud">Presupuesto de cada mes</label>
+        <label for="bud">{group ? 'Tope de toda la familia cada mes' : 'Presupuesto de cada mes'}</label>
         <div class="numrow"><span class="unit">RD$</span><input id="bud" class="input" inputMode="decimal" value={val} placeholder="0" onInput={(e) => setVal(e.currentTarget.value)} ref={focusOnMount} /></div>
       </div>
       <label class="between-c panel" style={{ cursor: 'pointer' }}>
         <span class="stack-xs"><span class="semi">Lo que sobre pasa al mes siguiente</span><span class="small muted">Si gastas menos, ese dinero se suma al próximo mes; si te pasas, se resta.{carry ? ` Este mes: ${carry > 0 ? '+' : '−'}${money(Math.abs(carry))}.` : ''}</span></span>
         <Switch checked={!!c.roll} onChange={(v) => act((st, t) => setRollover(st, c.id, v, t))} label="El sobrante pasa al mes siguiente" />
       </label>
-      <button type="button" class="btn block" onClick={() => { act((st, t) => setBudget(st, c.id, num(val), t)); toast('Presupuesto guardado', 'check'); onClose(); }}><Icon name="check" size={20} />Guardar</button>
-      <button type="button" class="btn soft block" onClick={() => onMovements(null, c.id)}><Icon name="list" size={18} />Ver los gastos de {c.name.toLowerCase()}</button>
+      <button type="button" class="btn block" onClick={() => { act((st, t) => (group ? setGroupBudget(st, c.group, num(val), t) : setBudget(st, c.id, num(val), t))); toast('Presupuesto guardado', 'check'); onClose(); }}><Icon name="check" size={20} />Guardar</button>
+      <button type="button" class="btn soft block" onClick={() => onMovements(null, group ? s.money.categories.filter((x) => x.group === c.group && x.type === 'gasto').map((x) => x.id) : c.id)}><Icon name="list" size={18} />Ver los gastos de {c.name.toLowerCase()}</button>
+      {onDetail && <button type="button" class="link-btn" style={{ alignSelf: 'center' }} onClick={() => onDetail(id)}><Icon name="chart" size={16} />Ver 12 meses y dónde gastas</button>}
     </Sheet>
   );
 }
@@ -955,6 +1004,18 @@ export function PlanSheet({ s, id, tpl, planKind = 'gasto', future = false, onCl
           <input id="pamt" inputMode="decimal" value={amount} onInput={(e) => setAmount(e.currentTarget.value)} placeholder="0.00" aria-label="Monto" />
         </div>
       </div>
+      {p && (() => {
+        const h = planHistory(s, p);
+        if (!h.rows.length) return null;
+        const differs = h.avg != null && Math.abs(h.avg - n) > Math.max(1, n * 0.03);
+        return (
+          <div class="panel stack-xs" aria-label={kind === 'ingreso' ? 'Lo que recibiste' : 'Lo que pagaste'}>
+            <span class="small semi">{kind === 'ingreso' ? 'Lo que recibiste' : 'Lo que pagaste'} las últimas veces</span>
+            <span class="small muted tab-num">{h.rows.slice(0, 4).map((r) => `${cur(r.amount, p.currency)} (${fmtShort(r.date)})`).join(' · ')}</span>
+            {h.rows.length > 1 && differs && <button type="button" class="link-btn" style={{ alignSelf: 'flex-start', minHeight: 32 }} onClick={() => setAmount(String(Math.round(h.avg)))}><Icon name="repeat" size={15} />Usar el promedio: {cur(Math.round(h.avg), p.currency)}</button>}
+          </div>
+        );
+      })()}
       <label class="between-c panel" style={{ cursor: 'pointer' }}>
         <span class="stack-xs"><span class="semi">El monto cambia cada vez</span><span class="small muted">Como la luz: uso este monto como aproximado.</span></span>
         <Switch checked={variable} onChange={setVariable} label="El monto cambia cada vez" />

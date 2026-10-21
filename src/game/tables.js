@@ -4,11 +4,13 @@ import {
   ACCOUNT_KINDS, AREA, CHORE_XP, EXERCISE_TYPES, INFLUENCES, MOOD_QUADS, SLEEP_QUALITY, SLEEP_ROUTINE, WIN_SCOPES, WIN_TYPES,
 } from './content.js';
 import { addDays } from '../app/dates.js';
-import { balances, cardInfo, fundInfo, isCard, isFundPlan, moneyAccount, planDates, planFreqLabel, planStatus } from './money.js';
+import { balances, cardInfo, fundInfo, isCard, isFundPlan, moneyAccount, planDates, planFreqLabel, planStatus, budgetRows } from './money.js';
+import { workInfo, workHours, groupName } from './ledger.js';
+import { debtList, payoff, monthAfter } from './debts.js';
 import { CALM_KINDS } from './mind.js';
 import { WHEEL } from './wellness.js';
 import {
-  accountLabel, catName, choreStatus, freqLabel, repeatLabel, todoCategory, txCur, txDOP, txKind, txOrig, txRate,
+  accountLabel, catName, catOf, choreStatus, freqLabel, repeatLabel, todoCategory, txCur, txDOP, txKind, txOrig, txRate,
 } from './logic.js';
 
 const KIND = { gasto: 'Gasto', ingreso: 'Ingreso', transfer: 'Entre cuentas' };
@@ -27,10 +29,33 @@ export function buildTables(s, today) {
   const innKeys = Object.keys(s.inn || {}).sort().reverse();
   const bal = s.money ? balances(s) : {};
   const plans = (s.money && s.money.plans) || [];
+  const wi = s.money ? workInfo(s, today) : { ready: false };
+  const byId = new Map(tx.map((t) => [t.id, t]));
+  const mk = today.slice(0, 7);
+  const debts = s.money && s.money.debts ? debtList(s, today) : [];
+  const dplan = debts.length ? payoff(debts, { extra: s.money.debts.extra, method: s.money.debts.method }) : null;
   return {
+    // 1.9: familia, horas de trabajo, si cuenta en el análisis, a qué transferencia va un impuesto y partes de un movimiento dividido.
     Movimientos: table(
-      ['Fecha', 'Hora', 'Tipo', 'Monto RD$', 'Moneda', 'Monto original', 'Tasa', 'Categoría', 'Comercio', 'Cuenta', 'Hacia', 'Etiqueta', 'Nota'],
-      tx.map((t) => [t.day, t.time || '', KIND[txKind(t)] || '', round2(txDOP(t)), txCur(t), round2(txOrig(t)), txCur(t) === 'USD' ? round2(txRate(s, t)) : '', catName(s, t.cat), t.merchant || '', acc(t.account), txKind(t) === 'transfer' && t.to ? acc(t.to) : '', t.tag || '', t.note || '']),
+      ['Fecha', 'Hora', 'Tipo', 'Monto RD$', 'Moneda', 'Monto original', 'Tasa', 'Categoría', 'Comercio', 'Cuenta', 'Hacia', 'Etiqueta', 'Nota', 'Familia', 'Horas de trabajo', 'Cuenta en el análisis', 'Impuesto o cargo de', 'Parte'],
+      tx.map((t) => [
+        t.day, t.time || '', KIND[txKind(t)] || '', round2(txDOP(t)), txCur(t), round2(txOrig(t)), txCur(t) === 'USD' ? round2(txRate(s, t)) : '', catName(s, t.cat), t.merchant || '', acc(t.account), txKind(t) === 'transfer' && t.to ? acc(t.to) : '', t.tag || '', t.note || '',
+        groupName(catOf(s, t.cat).group), txKind(t) === 'gasto' && wi.ready ? round2(workHours(txDOP(t), wi)) : '', t.noStats ? 'No' : 'Sí',
+        t.taxOf && byId.get(t.taxOf) ? `${byId.get(t.taxOf).merchant || catName(s, byId.get(t.taxOf).cat)} (${byId.get(t.taxOf).day})` : '', t.split ? `${t.split.i + 1} de ${t.split.n}` : '',
+      ]),
+    ),
+    // Presupuestos de este mes (por categoría o por toda una familia).
+    Presupuestos: table(
+      ['Mes', 'Presupuesto', 'De', 'Del mes', 'Sobrante del mes pasado', 'Disponible', 'Gastado', 'Queda', 'Lo que sobra pasa'],
+      s.money ? budgetRows(s, mk, today).map((r) => [mk, r.c.name, r.isGroup ? 'Familia' : 'Categoría', round2(r.budget), round2(r.carry), round2(r.avail), round2(r.spent), round2(r.left), r.c.roll ? 'Sí' : '']) : [],
+    ),
+    // Plan para salir de deudas.
+    Deudas: table(
+      ['Deuda', 'Tipo', 'Saldo RD$', 'Tasa anual %', 'Pago de cada mes', 'En el plan', 'Terminas', 'Método', 'Extra al mes'],
+      debts.map((d) => {
+        const o = dplan && dplan.order.find((x) => x.id === d.id);
+        return [d.name, d.kind === 'card' ? 'Tarjeta' : 'Préstamo', round2(d.balance), d.apr || '', round2(d.min), d.on === false ? 'No' : 'Sí', o && o.month != null ? monthAfter(today, o.month) : '', s.money.debts.method === 'snowball' ? 'Bola de nieve' : 'Avalancha', round2(s.money.debts.extra)];
+      }),
     ),
     // Saldos de hoy. En una tarjeta, el saldo en negativo es lo que debes.
     Cuentas: table(

@@ -2,6 +2,40 @@
 
 Tu vida en modo juego de rol. App web instalable (y futura APK) para crecer en seis áreas de la vida con barras de vitalidad y energía, caminos, misiones y jefes.
 
+## Novedades de la versión 1.9 (Finanzas: filtros, totales, edición en grupo, impuesto a transferencias y horas de trabajo)
+
+Ideas tomadas de YNAB (total de lo que seleccionas), Monarch (editar varios a la vez, reglas que se aplican atrás, reportes con filtros y agrupados, presupuesto flexible por semana), Copilot (dividir un movimiento), Undebt.it (avalancha y bola de nieve) y el libro *La bolsa o la vida* (cada compra cuesta horas de tu vida).
+
+- **Movimientos con filtros de verdad**:
+  - Período: un mes, 3, 6 o 12 meses, este año, todo o las fechas que elijas.
+  - Filtros que se combinan: tipo, varias categorías (o una familia completa), cuentas, etiquetas, monto desde y hasta, moneda, cómo se registró y «solo los que» tienen foto, están divididos, tienen impuesto, no cuentan o no tienen cuenta. Cada filtro puesto se quita con su «×».
+  - La búsqueda encuentra por comercio, nota, categoría, cuenta o monto.
+  - Agrupar por día, categoría, familia, comercio, cuenta o etiqueta, con el total, cuántos son y qué parte del gasto es cada grupo. Ordenar por fecha o por monto.
+  - **Totales por categoría o por familia** (gastos o ingresos) de lo que estás viendo, todas las categorías y no solo las primeras, con su total al final.
+  - Exportar a Excel lo que ves (con familia, horas de trabajo y si cuenta en el análisis).
+- **Editar varios a la vez**: «Seleccionar» muestra el total de lo marcado (gastos, ingresos y horas de trabajo). Se les cambia la categoría, el tipo, la cuenta, la etiqueta, el comercio, la fecha o la nota, se marcan para no contar, se les agrega el impuesto o se borran. Todo se puede **deshacer** justo después.
+  - **Pasar una categoría completa a otra** (y, si es tuya, unirlas): sus movimientos, pagos programados y reglas.
+  - **Reglas de categorías**: las que Astra aprende al corregir un comercio se ven, se cambian y se aplican a lo que ya registraste. Al cambiar la categoría de un gasto, Astra ofrece cambiar también los otros del mismo comercio.
+  - **Dividir un movimiento** en varias categorías (la compra del súper con algo de la casa y de cuidado personal).
+  - **No contar en el análisis**: para un préstamo que diste o algo que te van a reembolsar. Sigue moviendo tu saldo, pero no suma en gastos, presupuestos ni gráficas.
+- **Impuesto a transferencias**:
+  - 0.15 % hasta el 2 de julio de 2026 y 0.20 % desde el 3 de julio (Ley 30-26); Astra usa la tasa del día de cada movimiento.
+  - Se anota aparte como gasto en «Comisiones e impuestos del banco», ligado a su transferencia: si la corriges o la borras, el impuesto la sigue.
+  - Se sugiere en las transferencias a otras personas y en los pagos de tarjeta o préstamo desde tu cuenta de banco; no en lo que mueves entre tus cuentas, los retiros, los impuestos al Estado ni las compras con tarjeta. También se puede agregar la comisión del banco (ACH o LBTR).
+  - El impuesto que trae el aviso del banco queda ligado con su monto. En Finanzas → Más → Impuesto a transferencias se explica qué paga y qué no, y se agrega en un toque a las transferencias del mes que no lo tienen.
+- **Horas de trabajo**: cada gasto dice cuánto trabajo te costó («3 h 45 min», «1.5 días»), con tu ingreso del mes (de tus cobros fijos, de tu promedio o el que escribas) y tus horas a la semana. Opcional: la **hora real**, con las horas de traslado y lo que te cuesta ir a trabajar. Aparece en cada movimiento, en los totales, en lo seleccionado, en el análisis y en una calculadora «¿Cuánto trabajo cuesta?».
+- **Análisis**:
+  - Este año como período, y flechas que comparan con el mismo tramo de antes.
+  - **Tu salud financiera**: cuánto guardas, para cuántos meses te alcanza lo que tienes, cuánto usas de tus tarjetas y cuánto debes en ellas.
+  - Por categoría o por **familia**; al tocar una, su **detalle**: 12 meses con su presupuesto, promedio, cada compra, dónde y cuánto trabajo cuesta.
+  - **De dónde viene tu dinero**, **gastos hormiga** (compras pequeñas y seguidas, cuánto serían en un año), **lo que te cobra el banco** (impuesto, comisiones e intereses) y **tu tiempo y tu dinero**.
+- **Planes y presupuestos**:
+  - **Presupuesto por familia** (por ejemplo, Comida: súper, restaurantes, café y delivery), con aviso al 80 % y al 100 % y sobrante que pasa al mes siguiente. Las categorías que ya están dentro de una familia con tope no se cuentan dos veces.
+  - **Esta semana**: lo del día a día del mes repartido por semanas, cuánto llevas y cuánto te queda por día hasta el domingo.
+  - **Salir de deudas**: tus tarjetas (con lo que debes según Astra) y tus préstamos, con su tasa y su pago; avalancha o bola de nieve, cuándo terminas, cuánto pagas de intereses y cuánto te ahorras frente a pagar solo lo de cada mes.
+  - En cada pago programado, **lo que de verdad pagaste** las últimas veces y «usar el promedio» para los que cambian (luz, agua).
+- **Drive**: tablas nuevas «Presupuestos» y «Deudas», y la de Movimientos con familia, horas de trabajo, si cuenta en el análisis, de qué transferencia es cada impuesto y las partes de un movimiento dividido. El «deshacer» se queda solo en el teléfono.
+
 ## Novedades de la versión 1.8 (metas de crecimiento, notificaciones y más categorías)
 
 - **Tus metas** (Áreas → Crecimiento → Tus metas), con tres listas:
@@ -153,7 +187,7 @@ Ideas tomadas de comparar YNAB, Monarch, Copilot, Simplifi, PocketGuard, Rocket 
 - **Caminos y metas**: eliges hasta dos caminos y una meta (plantilla o propia). Se convierte en una campaña con capítulos, tareas y un **jefe final** con barra de vida.
 - **Misiones**: hábitos, tareas únicas y malos hábitos a evitar. Se agregan en una línea: la app sugiere atributo, costo de energía y XP. Algunas se completan solas (pasos, sueño, gastos, ánimo, contactos, enfoque).
 - **Registrar**: escribe o dicta lo que hiciste («gasté 850 en el súper y caminé 40 minutos») y la app lo convierte en registros.
-- **Finanzas**: saldo y disponible de cuentas y tarjetas, corte y pago de cada tarjeta, sueldo y pagos programados, lo que viene en los próximos días, plan del mes, presupuestos sugeridos, proyección del mes y análisis (ritmo, flujo de caja, categorías, comercios, calendario). Importa estados de cuenta en CSV o Excel. Tres formas de registrar: recibo con IA (incluye RNC, e-NCF e ITBIS; lee el QR de facturas electrónicas), alerta del banco pegada y entrada manual o por voz.
+- **Finanzas**: saldo y disponible de cuentas y tarjetas, corte y pago de cada tarjeta, sueldo y pagos programados, lo que viene en los próximos días, plan del mes y de la semana, presupuestos por categoría o por familia, plan para salir de deudas, proyección del mes y análisis (ritmo, flujo de caja, salud financiera, categorías y familias, comercios, gastos hormiga, costos del banco, calendario). Movimientos con período, filtros, totales por categoría y edición en grupo con deshacer; impuesto a transferencias aparte y cuántas horas de trabajo cuesta cada gasto. Importa estados de cuenta en CSV o Excel. Tres formas de registrar: recibo con IA (incluye RNC, e-NCF e ITBIS; lee el QR de facturas electrónicas), alerta del banco pegada y entrada manual o por voz.
 - **Áreas**: salud (pasos, sueño, agua, ejercicio, frutas y verduras, calma), ánimo (check-in de dos ejes con 80 emociones, año en píxeles, patrones), calma (respiraciones, meditaciones guiadas y libres, pausa SOS, descarga mental, replantear pensamientos), relaciones (frecuencia por persona, cumpleaños, WhatsApp), crecimiento (dejar de hacer, metas con progreso, cosas por lograr, libros, tarjetas de repaso, práctica, diario, rueda de la vida, valores, bienestar OMS-5) y enfoque (sesiones que se agrietan si sales de la app, cierre de jornada).
 - **Posada** (cierre del día, tres cosas buenas e intención), **Tienda** (recompensas propias con oro, protectores de racha), **Crónica** (semana, revisión semanal, gráfico de vitalidad, XP por atributo, insignias, títulos).
 - Modo claro y oscuro, sin conexión después de la primera visita, copia de seguridad descargable y sincronización con tu propio Google Drive.
@@ -182,7 +216,7 @@ npm run build   # genera dist/, docs/ (GitHub Pages), artifact/ y astra-web.zip
 npm test        # pruebas de la lógica del juego y del analizador de texto
 ```
 
-- `src/game`: reglas del juego (`logic.js`), dinero (`money.js`: saldos, tarjetas, pagos programados, flujo y presupuestos), contenido (`content.js`), analizador de frases y alertas (`parse.js`), frase y palabra del día (`daily.js`, `quotes.js`, `words.js`), fusión de cambios entre equipos (`merge.js`) y tablas legibles (`tables.js`).
+- `src/game`: reglas del juego (`logic.js`), dinero (`money.js`: saldos, tarjetas, pagos programados, flujo y presupuestos; `ledger.js`: filtros, totales, edición en grupo, reglas, dividir y horas de trabajo; `debts.js`: plan para salir de deudas; `stats.js`: análisis), contenido (`content.js`), analizador de frases y alertas (`parse.js`), frase y palabra del día (`daily.js`, `quotes.js`, `words.js`), fusión de cambios entre equipos (`merge.js`) y tablas legibles (`tables.js`).
 - `src/app`: estado y almacenamiento (`store.js`), sincronización (`sync.js`, `transports.js`, `google.js`), conector de Apps Script (`connector.js`), fotos (`photos.js`, `idb.js`) y configuración pública (`config.js`: ID de cliente de Google para «Conectar con Google»).
 - `src/ai`: lectura de recibos y frases con IA.
 - `src/screens` y `src/ui`: pantallas y componentes (Preact).

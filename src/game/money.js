@@ -4,8 +4,9 @@
 import { addDays, diffDays, monthKey, fmtDay, weekday, DAYS, MONTHS } from '../app/dates.js';
 import {
   txKind, txCur, txOrig, txDOP, txUSD, accountOf, fxRate, toDOP, catOf, uid, merchantKey,
-  gainXP, addGold, bossFeed,
+  gainXP, addGold, bossFeed, inStats,
 } from './logic.js';
+import { CATEGORY_GROUPS } from './content.js';
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const CURS = ['DOP', 'USD'];
@@ -421,6 +422,16 @@ export function updatePlan(s, id, p, today) {
   return plan;
 }
 
+// Lo que de verdad pagaste (o cobraste) las últimas veces, del más nuevo al más viejo, y el promedio
+// en la moneda del plan. Sirve para ajustar los pagos que cambian (luz, agua) a lo real.
+export function planHistory(s, p, n = 6) {
+  const rows = Object.entries(p.done || {}).filter(([, v]) => v && v !== 'skip').map(([date, id]) => ({ date, tx: txById(s, id) })).filter((r) => r.tx)
+    .sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, n);
+  const vals = rows.map((r) => (txCur(r.tx) === p.currency ? txOrig(r.tx) : p.currency === 'USD' ? txUSD(s, r.tx) : txDOP(r.tx)));
+  const last3 = vals.slice(0, 3);
+  return { rows: rows.map((r, i) => ({ ...r, amount: r2(vals[i]) })), avg: last3.length ? r2(last3.reduce((a, b) => a + b, 0) / last3.length) : null };
+}
+
 export function removePlan(s, id) {
   s.money.plans = (s.money.plans || []).filter((p) => p.id !== id);
 }
@@ -481,7 +492,7 @@ export function recurringSuggestions(s, today, { months = 4, max = 4 } = {}) {
   const from = addDays(today, -(months * 31 + 5));
   const groups = new Map();
   for (const t of s.money.tx) {
-    if (t.day < from || t.day > today) continue;
+    if (t.day < from || t.day > today || t.taxOf || !inStats(t) || (t.split && t.split.i > 0)) continue;
     const k = txKind(t);
     if (k === 'transfer') continue;
     const key = merchantKey(t.merchant);
@@ -624,6 +635,22 @@ export function untilPayday(s, today) {
 }
 
 // ----- Presupuestos: lo de cada mes, el sobrante que pasa y el ritmo -----
+// Un presupuesto es de una categoría o de toda una familia (1.9: «Comida» junta súper, restaurantes,
+// café y delivery). Las familias se guardan en `money.groupBudgets` y en el historial con la clave «g:familia».
+
+export const GROUP_PREFIX = 'g:';
+export const isGroupId = (id) => typeof id === 'string' && id.startsWith(GROUP_PREFIX);
+const groupName = (g) => (CATEGORY_GROUPS.find((x) => x.id === g) || { name: g }).name;
+// La familia como si fuera una categoría (para el historial, el sobrante y las filas).
+export function groupBudgetCat(s, g) {
+  const o = (s.money.groupBudgets || {})[g] || {};
+  return { id: `${GROUP_PREFIX}${g}`, group: g, name: groupName(g), icon: 'grid', type: 'gasto', isGroup: true, budget: Number(o.budget) || 0, roll: !!o.roll, rollFrom: o.rollFrom || null };
+}
+// Las familias de gastos que tienen (o tuvieron) tope.
+export function budgetGroups(s) {
+  const gb = s.money.groupBudgets || {};
+  return CATEGORY_GROUPS.filter((g) => !['ingresos', 'movimientos'].includes(g.id) && gb[g.id]).map((g) => groupBudgetCat(s, g.id));
+}
 
 export function budgetFor(s, c, mk) {
   const h = s.money.budgetHist || {};
@@ -633,14 +660,17 @@ export function budgetFor(s, c, mk) {
   return best ? Number(h[best][c.id]) || 0 : Number(c.budget) || 0;
 }
 
-// Gasto por mes y categoría, en pesos (una sola pasada).
+// Gasto por mes y categoría, en pesos (una sola pasada). También por familia («g:comida»).
 export function spentByMonth(s) {
   const out = {};
   for (const t of s.money.tx) {
-    if (txKind(t) !== 'gasto') continue;
+    if (txKind(t) !== 'gasto' || !inStats(t)) continue;
     const mk = monthKey(t.day);
     if (!out[mk]) out[mk] = {};
-    out[mk][t.cat] = (out[mk][t.cat] || 0) + txDOP(t);
+    const v = txDOP(t);
+    out[mk][t.cat] = (out[mk][t.cat] || 0) + v;
+    const g = `${GROUP_PREFIX}${catOf(s, t.cat).group || 'otros'}`;
+    out[mk][g] = (out[mk][g] || 0) + v;
   }
   return out;
 }
@@ -658,31 +688,77 @@ export function carryFor(s, c, mk, spent = null) {
   return carry;
 }
 
+// Filas de presupuesto del mes: primero las familias con tope, después las categorías.
 export function budgetRows(s, mk, today) {
   const sp = spentByMonth(s);
   const rows = [];
   const isNow = mk === monthKey(today);
   const [y, m] = mk.split('-').map(Number);
   const frac = isNow ? Number(today.slice(8)) / daysIn(y, m) : 1;
-  for (const c of s.money.categories) {
-    if (c.type !== 'gasto') continue;
+  const row = (c) => {
     const budget = budgetFor(s, c, mk);
     const carry = carryFor(s, c, mk, sp);
-    if (!(budget > 0) && !carry) continue;
+    if (!(budget > 0) && !carry) return;
     const avail = r2(budget + carry);
     const spent = r2((sp[mk] && sp[mk][c.id]) || 0);
     const pace = isNow && avail > 0 ? r2(avail * frac) : null;
-    rows.push({ c, budget, carry, avail, spent, left: r2(avail - spent), pct: avail > 0 ? spent / avail : spent > 0 ? 1 : 0, pace, over: spent > avail, ahead: pace != null ? r2(spent - pace) : 0 });
-  }
+    rows.push({ c, isGroup: !!c.isGroup, budget, carry, avail, spent, left: r2(avail - spent), pct: avail > 0 ? spent / avail : spent > 0 ? 1 : 0, pace, over: spent > avail, ahead: pace != null ? r2(spent - pace) : 0 });
+  };
+  for (const g of budgetGroups(s)) row(g);
+  for (const c of s.money.categories) if (c.type === 'gasto') row(c);
   return rows;
 }
 
+// Lo asignado del mes sin contar dos veces: el tope de una familia ya incluye sus categorías.
+export function budgetTotal(s, rows, skipCats = null) {
+  const groups = new Set(rows.filter((r) => r.isGroup).map((r) => r.c.group));
+  let sum = 0;
+  for (const r of rows) {
+    if (r.isGroup) { sum += r.avail; continue; }
+    if (groups.has(r.c.group) || (skipCats && skipCats.has(r.c.id))) continue;
+    sum += r.avail;
+  }
+  return r2(sum);
+}
+
+// Tope para toda una familia de categorías (0 = sin tope). Se guarda en el historial del mes.
+export function setGroupBudget(s, g, amount, today = null) {
+  if (!CATEGORY_GROUPS.some((x) => x.id === g) || ['ingresos', 'movimientos'].includes(g)) return null;
+  if (!s.money.groupBudgets || typeof s.money.groupBudgets !== 'object') s.money.groupBudgets = {};
+  const v = Math.max(0, Math.round(Number(amount) || 0));
+  const o = s.money.groupBudgets[g] || { budget: 0, roll: false, rollFrom: null };
+  if (today && v !== (Number(o.budget) || 0)) {
+    if (!s.money.budgetHist) s.money.budgetHist = {};
+    const mk = monthKey(today);
+    if (!s.money.budgetHist[mk]) s.money.budgetHist[mk] = {};
+    s.money.budgetHist[mk][`${GROUP_PREFIX}${g}`] = v;
+  }
+  o.budget = v;
+  if (!v && !o.roll) delete s.money.groupBudgets[g];
+  else s.money.groupBudgets[g] = o;
+  return o;
+}
+
 export function setRollover(s, catId, on, today) {
+  if (isGroupId(catId)) {
+    const g = catId.slice(GROUP_PREFIX.length);
+    if (!s.money.groupBudgets || !s.money.groupBudgets[g]) return null;
+    const o = s.money.groupBudgets[g];
+    o.roll = !!on;
+    o.rollFrom = on ? o.rollFrom || monthKey(today) : null;
+    return groupBudgetCat(s, g);
+  }
   const c = s.money.categories.find((x) => x.id === catId);
   if (!c || c.type !== 'gasto') return null;
   c.roll = !!on;
   c.rollFrom = on ? c.rollFrom || monthKey(today) : null;
   return c;
+}
+
+// La categoría o familia de un presupuesto por su id («super» o «g:comida»).
+export function budgetCatOf(s, id) {
+  if (isGroupId(id)) return groupBudgetCat(s, id.slice(GROUP_PREFIX.length));
+  return s.money.categories.find((x) => x.id === id) || null;
 }
 
 // ----- Plan del mes: ingresos − pagos fijos − apartados − gastos del día a día = lo que te queda -----
@@ -703,7 +779,7 @@ export function monthPlan(s, mk, today) {
   }
   let extra = 0; let variable = 0;
   for (const t of s.money.tx) {
-    if (monthKey(t.day) !== mk || linked.has(t.id)) continue;
+    if (monthKey(t.day) !== mk || linked.has(t.id) || !inStats(t)) continue;
     const k = txKind(t);
     if (k === 'ingreso') extra += txDOP(t);
     else if (k === 'gasto') variable += txDOP(t);
@@ -711,7 +787,7 @@ export function monthPlan(s, mk, today) {
   const isNow = mk === monthKey(today);
   let funds = 0;
   if (isNow) for (const p of s.money.plans || []) { const f = fundInfo(s, p, today); if (f && !f.late && f.next > to) funds += f.perMonth; }
-  const budgets = budgetRows(s, mk, today).filter((r) => !fixedCats.has(r.c.id)).reduce((a, r) => a + r.avail, 0);
+  const budgets = budgetTotal(s, budgetRows(s, mk, today), fixedCats);
   const totalIncome = income + extra;
   const left = totalIncome - fixed - funds - variable;
   const [y, m] = mk.split('-').map(Number);
@@ -746,9 +822,10 @@ export function afterTx(s, tx, today, ev = [], link = null) {
       }
     }
   }
-  if (k === 'gasto' && monthKey(tx.day) === monthKey(today)) {
-    const row = budgetRows(s, monthKey(today), today).find((r) => r.c.id === tx.cat);
-    if (row && row.avail > 0) {
+  if (k === 'gasto' && inStats(tx) && monthKey(tx.day) === monthKey(today)) {
+    const g = catOf(s, tx.cat).group;
+    for (const row of budgetRows(s, monthKey(today), today).filter((r) => r.c.id === tx.cat || (r.isGroup && r.c.group === g))) {
+      if (!(row.avail > 0)) continue;
       const before = (row.spent - txDOP(tx)) / row.avail;
       const after = row.spent / row.avail;
       if (before < 1 && after >= 1) ev.push({ type: 'budget', name: row.c.name, level: 100 });
@@ -757,10 +834,57 @@ export function afterTx(s, tx, today, ev = [], link = null) {
   }
 }
 
+// ----- Esta semana: lo que te toca para el día a día (como la vista semanal de Monarch) -----
+// Lo del mes para el día a día (ingresos − pagos fijos − apartados), repartido por días: 7 días = una semana.
+// Gastado: lo de esta semana (lunes a domingo) que no es un pago programado.
+export function weekFlex(s, today) {
+  const start = addDays(today, -((weekday(today) + 6) % 7));
+  const end = addDays(start, 6);
+  const mk = monthKey(today);
+  const mp = monthPlan(s, mk, today);
+  const [y, m] = mk.split('-').map(Number);
+  const flexMonth = mp.income - mp.fixed - mp.funds;
+  const allowance = mp.income > 0 && flexMonth > 0 ? r2((flexMonth * 7) / daysIn(y, m)) : null;
+  const linked = new Set();
+  for (const p of s.money.plans || []) for (const v of Object.values(p.done || {})) if (v && v !== 'skip') linked.add(v);
+  let spent = 0;
+  for (const t of s.money.tx) if (t.day >= start && t.day <= today && txKind(t) === 'gasto' && inStats(t) && !linked.has(t.id)) spent += txDOP(t);
+  const daysLeft = diffDays(today, end) + 1;
+  const left = allowance != null ? r2(allowance - spent) : null;
+  return { start, end, allowance, spent: r2(spent), left, daysLeft, perDay: left != null && left > 0 ? r2(left / daysLeft) : null, flexMonth: r2(flexMonth) };
+}
+
 // ----- Puesta al día de datos viejos -----
+
+// Tu hora de trabajo (1.9): ingreso del mes (automático o el tuyo), horas a la semana y, para la «hora real»,
+// horas de traslado y gastos de ir a trabajar. `show`: ver las horas en cada gasto.
+export const WORK_DEFAULT = { auto: true, income: 0, hours: 40, commute: 0, costs: 0, real: false, show: true };
+const between = (v, a, b, d) => (Number.isFinite(Number(v)) && Number(v) >= a && Number(v) <= b ? Number(v) : d);
 
 export function ensureMoneyPlus(s) {
   const m = s.money;
+  // 1.9: impuesto a transferencias, hora de trabajo, presupuestos por familia, plan de deudas y deshacer.
+  const tx0 = m.tax && typeof m.tax === 'object' && !Array.isArray(m.tax) ? m.tax : {};
+  m.tax = { auto: tx0.auto !== false, rate: Number(tx0.rate) > 0 && Number(tx0.rate) < 0.05 ? Number(tx0.rate) : null, fee: pos(tx0.fee) };
+  const w0 = m.work && typeof m.work === 'object' && !Array.isArray(m.work) ? m.work : {};
+  m.work = {
+    auto: w0.auto !== false, income: pos(w0.income), hours: between(w0.hours, 1, 100, WORK_DEFAULT.hours), commute: between(w0.commute, 0, 80, 0),
+    costs: pos(w0.costs), real: !!w0.real, show: w0.show !== false,
+  };
+  if (!m.groupBudgets || typeof m.groupBudgets !== 'object' || Array.isArray(m.groupBudgets)) m.groupBudgets = {};
+  for (const [g, o] of Object.entries(m.groupBudgets)) {
+    if (!CATEGORY_GROUPS.some((x) => x.id === g) || !o || typeof o !== 'object') { delete m.groupBudgets[g]; continue; }
+    m.groupBudgets[g] = { budget: Math.round(pos(o.budget)), roll: !!o.roll, rollFrom: o.roll && /^\d{4}-\d{2}$/.test(o.rollFrom || '') ? o.rollFrom : null };
+  }
+  const d0 = m.debts && typeof m.debts === 'object' && !Array.isArray(m.debts) ? m.debts : {};
+  m.debts = {
+    method: d0.method === 'snowball' ? 'snowball' : 'avalanche', extra: pos(d0.extra),
+    items: (Array.isArray(d0.items) ? d0.items : []).filter((x) => x && typeof x === 'object' && x.id).map((x) => ({
+      id: String(x.id), kind: x.kind === 'card' ? 'card' : 'loan', account: x.account ? String(x.account) : '', name: String(x.name || '').slice(0, 50),
+      balance: pos(x.balance), apr: between(x.apr, 0, 300, 0), min: pos(x.min), on: x.on !== false,
+    })),
+  };
+  if (m.lastBulk && (typeof m.lastBulk !== 'object' || !Array.isArray(m.lastBulk.before))) m.lastBulk = null;
   if (!Array.isArray(m.plans)) m.plans = [];
   m.plans = m.plans.filter((p) => p && typeof p === 'object' && p.id && p.name);
   for (const p of m.plans) {
@@ -801,5 +925,12 @@ export function ensureMoneyPlus(s) {
       const cash = m.accounts.find((a) => a.kind === 'efectivo');
       if (cash && cash.id !== t.account) t.to = cash.id;
     }
+  }
+  // Ligas de 1.9 que quedaron sueltas (un impuesto cuya transferencia ya no está se queda como gasto normal).
+  const ids = new Set(m.tx.map((t) => t.id));
+  for (const t of m.tx) {
+    if (t.taxOf && !ids.has(t.taxOf)) { delete t.taxOf; delete t.taxKind; delete t.taxAuto; }
+    if (t.noStats !== undefined && !t.noStats) delete t.noStats;
+    if (t.split && (typeof t.split !== 'object' || !t.split.id || !(Number(t.split.total) > 0))) delete t.split;
   }
 }

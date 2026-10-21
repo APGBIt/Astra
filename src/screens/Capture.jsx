@@ -8,7 +8,7 @@ import { parseCapture } from '../game/parse.js';
 import { MOOD_QUADS } from '../game/content.js';
 import {
   dayMissions, addTx, logHealth, completeMission, addPerson, contactPerson, addMood, finishFocus, logCalm, logPages, addBook, catName, fmtHours, uid,
-  addTodo, todoCategory, repeatLabel, accountLabel,
+  addTodo, todoCategory, repeatLabel, accountLabel, taxSuggestion,
 } from '../game/logic.js';
 import { cardForText } from '../game/money.js';
 import { logCalmSession, addJournal } from '../game/mind.js';
@@ -56,7 +56,11 @@ export function applyItems(st, items, today, ev) {
     switch (it.kind) {
       case 'tx': {
         const card = it.type === 'gasto' && it.cat === 'deuda' && /tarjeta|visa|master|amex/i.test(it.text || '') ? cardForText(st, it.text) : null;
-        if (card) addTx(st, { type: 'transfer', amount: it.amount, currency: it.currency, cat: 'pago_tarjeta', merchant: `Pago a ${accountLabel(card)}`, account: card.payFrom || '', to: card.id, source: 'voz' }, today, ev);
+        if (card) {
+          // Pagar la tarjeta desde tu cuenta de banco paga el impuesto a transferencias (se anota aparte).
+          const p = { type: 'transfer', amount: it.amount, currency: it.currency, cat: 'pago_tarjeta', merchant: `Pago a ${accountLabel(card)}`, account: card.payFrom || '', to: card.id, source: 'voz', day: today };
+          addTx(st, { ...p, tax: taxSuggestion(st, p).on }, today, ev);
+        }
         else addTx(st, { type: it.type, amount: it.amount, currency: it.currency, cat: it.cat, merchant: it.merchant ? it.merchant[0].toUpperCase() + it.merchant.slice(1) : '', source: 'voz' }, today, ev);
         break;
       }

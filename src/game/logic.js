@@ -6,11 +6,11 @@ import {
   CATEGORIES, DEFAULT_REWARDS, INTENSITIES, MOOD_QUADS, INFLUENCES, DEFAULT_GOALS,
   TODO_GENERAL, TODO_XP, TODO_GOLD, RECORD_SECTIONS, RECORD_SCHEMAS, RECORD_XP,
   CATEGORY_GROUPS, DEFAULT_ACCOUNTS, FX_DEFAULT, TODO_HOGAR, CHORE_XP, SLEEP_LATENCY_MIN, SLEEP_ROUTINE, WIN_XP, WIN_SCOPES, WIN_TYPES,
-  EXERCISE_TYPES, EXERCISE_WEEK_GOAL,
+  EXERCISE_TYPES, EXERCISE_WEEK_GOAL, TRANSFER_TAX,
 } from './content.js';
 import { norm, guessCategory, guessIncome } from './parse.js';
 import { wordOf } from './daily.js';
-import { afterTx, ensureMoneyPlus } from './money.js';
+import { afterTx, ensureMoneyPlus, moneyAccount, WORK_DEFAULT } from './money.js';
 import { defaultMind, bestCalmStreak, distinctEmotions, goodThings, journalDays } from './mind.js';
 import { PROGRAM } from './wellness.js';
 import { defaultGrowth } from './growth.js';
@@ -1103,6 +1103,12 @@ export function defaultMoney() {
     lastImport: null,
     plans: [],
     budgetHist: {},
+    // 1.9
+    tax: { auto: true, rate: null, fee: 0 },
+    work: { ...WORK_DEFAULT },
+    groupBudgets: {},
+    debts: { method: 'avalanche', extra: 0, items: [] },
+    lastBulk: null,
   };
 }
 
@@ -1202,6 +1208,10 @@ export const txDOP = (t) => Math.abs(Number(t.amount) || 0);
 export const txRate = (s, t) => (okRate(t.rate) ? Number(t.rate) : fxRate(s, t.day));
 // Equivalente en dólares: el monto original si fue en US$; si fue en pesos, con la tasa de su día.
 export const txUSD = (s, t) => (txCur(t) === 'USD' ? txOrig(t) : r2(txDOP(t) / txRate(s, t)));
+// ¿Cuenta en el análisis y en los presupuestos? (1.9) Lo que marcas «no contar» sigue moviendo tus saldos.
+export const inStats = (t) => !t.noStats;
+// El monto completo de un movimiento que dividiste en varias categorías (en su moneda).
+export const txWhole = (t) => (t.split && Number(t.split.total) > 0 ? Number(t.split.total) : txOrig(t));
 
 // ----- Categorías -----
 
@@ -1358,6 +1368,11 @@ export function removeAccount(s, id) {
 
 // ----- Registrar, corregir y borrar -----
 
+// Datos que solo tienen algunos movimientos (1.9): impuesto ligado a una transferencia (`taxOf`, `taxKind`,
+// `taxAuto`), parte de un movimiento dividido (`split`) y «no contar en el análisis» (`noStats`).
+// Se conservan al corregir el movimiento y solo se guardan si tienen valor.
+const TX_EXTRA = ['taxOf', 'taxKind', 'taxAuto', 'split', 'noStats'];
+
 function buildTx(s, p, prev = null) {
   const kind = TX_KINDS.includes(p.type) ? p.type : prev ? prev.kind : 'gasto';
   const currency = p.currency === 'USD' ? 'USD' : 'DOP';
@@ -1369,7 +1384,13 @@ function buildTx(s, p, prev = null) {
   const cat = valid ? p.cat : kind === 'gasto' ? guessTxCat(s, { merchant: p.merchant, text: p.note, type: 'gasto' }) : FALLBACK_CAT[kind];
   const account = p.account && accountOf(s, p.account) ? p.account : '';
   const to = kind === 'transfer' && p.to && accountOf(s, p.to) && p.to !== account ? p.to : '';
+  const extra = {};
+  for (const k of TX_EXTRA) {
+    const v = p[k] !== undefined ? p[k] : prev ? prev[k] : undefined;
+    if (v != null && v !== false && v !== '') extra[k] = v;
+  }
   return {
+    ...extra,
     id: prev ? prev.id : uid(),
     day,
     time: /^\d{1,2}:\d{2}$/.test(p.time || '') ? p.time : '',
@@ -1404,6 +1425,8 @@ export function addTx(s, p, today, ev) {
   const tx = buildTx(s, { ...p, day: validDay(p.day) || today });
   if (!tx.orig) return null;
   s.money.tx.unshift(tx);
+  // El impuesto a la transferencia y la comisión del banco, aparte (1.9).
+  if (p.tax || Number(p.fee) > 0) setTaxRecords(s, tx.id, { tax: !!p.tax, fee: Number(p.fee) || 0 });
   sortTx(s);
   afterTx(s, tx, today, ev, p.link || null);
   if (tx.kind === 'transfer') return tx;
@@ -1430,18 +1453,125 @@ export function updateTx(s, id, p, { learn = true } = {}) {
     account: p.account != null ? p.account : prev.account, tag: p.tag != null ? p.tag : prev.tag,
     photos: p.photos != null ? p.photos : prev.photos, to: p.to != null ? p.to : prev.to,
   };
+  for (const k of TX_EXTRA) if (p[k] !== undefined) merged[k] = p[k];
   if (!(Math.abs(Number(merged.amount) || 0) > 0)) return null;
   const tx = buildTx(s, merged, prev);
   s.money.tx[i] = tx;
+  syncTaxChildren(s, tx);
   sortTx(s);
-  if (learn && tx.merchant && tx.cat !== prev.cat && tx.kind === 'gasto') learnRule(s, tx.merchant, tx.cat);
+  if (learn && tx.merchant && tx.cat !== prev.cat && tx.kind === 'gasto' && !tx.split) learnRule(s, tx.merchant, tx.cat);
   return tx;
 }
 
+// Borra un movimiento y lo que se anotó ligado a él (el impuesto o la comisión de una transferencia).
 export function removeTx(s, id) {
-  s.money.tx = s.money.tx.filter((t) => t.id !== id);
+  const gone = new Set([id, ...s.money.tx.filter((t) => t.taxOf === id).map((t) => t.id)]);
+  s.money.tx = s.money.tx.filter((t) => !gone.has(t.id));
   // Si era el pago de algo programado, esa fecha vuelve a quedar pendiente.
-  for (const p of s.money.plans || []) for (const [d, v] of Object.entries(p.done || {})) if (v === id) delete p.done[d];
+  for (const p of s.money.plans || []) for (const [d, v] of Object.entries(p.done || {})) if (gone.has(v)) delete p.done[d];
+}
+
+// ----- Impuesto a las transferencias (1.9) -----
+// El banco retiene un porcentaje de lo que transfieres a otras personas, de los pagos de tarjetas y préstamos
+// desde tu cuenta y de los cheques (0.15 % hasta el 2 de julio de 2026; 0.20 % desde el 3, Ley 30-26).
+// Astra lo anota aparte, como gasto en «Comisiones e impuestos del banco», ligado a su movimiento.
+
+export const TAX_LABEL = 'Impuesto a transferencias';
+export const FEE_LABEL = 'Comisión por transferencia';
+// Exentos: entre tus cuentas, retiros de efectivo e impuestos al Estado.
+const TAX_EXEMPT = new Set(['entre_cuentas', 'retiro', 'impuestos']);
+// Casi siempre salen por transferencia desde tu cuenta: se sugiere el impuesto.
+const TAX_LIKELY = new Set(['pago_tarjeta', 'terceros', 'deuda', 'prestamo_dado']);
+const TRANSFER_WORDS = /\b(transf\w*|ach|lbtr|env[ií]o de dinero|pago a terceros?)\b/i;
+
+export function transferTaxRate(s, day) {
+  const own = Number(s.money.tax && s.money.tax.rate);
+  if (own > 0 && own < 0.05) return own;
+  return (TRANSFER_TAX.find((r) => String(day || '') >= r.from) || TRANSFER_TAX[TRANSFER_TAX.length - 1]).rate;
+}
+// «0.20 %»
+export const taxPct = (rate) => `${(Number(rate) * 100).toFixed(2)} %`;
+
+const childrenOf = (s, id) => s.money.tx.filter((t) => t.taxOf === id);
+export const taxChildren = childrenOf;
+
+// ¿Puede pagar impuesto este movimiento y conviene sugerirlo? Sale de una cuenta de banco (o su débito):
+// no del efectivo ni de una tarjeta de crédito. `on`: marcado de entrada.
+export function taxSuggestion(s, p) {
+  const kind = p.type || p.kind;
+  if (kind === 'ingreso' || p.taxOf) return { can: false, on: false };
+  const acc = moneyAccount(s, p.account);
+  if (!acc || !(acc.kind === 'cuenta' || acc.kind === 'debito')) return { can: false, on: false };
+  const amount = Math.abs(Number(p.split ? p.split.total : p.orig != null ? p.orig : p.amount) || 0);
+  const rate = transferTaxRate(s, p.day);
+  const currency = p.currency === 'USD' ? 'USD' : 'DOP';
+  const tax = r2(amount * rate);
+  const auto = !(s.money.tax && s.money.tax.auto === false);
+  const exempt = TAX_EXEMPT.has(p.cat);
+  const likely = !exempt && (TAX_LIKELY.has(p.cat) || TRANSFER_WORDS.test(`${p.merchant || ''} ${p.note || ''}`));
+  return { can: true, on: auto && likely, exempt, likely, rate, tax, base: amount, currency };
+}
+
+function childTx(s, parent, kind, amount, rate = null) {
+  const base = txWhole(parent);
+  const pct = rate ? taxPct(rate) : '';
+  return buildTx(s, {
+    type: 'gasto', amount, currency: txCur(parent), rate: parent.rate, cat: 'comisiones',
+    merchant: kind === 'tax' ? TAX_LABEL : FEE_LABEL,
+    note: kind === 'tax' ? `${pct} de ${txCur(parent) === 'USD' ? 'US$' : 'RD$'}${base.toLocaleString('en-US', { maximumFractionDigits: 2 })} · ${parent.merchant || catName(s, parent.cat)}` : `Por: ${parent.merchant || catName(s, parent.cat)}`,
+    day: parent.day, time: parent.time, account: parent.account, tag: parent.tag, source: parent.source, batch: parent.batch,
+    taxOf: parent.id, taxKind: kind, taxAuto: kind === 'tax' ? true : undefined,
+  });
+}
+
+// Pone o quita el impuesto y la comisión de un movimiento. `want`: { tax: bool, fee: monto en su moneda (0 = sin) }.
+export function setTaxRecords(s, parentId, want) {
+  const parent = s.money.tx.find((t) => t.id === parentId);
+  if (!parent || parent.taxOf) return [];
+  const out = [];
+  const kids = childrenOf(s, parentId);
+  const rate = transferTaxRate(s, parent.day);
+  const put = (kind, amount, r) => {
+    const old = kids.find((t) => t.taxKind === kind);
+    if (!(amount > 0)) { if (old) s.money.tx = s.money.tx.filter((t) => t.id !== old.id); return; }
+    // El impuesto que trajo el aviso del banco se queda con su monto.
+    if (old && kind === 'tax' && !old.taxAuto) { out.push(old); return; }
+    const tx = childTx(s, parent, kind, amount, r);
+    if (old) { tx.id = old.id; tx.created = old.created; if (old.noStats) tx.noStats = true; s.money.tx[s.money.tx.indexOf(old)] = tx; }
+    else { tx.created = (Number(parent.created) || Date.now()) + (kind === 'tax' ? 1 : 2); s.money.tx.push(tx); }
+    out.push(tx);
+  };
+  if (want.tax !== undefined) put('tax', want.tax ? r2(txWhole(parent) * rate) : 0, rate);
+  if (want.fee !== undefined) put('fee', r2(Math.abs(Number(want.fee) || 0)));
+  sortTx(s);
+  return out;
+}
+
+// Al corregir una transferencia, su impuesto sigue el monto, la fecha, la cuenta y la moneda.
+// Un impuesto que vino del banco (`taxAuto` sin marcar) conserva su monto.
+export function syncTaxChildren(s, parent) {
+  for (const k of childrenOf(s, parent.id)) {
+    const i = s.money.tx.indexOf(k);
+    const amount = k.taxKind === 'tax' && k.taxAuto ? r2(txWhole(parent) * transferTaxRate(s, parent.day)) : txOrig(k);
+    const tx = childTx(s, parent, k.taxKind || 'fee', amount, k.taxKind === 'tax' ? transferTaxRate(s, parent.day) : null);
+    tx.id = k.id;
+    tx.created = k.created;
+    if (!k.taxAuto) delete tx.taxAuto;
+    if (!k.taxAuto && k.note) tx.note = k.note;
+    if (k.noStats) tx.noStats = true;
+    s.money.tx[i] = tx;
+  }
+}
+
+// ¿Ya tiene su impuesto? Ligado, o un cargo de impuesto del mismo día y cuenta por el monto que toca
+// (como los que llegan sueltos en un estado de cuenta).
+export function findTaxFor(s, t) {
+  const kid = childrenOf(s, t.id).find((k) => k.taxKind === 'tax');
+  if (kid) return kid;
+  const base = txWhole(t);
+  const wants = TRANSFER_TAX.map((r) => r2(base * r.rate));
+  return s.money.tx.find((x) => x !== t && !x.taxOf && txKind(x) === 'gasto' && x.cat === 'comisiones' && x.day === t.day && x.account === t.account
+    && txCur(x) === txCur(t) && /impuesto|0[.,]?15|0[.,]?20|dgii/i.test(`${x.merchant} ${x.note}`) && wants.some((w) => Math.abs(txOrig(x) - w) <= 0.02)) || null;
 }
 
 // ----- Resumen del mes -----
@@ -1451,6 +1581,7 @@ export function monthSummary(s, mk) {
   let income = 0; let incomeUSD = 0; let spent = 0; let spentUSD = 0; let moved = 0;
   const byCat = {}; const byCatUSD = {}; const paidIn = { DOP: 0, USD: 0 }; const byTag = {}; const byTagUSD = {};
   for (const t of txs) {
+    if (!inStats(t)) continue;
     const k = txKind(t);
     if (k === 'transfer') { moved += txDOP(t); continue; }
     if (k === 'ingreso') { income += txDOP(t); incomeUSD += txUSD(s, t); continue; }
@@ -1477,7 +1608,7 @@ export function txTags(s) {
 
 export function tagTotal(s, tag) {
   let dop = 0; let usd = 0; let n = 0;
-  for (const t of s.money.tx) if (t.tag === tag && txKind(t) === 'gasto') { dop += txDOP(t); usd += txUSD(s, t); n += 1; }
+  for (const t of s.money.tx) if (t.tag === tag && txKind(t) === 'gasto' && inStats(t)) { dop += txDOP(t); usd += txUSD(s, t); n += 1; }
   return { dop: r2(dop), usd: r2(usd), n };
 }
 
@@ -1495,7 +1626,7 @@ export function findDuplicate(s, it, pool = s.money.tx) {
   const mk = looseName(it.merchant || '');
   const near = (d) => !it.day || !d || Math.abs(diffDays(d, it.day)) <= 3;
   return pool.find((t) => (ref && t.ref === ref && near(t.day))
-    || (t.day === it.day && txCur(t) === cur && Math.abs(txOrig(t) - amt) < 0.005
+    || (t.day === it.day && txCur(t) === cur && Math.abs(txWhole(t) - amt) < 0.005
       && ((it.time && t.time && it.time === t.time) || !mk || !looseName(t.merchant) || looseName(t.merchant) === mk))) || null;
 }
 
@@ -1529,6 +1660,7 @@ export function importTxs(s, pack, today, ev) {
     if (!(s.money.fx.history && okRate(s.money.fx.history[day]))) recordRate(s, day, rate, pack.rateSource || 'Tasa oficial DGII');
   }
   let added = 0; let skipped = 0;
+  const made = [];
   for (const it of pack.items || []) {
     if (it.on === false) continue;
     if (findDuplicate(s, it)) { skipped += 1; continue; }
@@ -1539,7 +1671,14 @@ export function importTxs(s, pack, today, ev) {
       type: it.kind, amount: it.amount, currency: it.currency, rate: it.rate || (pack.rates && pack.rates[it.day]), cat: it.cat, merchant: it.merchant, note: it.note,
       day: it.day, time: it.time, account, to, tag: it.tag, ref: it.ref, batch, source: it.source || pack.source || 'importado',
     }, today, ev);
-    if (tx) added += 1;
+    if (tx) { added += 1; made.push(tx); }
+  }
+  // El impuesto que trae el aviso del banco queda ligado a su transferencia (con el monto que cobró el banco).
+  for (const t of made) {
+    const m = /^(.+)-imp$/.exec(t.ref || '');
+    if (!m || t.cat !== 'comisiones') continue;
+    const parent = made.find((x) => x.ref === m[1] && x !== t) || s.money.tx.find((x) => x.ref === m[1] && x.day === t.day && !x.taxOf);
+    if (parent && !childrenOf(s, parent.id).some((k) => k.taxKind === 'tax')) { t.taxOf = parent.id; t.taxKind = 'tax'; }
   }
   // Las cuentas que trajo el paquete y que no se usaron no se quedan.
   const used = new Set(s.money.tx.flatMap((t) => [t.account, t.to]));
@@ -1573,7 +1712,7 @@ export function undoImport(s, batch) {
 // Las categorías que más usas (para elegir rápido).
 export function frequentCats(s, type = 'gasto', n = 6) {
   const count = {};
-  for (const t of s.money.tx.slice(0, 300)) if (txKind(t) === type) count[t.cat] = (count[t.cat] || 0) + 1;
+  for (const t of s.money.tx.slice(0, 300)) if (txKind(t) === type && !t.taxOf) count[t.cat] = (count[t.cat] || 0) + 1;
   const base = type === 'gasto' ? ['super', 'comida', 'combustible', 'transporte', 'servicios', 'salud'] : type === 'ingreso' ? ['salario', 'honorarios', 'ventas', 'remesas', 'ingreso'] : ['pago_tarjeta', 'entre_cuentas', 'retiro'];
   const ids = [...Object.keys(count).sort((a, b) => count[b] - count[a]), ...base];
   const out = [];

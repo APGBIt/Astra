@@ -589,3 +589,25 @@ details > summary::-webkit-details-marker { display: none; }
 .bud-hist .bh-col > b { position: absolute; left: -4px; right: -4px; height: 2px; border-radius: 1px; background: var(--ink); }
 .map-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .map-grid select.input { padding-right: 8px; }
+
+/* ---------- 1.9: movimientos, selección, horas de trabajo y salud financiera ---------- */
+.hrs { gap: 4px; }
+.seg.mini { padding: 3px; border-radius: 13px; gap: 3px; }
+.seg.mini button { min-height: 32px; font-size: 13px; padding: 0 10px; border-radius: 10px; }
+.badge-btn { position: relative; }
+.badge-btn .badge { top: 2px; right: 2px; background: var(--finanzas-ink); }
+.txrow.sel { background: var(--finanzas-soft); margin: 0 -18px; padding-left: 18px; padding-right: 18px; width: calc(100% + 36px); }
+.selbox { width: 24px; height: 24px; flex-shrink: 0; border-radius: 8px; border: 2px solid var(--line-2); display: flex; align-items: center; justify-content: center; background: var(--surface); }
+.txrow.sel .selbox, .selbox-btn[aria-pressed="true"] .selbox { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
+.selbox-btn { width: 44px; height: 44px; margin: 0 -6px 0 -10px; flex-shrink: 0; border: none; background: none; padding: 0; display: flex; align-items: center; justify-content: center; }
+.grp-head { display: flex; align-items: center; gap: 4px; }
+.grp-btn { display: flex; align-items: center; gap: 10px; flex: 1 1 auto; min-width: 0; padding: 12px 0; border: none; background: none; color: inherit; font: inherit; text-align: left; }
+.selbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(84px + env(safe-area-inset-bottom, 0px)); z-index: 22; width: calc(100% - 24px); max-width: 456px; display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 18px; border-radius: 22px; background: var(--surface); border: 1.5px solid var(--line-2); box-shadow: var(--shadow); }
+.bud-hist.twelve { grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 3px; }
+.bud-hist.twelve .bh-col { width: 72%; max-width: 20px; }
+.health-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.health { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 18px; min-width: 0; }
+@media (max-width: 340px) { .health-grid { grid-template-columns: 1fr; } }
+.txrow.sel .tile { background: var(--surface) !important; }
+/* En pantallas muy angostas el botón del recibo queda solo con su ícono. */
+@media (max-width: 374px) { .fin-head .fin-head-l { display: none; } .fin-head .btn.sm { padding: 0 13px; } }

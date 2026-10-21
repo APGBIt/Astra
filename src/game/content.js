@@ -672,6 +672,15 @@ export const DEFAULT_ACCOUNTS = [{ id: 'efectivo', name: 'Efectivo', kind: 'efec
 // Tasa del dólar cuando todavía no hay conexión: la oficial (DGII / Banco Central) del 15 de octubre de 2026.
 // Con internet, la app la actualiza sola una vez al día.
 export const FX_DEFAULT = { rate: 61.1477, day: '2026-10-15', source: 'Tasa oficial DGII' };
+
+// Impuesto a los cheques y transferencias electrónicas (lo retiene el banco para la DGII), de la tasa más
+// nueva a la más vieja. Sube de 0.15 % a 0.20 % el 3 de julio de 2026 (Ley 30-26). No pagan: lo que mueves
+// entre tus cuentas (mismo banco o no), los retiros de efectivo, los pagos de impuestos al Estado,
+// la Seguridad Social y los fondos de pensiones, ni las compras con tarjeta.
+export const TRANSFER_TAX = [
+  { from: '2026-07-03', rate: 0.002, label: '0.20 %', law: 'Ley 30-26' },
+  { from: '1900-01-01', rate: 0.0015, label: '0.15 %', law: '' },
+];
 export const CURRENCIES = {
   DOP: { code: 'DOP', symbol: 'RD$', name: 'pesos', short: 'RD$' },
   USD: { code: 'USD', symbol: 'US$', name: 'dólares', short: 'US$' },

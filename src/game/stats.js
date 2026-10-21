@@ -1,8 +1,14 @@
-// Análisis (1.7): ingresos y gastos por mes, categorías frente a tu promedio, comercios, cuentas,
-// días de la semana, el ritmo del mes y la proyección al cierre. Todo en pesos (los dólares, a su tasa).
+// Análisis (1.7, ampliado en 1.9): ingresos y gastos por mes, categorías y familias frente a tu promedio,
+// comercios, cuentas, días de la semana, el ritmo del mes y la proyección al cierre; en 1.9 también el período
+// anterior, de dónde vienen tus ingresos, el detalle de una categoría, los gastos hormiga, lo que te cobra el
+// banco y tu salud financiera. Todo en pesos (los dólares, a su tasa). Lo marcado «no contar» no entra.
 import { addDays, diffDays, monthKey, weekday, MONTHS } from '../app/dates.js';
-import { txKind, txDOP, catOf, merchantKey, accountOf, fxRate } from './logic.js';
-import { monthEnd, nextMonth, planOccurrences, budgetRows, isCard } from './money.js';
+import { txKind, txDOP, catOf, merchantKey, accountOf, fxRate, inStats } from './logic.js';
+import {
+  monthEnd, nextMonth, planOccurrences, budgetRows, budgetTotal, budgetFor, budgetCatOf, isGroupId, GROUP_PREFIX, isCard, balances,
+  moneyTotals, cardInfo, dayOf,
+} from './money.js';
+import { CATEGORY_GROUPS } from './content.js';
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const daysIn = (mk) => Number(monthEnd(mk).slice(8));
@@ -13,26 +19,51 @@ export const prevMonth = (mk) => {
 export const monthLabel = (mk) => MONTHS[Number(mk.slice(5)) - 1];
 export const monthShort = (mk) => MONTHS[Number(mk.slice(5)) - 1].slice(0, 3);
 
-// Períodos: este mes, el pasado y los últimos 3, 6 o 12 meses (completos más el actual).
-export const PERIODS = [['mes', 'Este mes'], ['pasado', 'Mes pasado'], ['3m', '3 meses'], ['6m', '6 meses'], ['12m', '12 meses']];
+// Períodos: este mes, el pasado, los últimos 3, 6 o 12 meses (completos más el actual) y este año.
+export const PERIODS = [['mes', 'Este mes'], ['pasado', 'Mes pasado'], ['3m', '3 meses'], ['6m', '6 meses'], ['12m', '12 meses'], ['ano', 'Este año']];
 export function periodOf(kind, today) {
   const cur = monthKey(today);
   if (kind === 'pasado') { const p = prevMonth(cur); return { kind, from: `${p}-01`, to: monthEnd(p), mks: [p], partial: false }; }
+  if (kind === 'ano') {
+    const mks = [cur];
+    while (!mks[0].endsWith('-01')) mks.unshift(prevMonth(mks[0]));
+    return { kind, from: `${cur.slice(0, 4)}-01-01`, to: today, mks, partial: true };
+  }
   const n = kind === '3m' ? 3 : kind === '6m' ? 6 : kind === '12m' ? 12 : 1;
   const mks = [cur];
   while (mks.length < n) mks.unshift(prevMonth(mks[0]));
   return { kind, from: `${mks[0]}-01`, to: today, mks, partial: true };
 }
 
+// El período de antes, del mismo largo, para comparar: este mes hasta hoy contra el mes pasado hasta el
+// mismo día; este año contra el año pasado hasta la misma fecha; lo demás, los mismos días justo antes.
+export function prevPeriodOf(period, today) {
+  const { kind, from, to } = period;
+  if (kind === 'mes') {
+    const p = prevMonth(monthKey(today));
+    const [y, m] = p.split('-').map(Number);
+    return { from: `${p}-01`, to: dayOf(y, m, Number(today.slice(8))), label: 'el mes pasado a esta altura' };
+  }
+  if (kind === 'pasado') { const p = prevMonth(period.mks[0]); return { from: `${p}-01`, to: monthEnd(p), label: 'el mes anterior' }; }
+  if (kind === 'ano') {
+    const y = Number(from.slice(0, 4)) - 1;
+    const [m, d] = [Number(to.slice(5, 7)), Number(to.slice(8))];
+    return { from: `${y}-01-01`, to: dayOf(y, m, d), label: 'el año pasado a esta altura' };
+  }
+  const len = diffDays(from, to) + 1;
+  const pto = addDays(from, -1);
+  return { from: addDays(pto, -(len - 1)), to: pto, label: 'los mismos días de antes' };
+}
+
 const inRange = (t, from, to) => t.day >= from && t.day <= to;
-const spentTx = (s, from, to) => s.money.tx.filter((t) => inRange(t, from, to) && txKind(t) === 'gasto');
+const spentTx = (s, from, to) => s.money.tx.filter((t) => inRange(t, from, to) && txKind(t) === 'gasto' && inStats(t));
 
 // Ingresos, gastos y lo que quedó, mes por mes (las transferencias entre tus cuentas no cuentan).
 export function cashflow(s, mks) {
   const by = Object.fromEntries(mks.map((mk) => [mk, { mk, income: 0, spent: 0 }]));
   for (const t of s.money.tx) {
     const row = by[monthKey(t.day)];
-    if (!row) continue;
+    if (!row || !inStats(t)) continue;
     const k = txKind(t);
     if (k === 'ingreso') row.income += txDOP(t);
     else if (k === 'gasto') row.spent += txDOP(t);
@@ -47,13 +78,22 @@ export function cashflow(s, mks) {
 export function totals(s, from, to) {
   let income = 0; let spent = 0; let n = 0;
   for (const t of s.money.tx) {
-    if (!inRange(t, from, to)) continue;
+    if (!inRange(t, from, to) || !inStats(t)) continue;
     const k = txKind(t);
     if (k === 'ingreso') income += txDOP(t);
     else if (k === 'gasto') { spent += txDOP(t); n += 1; }
   }
   const days = Math.max(1, diffDays(from, to) + 1);
   return { income: r2(income), spent: r2(spent), net: r2(income - spent), rate: income > 0 ? (income - spent) / income : null, n, perDay: r2(spent / days), days };
+}
+
+// Este período frente al de antes (cambio en %; null si antes no hubo nada).
+export function compareTotals(s, period, today) {
+  const cur = totals(s, period.from, period.to);
+  const pp = prevPeriodOf(period, today);
+  const prev = totals(s, pp.from, pp.to);
+  const ch = (a, b) => (b > 0 ? (a - b) / b : null);
+  return { cur, prev, label: pp.label, from: pp.from, to: pp.to, dIncome: ch(cur.income, prev.income), dSpent: ch(cur.spent, prev.spent), any: prev.income > 0 || prev.spent > 0 };
 }
 
 // Gasto por categoría, comparado con tu promedio de los 3 meses anteriores al período.
@@ -74,7 +114,7 @@ export function categoryStats(s, period, today) {
   const months = new Set();
   for (const t of s.money.tx) {
     const mk = monthKey(t.day);
-    if (!base.includes(mk) || txKind(t) !== 'gasto') continue;
+    if (!base.includes(mk) || txKind(t) !== 'gasto' || !inStats(t)) continue;
     months.add(mk);
     prev[t.cat] = (prev[t.cat] || 0) + txDOP(t);
   }
@@ -85,14 +125,47 @@ export function categoryStats(s, period, today) {
   return Object.values(by).map((x) => {
     const avg = nBase ? (prev[x.cat] || 0) / nBase : null;
     const expect = avg != null ? avg * mks.length * frac : null;
-    return { ...x, total: r2(x.total), share: total ? x.total / total : 0, avg: avg != null ? r2(avg) : null, delta: expect ? (x.total - expect) / expect : null, isNew: nBase > 0 && !(prev[x.cat] > 0) };
+    return { ...x, total: r2(x.total), share: total ? x.total / total : 0, avg: avg != null ? r2(avg) : null, expect: expect != null ? r2(expect) : null, delta: expect ? (x.total - expect) / expect : null, isNew: nBase > 0 && !(prev[x.cat] > 0) };
   }).sort((a, b) => b.total - a.total);
 }
 
+// Las mismas cifras por familia (comida, transporte, casa…), con sus categorías dentro.
+export function groupStats(s, period, today) {
+  const rows = categoryStats(s, period, today);
+  const by = new Map();
+  for (const r of rows) {
+    const g = catOf(s, r.cat).group || 'otros';
+    if (!by.has(g)) by.set(g, { group: g, name: (CATEGORY_GROUPS.find((x) => x.id === g) || { name: 'Otros' }).name, total: 0, n: 0, expect: 0, hasExpect: false, cats: [] });
+    const x = by.get(g);
+    x.total += r.total;
+    x.n += r.n;
+    if (r.expect != null) { x.expect += r.expect; x.hasExpect = true; }
+    x.cats.push(r);
+  }
+  const total = rows.reduce((a, r) => a + r.total, 0);
+  return [...by.values()].map((x) => ({
+    ...x, total: r2(x.total), share: total ? x.total / total : 0, delta: x.hasExpect && x.expect > 0 ? (x.total - x.expect) / x.expect : null,
+  })).sort((a, b) => b.total - a.total);
+}
+
+// De dónde vienen tus ingresos en el período.
+export function incomeStats(s, period) {
+  const by = {};
+  for (const t of s.money.tx) {
+    if (!inRange(t, period.from, period.to) || txKind(t) !== 'ingreso' || !inStats(t)) continue;
+    if (!by[t.cat]) by[t.cat] = { cat: t.cat, total: 0, n: 0 };
+    by[t.cat].total += txDOP(t);
+    by[t.cat].n += 1;
+  }
+  const total = Object.values(by).reduce((a, x) => a + x.total, 0);
+  return Object.values(by).map((x) => ({ ...x, total: r2(x.total), share: total ? x.total / total : 0 })).sort((a, b) => b.total - a.total);
+}
+
 // Dónde gastas más: comercios agrupados por nombre (Uber, Uber Rides y UBER*RIDES son el mismo).
-export function merchantStats(s, from, to, n = 8) {
+export function merchantStats(s, from, to, n = 8, filter = null) {
   const by = new Map();
   for (const t of spentTx(s, from, to)) {
+    if (filter && !filter(t)) continue;
     const k = merchantKey(t.merchant) || `cat:${t.cat}`;
     if (!t.merchant) continue;
     if (!by.has(k)) by.set(k, { key: k, names: {}, total: 0, n: 0, cat: t.cat });
@@ -134,7 +207,7 @@ export function weekdayStats(s, from, to) {
 // Gasto de cada día del mes (para el calendario).
 export function dailyTotals(s, mk) {
   const out = {};
-  for (const t of s.money.tx) if (monthKey(t.day) === mk && txKind(t) === 'gasto') out[t.day] = (out[t.day] || 0) + txDOP(t);
+  for (const t of s.money.tx) if (monthKey(t.day) === mk && txKind(t) === 'gasto' && inStats(t)) out[t.day] = (out[t.day] || 0) + txDOP(t);
   for (const k of Object.keys(out)) out[k] = r2(out[k]);
   return out;
 }
@@ -151,7 +224,7 @@ export function paceSeries(s, today) {
   const acc = (m) => {
     const n = daysIn(m);
     const daily = Array(n).fill(0);
-    for (const t of s.money.tx) if (monthKey(t.day) === m && txKind(t) === 'gasto') daily[Number(t.day.slice(8)) - 1] += txDOP(t);
+    for (const t of s.money.tx) if (monthKey(t.day) === m && txKind(t) === 'gasto' && inStats(t)) daily[Number(t.day.slice(8)) - 1] += txDOP(t);
     let run = 0;
     return daily.map((v) => r2((run += v)));
   };
@@ -162,7 +235,7 @@ export function paceSeries(s, today) {
   const base = [p1, prevMonth(p1), prevMonth(prevMonth(p1))].map(acc).filter((a) => a[a.length - 1] > 0);
   const len = daysIn(mk);
   const avg = base.length ? Array.from({ length: len }, (_, i) => r2(base.reduce((a, arr) => a + arr[Math.min(i, arr.length - 1)], 0) / base.length)) : null;
-  const budget = budgetRows(s, mk, today).reduce((a, r) => a + r.avail, 0);
+  const budget = budgetTotal(s, budgetRows(s, mk, today));
   return { mk, len, cur, prev: hasPrev ? prev : null, avg, budget: budget > 0 ? r2(budget) : null, prevMk: p1 };
 }
 
@@ -177,7 +250,7 @@ export function monthProjection(s, today) {
   const fixed = fixedIds(s);
   let spent = 0; let variable = 0; let income = 0;
   for (const t of s.money.tx) {
-    if (!inRange(t, from, today)) continue;
+    if (!inRange(t, from, today) || !inStats(t)) continue;
     const k = txKind(t);
     if (k === 'gasto') { spent += txDOP(t); if (!fixed.has(t.id)) variable += txDOP(t); }
     else if (k === 'ingreso') income += txDOP(t);
@@ -187,7 +260,7 @@ export function monthProjection(s, today) {
   let m = prevMonth(mk);
   for (let i = 0; i < 3; i++, m = prevMonth(m)) {
     let v = 0;
-    for (const t of s.money.tx) if (monthKey(t.day) === m && txKind(t) === 'gasto' && !fixed.has(t.id)) v += txDOP(t);
+    for (const t of s.money.tx) if (monthKey(t.day) === m && txKind(t) === 'gasto' && !fixed.has(t.id) && inStats(t)) v += txDOP(t);
     if (v > 0) hist.push(v / daysIn(m));
   }
   const histDaily = hist.length ? hist.reduce((a, b) => a + b, 0) / hist.length : null;
@@ -203,7 +276,7 @@ export function monthProjection(s, today) {
   }
   const projected = spent + toPay + daily * left;
   const projIncome = income + toGet;
-  const budget = budgetRows(s, mk, today).reduce((a, r) => a + r.avail, 0);
+  const budget = budgetTotal(s, budgetRows(s, mk, today));
   return {
     mk, day, len, left, spent: r2(spent), variable: r2(variable), daily: r2(daily), toPay: r2(toPay), toGet: r2(toGet), income: r2(income),
     projected: r2(projected), projIncome: r2(projIncome), projNet: r2(projIncome - projected), budget: budget > 0 ? r2(budget) : null,
@@ -231,13 +304,13 @@ export function budgetSuggestions(s, today) {
   const seen = new Set();
   for (const t of s.money.tx) {
     const m = monthKey(t.day);
-    if (!base.includes(m) || txKind(t) !== 'gasto') continue;
+    if (!base.includes(m) || txKind(t) !== 'gasto' || !inStats(t)) continue;
     seen.add(m);
     sum[t.cat] = (sum[t.cat] || 0) + txDOP(t);
   }
   const n = seen.size;
   if (!n) return { months: 0, rows: [] };
-  const rows = budgetRows(s, mk, today);
+  const rows = budgetRows(s, mk, today).filter((r) => !r.isGroup);
   const cur = Object.fromEntries(rows.map((r) => [r.c.id, r.budget]));
   return {
     months: n,
@@ -254,7 +327,7 @@ export const groupOf503020 = (cat) => (SAVE.has(cat) ? 'ahorro' : NEEDS.has(cat)
 export function split503020(s, mk) {
   const out = { necesidades: 0, gustos: 0, ahorro: 0, income: 0 };
   for (const t of s.money.tx) {
-    if (monthKey(t.day) !== mk) continue;
+    if (monthKey(t.day) !== mk || !inStats(t)) continue;
     const k = txKind(t);
     if (k === 'ingreso') out.income += txDOP(t);
     else if (k === 'gasto') out[groupOf503020(t.cat)] += txDOP(t);
@@ -267,10 +340,110 @@ export function split503020(s, mk) {
   return out;
 }
 
+// ----- Detalle de una categoría o familia (1.9) -----
+// 12 meses con su presupuesto, el promedio de los meses completos, cada cuánto y en qué comercios.
+export function categoryDetail(s, id, today, months = 12) {
+  const group = isGroupId(id) ? id.slice(GROUP_PREFIX.length) : null;
+  const match = (t) => txKind(t) === 'gasto' && inStats(t) && (group ? (catOf(s, t.cat).group || 'otros') === group : t.cat === id);
+  const cur = monthKey(today);
+  const mks = [cur];
+  while (mks.length < months) mks.unshift(prevMonth(mks[0]));
+  const by = Object.fromEntries(mks.map((m) => [m, { mk: m, total: 0, n: 0 }]));
+  let first = null;
+  for (const t of s.money.tx) {
+    if (!match(t)) continue;
+    if (!first || t.day < first) first = t.day;
+    const row = by[monthKey(t.day)];
+    if (!row) continue;
+    row.total += txDOP(t);
+    row.n += 1;
+  }
+  const c = budgetCatOf(s, id);
+  const rows = mks.map((m) => ({ ...by[m], total: r2(by[m].total), budget: c ? budgetFor(s, c, m) : 0 }));
+  // Promedio de los meses completos desde el primero con gastos de esta categoría.
+  const full = rows.filter((r) => r.mk !== cur && first && r.mk >= monthKey(first));
+  const avg = full.length ? r2(full.reduce((a, r) => a + r.total, 0) / full.length) : null;
+  const total = r2(rows.reduce((a, r) => a + r.total, 0));
+  const n = rows.reduce((a, r) => a + r.n, 0);
+  const from = `${mks[Math.max(0, mks.length - 3)]}-01`;
+  return {
+    id, group, months: rows, avg, total, n, avgTicket: n ? r2(total / n) : 0, thisMonth: rows[rows.length - 1].total,
+    merchants: merchantStats(s, from, today, 5, match), first,
+  };
+}
+
+// ----- Gastos hormiga (1.9) -----
+// Compras pequeñas y frecuentes que casi no se notan (café, delivery, pasajes, recargas…): cuántas fueron,
+// cuánto suman, cuánto serían en un año y dónde se van. `max`: monto de una compra pequeña, en pesos.
+const NOT_ANTS = new Set(['comisiones', 'intereses_pagados', 'impuestos']);
+const isAnt = (t, max) => !t.taxOf && !NOT_ANTS.has(t.cat) && txDOP(t) <= max;
+export function smallSpends(s, period, { max = 500 } = {}) {
+  const list = spentTx(s, period.from, period.to).filter((t) => isAnt(t, max));
+  const total = list.reduce((a, t) => a + txDOP(t), 0);
+  const all = totals(s, period.from, period.to).spent;
+  const days = Math.max(1, diffDays(period.from, period.to) + 1);
+  const perMonth = (total / days) * (365 / 12);
+  const cats = {};
+  for (const t of list) { if (!cats[t.cat]) cats[t.cat] = { cat: t.cat, n: 0, total: 0 }; cats[t.cat].n += 1; cats[t.cat].total += txDOP(t); }
+  return {
+    max, n: list.length, total: r2(total), share: all ? total / all : 0, days, perMonth: r2(perMonth), perYear: r2(perMonth * 12),
+    cats: Object.values(cats).map((x) => ({ ...x, total: r2(x.total) })).sort((a, b) => b.total - a.total).slice(0, 4),
+    merchants: merchantStats(s, period.from, period.to, 4, (t) => isAnt(t, max)),
+  };
+}
+
+// ----- Lo que te cuesta el banco (1.9): impuesto a transferencias, comisiones e intereses -----
+const isTaxTx = (t) => t.taxKind === 'tax' || /impuesto|dgii|\b0[.,](15|20)\s*%?/i.test(`${t.merchant} ${t.note}`);
+export function bankCosts(s, period) {
+  const out = { tax: 0, fees: 0, interest: 0, n: 0, total: 0, nTax: 0 };
+  for (const t of spentTx(s, period.from, period.to)) {
+    if (t.cat === 'intereses_pagados') out.interest += txDOP(t);
+    else if (t.cat === 'comisiones') { if (isTaxTx(t)) { out.tax += txDOP(t); out.nTax += 1; } else out.fees += txDOP(t); }
+    else continue;
+    out.n += 1;
+  }
+  out.total = r2(out.tax + out.fees + out.interest);
+  for (const k of ['tax', 'fees', 'interest']) out[k] = r2(out[k]);
+  return out;
+}
+
+// ----- Salud financiera (1.9) -----
+// Cuánto guardas de lo que entra, para cuántos meses te alcanza lo que tienes, cuánto usas de tus tarjetas
+// y cuánto debes en ellas frente a un mes de ingresos. Con los 3 últimos meses completos.
+export function healthSnapshot(s, today) {
+  const cur = monthKey(today);
+  const mks = [prevMonth(cur)];
+  while (mks.length < 3) mks.push(prevMonth(mks[mks.length - 1]));
+  const cf = cashflow(s, mks).filter((r) => r.income > 0 || r.spent > 0);
+  const income = cf.reduce((a, r) => a + r.income, 0);
+  const spent = cf.reduce((a, r) => a + r.spent, 0);
+  const n = cf.length;
+  const avgIncome = n ? income / n : 0;
+  const avgSpent = n ? spent / n : 0;
+  const bal = balances(s);
+  const mt = moneyTotals(s, today, bal);
+  let limit = 0; let owedLim = 0;
+  const rate = fxRate(s, today);
+  for (const a of s.money.accounts) {
+    if (!isCard(a) || a.hidden) continue;
+    const ci = cardInfo(s, a, today, bal);
+    if (ci.limit.DOP > 0) { limit += ci.limit.DOP; owedLim += ci.owed.DOP; }
+    if (ci.limit.USD > 0) { limit += ci.limit.USD * rate; owedLim += ci.owed.USD * rate; }
+  }
+  return {
+    months: n,
+    saveRate: income > 0 ? (income - spent) / income : null,
+    avgIncome: r2(avgIncome), avgSpent: r2(avgSpent),
+    cushion: mt.ready && avgSpent > 0 ? (mt.liquid + mt.savings) / avgSpent : null,
+    have: r2(mt.liquid + mt.savings), ready: mt.ready,
+    cardUse: limit > 0 ? owedLim / limit : null,
+    owe: mt.oweDOP, oweMonths: avgIncome > 0 ? mt.oweDOP / avgIncome : null,
+  };
+}
+
 // Lo que más cambió, en frases cortas.
 export function insights(s, today) {
   const out = [];
-  const mk = monthKey(today);
   const per = periodOf('mes', today);
   const cats = categoryStats(s, per, today).filter((c) => c.delta != null && c.total >= 500);
   const up = cats.filter((c) => c.delta >= 0.25).sort((a, b) => b.delta - a.delta)[0];

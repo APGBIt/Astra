@@ -3,13 +3,13 @@ import { Icon } from '../ui/icons.jsx';
 import { Nav, Bar, Sheet, SheetHead, TChip, Switch, money, usd, cur, rateText, toast, ask, focusOnMount, plural } from '../ui/kit.jsx';
 import { act, useApp } from '../app/store.js';
 import { go } from '../app/router.js';
-import { monthKey, monthName, relDay, fmtDay } from '../app/dates.js';
+import { monthKey, relDay, fmtDay, fmtShort } from '../app/dates.js';
 import { refreshRate, rateForDay } from '../app/fx.js';
 import { saveFile } from '../app/files.js';
 import {
-  attrLevel, monthSummary, addTx, updateTx, removeTx, setBudget, catOf, catName, catGroups, catsOfType, addCategory, updateCategory, removeCategory,
-  bossHP, fxRate, fxIsManual, setManualRate, toDOP, toUSD, txKind, txCur, txOrig, txDOP, txUSD, txRate, accountOf, accountLabel,
-  guessTxCat, learnRule, txTags, undoImport, frequentCats,
+  attrLevel, addTx, updateTx, removeTx, setBudget, catOf, catName, catGroups, catsOfType, addCategory, updateCategory, removeCategory,
+  bossHP, fxRate, fxIsManual, setManualRate, toDOP, toUSD, txKind, txCur, txOrig, txRate, accountOf, accountLabel,
+  guessTxCat, learnRule, txTags, undoImport, frequentCats, taxSuggestion, taxChildren, findTaxFor, setTaxRecords, taxPct, TAX_LABEL, transferTaxRate,
 } from '../game/logic.js';
 import { parseBankAlerts, toNumber } from '../game/parse.js';
 import { CATEGORY_GROUPS, ACCOUNT_KINDS, CATEGORY_ICONS } from '../game/content.js';
@@ -18,36 +18,19 @@ import { CatPicker } from '../ui/catpicker.jsx';
 import { setPending } from './Import.jsx';
 import { PhotoStrip } from '../ui/photos.jsx';
 import {
-  MoneyOverview, AccountsTab, PlanTab, CardSheet, AccountSheet, PlanSheet, DueSheet, FundSheet, BudgetCatSheet, payInitial, AccountForm,
+  MoneyOverview, AccountsTab, PlanTab, CardSheet, AccountSheet, PlanSheet, DueSheet, FundSheet, BudgetCatSheet, payInitial, AccountForm, BudgetSuggestSheet,
 } from './Money.jsx';
-import { monthPlan, isCard } from '../game/money.js';
+import { monthPlan, isCard, setGroupBudget } from '../game/money.js';
 import { Analysis } from './Stats.jsx';
-import { BudgetSuggestSheet } from './Money.jsx';
+import { Movements, TxRow, csvOf, KIND_LABEL, fxWhen } from './Movements.jsx';
+import { WorkSheet, TaxSheet, RulesSheet, DebtSheet, CatDetailSheet, MoveCatSheet, SplitSheet } from './FinTools.jsx';
+import {
+  emptyFilter, normFilter, workInfo, workHours, fmtWork, sameMerchantOthers, bulkEdit, rulesList, periodRange, filterTx,
+} from '../game/ledger.js';
 
 const SRC_LABEL = { recibo: 'Recibo', alerta: 'Aviso del banco', voz: 'Registro rápido', manual: 'A mano', importado: 'Importado', correo: 'Correo del banco' };
-const KIND_LABEL = { gasto: 'Gasto', ingreso: 'Ingreso', transfer: 'Entre cuentas' };
 const ACC_ICON = Object.fromEntries(ACCOUNT_KINDS.map((k) => [k.key, k.icon]));
-
-function shiftMonth(mk, n) {
-  const [y, m] = mk.split('-').map(Number);
-  const d = new Date(y, m - 1 + n, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
-
-const signed = (t) => {
-  const k = txKind(t);
-  const v = cur(txOrig(t), txCur(t));
-  return k === 'ingreso' ? `+${v}` : k === 'transfer' ? v : `−${v}`;
-};
-// La otra moneda del movimiento: si fue en US$, cuánto fue en pesos; si fue en pesos, cuánto en US$.
-const otherSide = (s, t) => (txCur(t) === 'USD' ? money(txDOP(t)) : usd(txUSD(s, t)));
-
-const fxWhen = (s, today) => {
-  const fx = s.money.fx;
-  if (fxIsManual(s)) return 'Tu tasa';
-  if (!fx.day) return '';
-  return fx.day === today ? 'Hoy' : relDay(fx.day, today);
-};
+const num = (v) => toNumber(String(v || '').replace(/[^\d.,]/g, '')) || 0;
 
 const TABS = [['resumen', 'Resumen'], ['cuentas', 'Cuentas'], ['plan', 'Plan'], ['analisis', 'Análisis'], ['movimientos', 'Movimientos']];
 
@@ -57,33 +40,35 @@ export function Finance({ query }) {
   const q0 = query.get('tab');
   const [tab, setTabState] = useState(TABS.some(([k]) => k === q0) ? q0 : 'resumen');
   const [sheet, setSheet] = useState(query.get('alerta') ? { kind: 'alert' } : query.get('nuevo') ? { kind: 'tx' } : null);
-  const [filter, setFilter] = useState({ kind: 'all', cat: null, account: null, tag: null });
-  const [mk, setMk] = useState(monthKey(today));
+  const [filter, setFilter] = useState(emptyFilter());
+  const [per, setPer] = useState({ kind: 'mes', mk: monthKey(today) });
+  const [sel, setSel] = useState(null);
   useEffect(() => { refreshRate(); }, []);
 
   const lvl = attrLevel(s.attrs.finanzas);
   const rate = fxRate(s, today);
   const bosses = s.bosses.filter((b) => b.area === 'finanzas' && b.status === 'active');
   const imp = s.money.lastImport;
-  const setTab = (t) => { setTabState(t); go(`/finanzas?tab=${t}`, { replace: true }); window.scrollTo(0, 0); };
-  // Desde una cuenta, una tarjeta o un presupuesto: sus movimientos de este mes.
+  const setTab = (t) => { setTabState(t); setSel(null); go(`/finanzas?tab=${t}`, { replace: true }); window.scrollTo(0, 0); };
+  // Desde una cuenta, una tarjeta, un presupuesto o una categoría: sus movimientos (de este mes o del período que se pida).
   const showMovements = (account = null, cat = null, month = null) => {
     setSheet(null);
-    setFilter({ kind: 'all', cat, account, tag: null });
-    setMk(month || monthKey(today));
+    setFilter(normFilter({ cats: cat ? (Array.isArray(cat) ? cat : [cat]) : [], accounts: account ? [account] : [] }));
+    setPer(month && typeof month === 'object' ? month : { kind: 'mes', mk: month || monthKey(today) });
     setTab('movimientos');
   };
   const pay = (it) => setSheet(payInitial(s, it, today));
+  const close = () => setSheet(null);
 
   return (
     <>
-      <main class="screen">
-        <header class="between-c">
-          <div class="stack-xs"><span class="eyebrow" style={{ color: 'var(--finanzas-ink)' }}>Fortuna · Nv {lvl.n}</span><h1 class="h1">Finanzas</h1></div>
-          <div class="row" style={{ gap: 8 }}>
+      <main class="screen" style={sel ? { paddingBottom: 'calc(200px + env(safe-area-inset-bottom, 0px))' } : null}>
+        <header class="between-c fin-head">
+          <div class="stack-xs" style={{ minWidth: 0 }}><span class="eyebrow" style={{ color: 'var(--finanzas-ink)' }}>Fortuna · Nv {lvl.n}</span><h1 class="h1">Finanzas</h1></div>
+          <div class="row" style={{ gap: 8, flexShrink: 0 }}>
             <button type="button" class="icon-btn" aria-label="Pegar avisos del banco" onClick={() => setSheet({ kind: 'alert' })}><Icon name="paste" size={20} /></button>
             <button type="button" class="icon-btn" aria-label="Más opciones de finanzas" onClick={() => setSheet({ kind: 'more' })}><Icon name="dots" size={20} /></button>
-            <a class="btn sm" href="#/recibo"><Icon name="camera" size={18} />Recibo</a>
+            <a class="btn sm" href="#/recibo" aria-label="Escanear recibo"><Icon name="camera" size={18} /><span class="fin-head-l">Recibo</span></a>
           </div>
         </header>
 
@@ -132,168 +117,31 @@ export function Finance({ query }) {
         )}
         {tab === 'cuentas' && <AccountsTab s={s} today={today} setSheet={setSheet} />}
         {tab === 'plan' && <PlanTab s={s} today={today} setSheet={setSheet} />}
-        {tab === 'analisis' && <Analysis s={s} today={today} onCat={(cat, period) => showMovements(null, cat, period ? period.mks[period.mks.length - 1] : null)} />}
-        {tab === 'movimientos' && <Movements s={s} today={today} mk={mk} setMk={setMk} filter={filter} setFilter={setFilter} setSheet={setSheet} />}
+        {tab === 'analisis' && <Analysis s={s} today={today} setSheet={setSheet} onCat={(cat) => setSheet({ kind: 'catdetail', id: cat })} />}
+        {tab === 'movimientos' && <Movements s={s} today={today} per={per} setPer={setPer} filter={filter} setFilter={setFilter} setSheet={setSheet} sel={sel} setSel={setSel} />}
       </main>
-      <Nav active="areas" fab={{ onClick: () => setSheet({ kind: 'tx' }), label: 'Nuevo movimiento' }} />
-      {sheet && sheet.kind === 'tx' && <TxSheet key={sheet.tx ? sheet.tx.id : `nuevo-${sheet.link ? sheet.link.plan + sheet.link.date : sheet.to || ''}`} s={s} initial={sheet} tx={sheet.tx} onClose={() => setSheet(null)} />}
-      {sheet && sheet.kind === 'alert' && <AlertSheet onClose={() => setSheet(null)} />}
-      {sheet && sheet.kind === 'budgets' && <BudgetSheet s={s} rate={rate} onClose={() => setSheet(null)} />}
-      {sheet && sheet.kind === 'suggest' && <BudgetSuggestSheet s={s} onClose={() => setSheet(null)} />}
-      {sheet && sheet.kind === 'budgetcat' && <BudgetCatSheet s={s} id={sheet.id} onClose={() => setSheet(null)} onMovements={showMovements} />}
-      {sheet && sheet.kind === 'fx' && <FxSheet s={s} onClose={() => setSheet(null)} />}
-      {sheet && sheet.kind === 'more' && <MoreSheet s={s} mk={mk} onPick={(k) => (k === 'accounts' ? (setSheet(null), setTab('cuentas')) : setSheet({ kind: k }))} onClose={() => setSheet(null)} />}
-      {sheet && sheet.kind === 'cats' && <CatsSheet s={s} onClose={() => setSheet(null)} />}
-      {sheet && sheet.kind === 'card' && <CardSheet s={s} id={sheet.id} onClose={() => setSheet(null)} onPay={pay} onMovements={showMovements} />}
-      {sheet && sheet.kind === 'account' && <AccountSheet s={s} id={sheet.id} onClose={() => setSheet(null)} onMovements={showMovements} />}
-      {sheet && sheet.kind === 'plan' && <PlanSheet key={sheet.id || (sheet.tpl ? sheet.tpl.name : sheet.planKind || 'nuevo')} s={s} id={sheet.id} tpl={sheet.tpl} planKind={sheet.planKind} future={sheet.future} onClose={() => setSheet(null)} />}
-      {sheet && sheet.kind === 'due' && <DueSheet s={s} item={sheet.item} onClose={() => setSheet(null)} onPay={pay} onEdit={() => setSheet({ kind: 'plan', id: sheet.item.plan })} />}
-      {sheet && sheet.kind === 'fund' && <FundSheet s={s} id={sheet.id} onClose={() => setSheet(null)} />}
-    </>
-  );
-}
-
-// ---------- Movimientos del mes ----------
-
-function Movements({ s, today, mk, setMk, filter, setFilter, setSheet }) {
-  const [q, setQ] = useState('');
-  const [showSearch, setShowSearch] = useState(false);
-  const [limit, setLimit] = useState(40);
-  const listRef = useRef(null);
-  const sum = monthSummary(s, mk);
-  const rate = fxRate(s, today);
-  const isNow = mk === monthKey(today);
-
-  // Dónde se fue el dinero: las categorías con más gasto (las demás juntas en «Otras»).
-  const ranked = Object.entries(sum.byCat).map(([id, dop]) => ({ c: catOf(s, id), dop, usdv: sum.byCatUSD[id] || 0 })).sort((a, b) => b.dop - a.dop);
-  // Con 7 categorías se ven todas; desde 8, las menores van juntas.
-  const top = ranked.slice(0, ranked.length > 7 ? 6 : 7);
-  const rest = ranked.slice(top.length);
-  if (rest.length) top.push({ c: { id: '__otras', name: `Otras ${rest.length} categorías`, icon: 'dots' }, dop: rest.reduce((a, x) => a + x.dop, 0), usdv: rest.reduce((a, x) => a + x.usdv, 0), group: rest.map((x) => x.c.id) });
-  const maxCat = top.length ? Math.max(...top.map((x) => x.dop)) : 0;
-
-  const qn = q.trim().toLowerCase();
-  const visible = sum.txs.filter((t) => (filter.kind === 'all' || txKind(t) === filter.kind)
-    && (!filter.cat || (Array.isArray(filter.cat) ? filter.cat.includes(t.cat) : t.cat === filter.cat))
-    && (!filter.account || t.account === filter.account || t.to === filter.account || (accountOf(s, t.account) || {}).of === filter.account)
-    && (!filter.tag || t.tag === filter.tag)
-    && (!qn || `${t.merchant} ${t.note} ${catName(s, t.cat)} ${t.tag}`.toLowerCase().includes(qn)));
-  const shown = visible.slice(0, limit);
-  const days = [];
-  for (const t of shown) {
-    const last = days[days.length - 1];
-    if (last && last.day === t.day) last.list.push(t); else days.push({ day: t.day, list: [t] });
-  }
-  const monthAccounts = [...new Set(sum.txs.flatMap((t) => [t.account, t.to]).filter(Boolean))].map((id) => accountOf(s, id)).filter(Boolean);
-  if (filter.account && !monthAccounts.some((a) => a.id === filter.account) && accountOf(s, filter.account)) monthAccounts.unshift(accountOf(s, filter.account));
-  const monthTags = [...new Set(sum.txs.map((t) => t.tag).filter(Boolean))];
-  const hasTransfers = sum.txs.some((t) => txKind(t) === 'transfer');
-  const filtered = filter.kind !== 'all' || filter.cat || filter.account || filter.tag || qn;
-  const toList = () => setTimeout(() => listRef.current && listRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' }), 30);
-  const setF = (patch) => { setFilter({ ...filter, ...patch }); setLimit(40); };
-  const balance = sum.income - sum.spent;
-  const balanceUSD = sum.incomeUSD - sum.spentUSD;
-
-  return (
-    <>
-      <div class="between-c">
-        <button type="button" class="icon-btn plain" aria-label="Mes anterior" onClick={() => { setMk(shiftMonth(mk, -1)); setLimit(40); }}><Icon name="left" /></button>
-        <span class="strong" style={{ textTransform: 'capitalize' }}>{monthName(mk)}</span>
-        <button type="button" class="icon-btn plain" aria-label="Mes siguiente" disabled={isNow} style={isNow ? { opacity: 0.3 } : null} onClick={() => { setMk(shiftMonth(mk, 1)); setLimit(40); }}><Icon name="right" /></button>
-      </div>
-
-      {/* Cada total en pesos y en dólares. En filas: los montos largos caben sin cortarse. */}
-      <section class="card flush" aria-label="Resumen del mes">
-        {[['Ingresos', sum.income, sum.incomeUSD, null], ['Gastos', sum.spent, sum.spentUSD, null], ['Balance', balance, balanceUSD, balance < 0 ? 'var(--vit-ink)' : balance > 0 ? 'var(--good-ink)' : null]].map(([l, dop, u, c]) => (
-          <div key={l} class="lrow" style={{ minHeight: 58 }}>
-            <span class="grow semi muted">{l}</span>
-            <span class="stack-xs" style={{ alignItems: 'flex-end', gap: 2 }}>
-              <span class="display-num tab-num" style={{ fontSize: l === 'Balance' ? 22 : 19, color: c || undefined }}>{money(dop)}</span>
-              <span class="tiny semi muted tab-num">{usd(u)}</span>
-            </span>
-          </div>
-        ))}
-        <button type="button" class="lrow" style={{ minHeight: 52 }} onClick={() => setSheet({ kind: 'fx' })} aria-label={`Tasa del dólar: US$1 = ${rateText(rate)}. Cambiar`}>
-          <span class="tile sm" style={{ background: 'var(--soft)' }}><Icon name="swap" size={18} /></span>
-          <span class="stack-xs grow"><span class="semi">US$1 = {rateText(rate)}</span><span class="tiny muted semi">{fxWhen(s, today)}{s.money.fx.auto && !fxIsManual(s) ? ' · se actualiza sola' : ''}</span></span>
-          <span class="small strong">Convertir</span><Icon name="right" size={16} />
-        </button>
-      </section>
-
-      {ranked.length > 0 && (
-        <section class="card" aria-label="Gastos por categoría">
-          <div class="between-c"><h2 class="h2">Dónde se fue tu dinero</h2><span class="tiny muted semi">toca para ver</span></div>
-          <div class="stack-sm">
-            {top.map((x) => {
-              const pct = sum.spent ? Math.round((x.dop / sum.spent) * 100) : 0;
-              return (
-                <button type="button" key={x.c.id} class="catbar" title={`${x.c.name}: ${money(x.dop)} · ${usd(x.usdv)} · ${pct} % del gasto`} aria-label={`${x.c.name}: ${money(x.dop)}, ${pct} por ciento. Ver movimientos`}
-                  onClick={() => { setF({ cat: x.group || x.c.id, kind: 'all' }); toList(); }}>
-                  <span class="row" style={{ gap: 10 }}>
-                    <span class="tile xs" style={{ background: 'var(--finanzas-soft)', color: 'var(--finanzas-ink)' }}><Icon name={x.c.icon || 'tag'} size={15} /></span>
-                    <span class="grow semi" style={{ minWidth: 0, lineHeight: 1.25 }}>{x.c.name}</span>
-                    <span class="stack-xs" style={{ alignItems: 'flex-end', gap: 0 }}><span class="strong tab-num">{money(x.dop)}</span><span class="tiny muted semi tab-num">{pct} % · {usd(x.usdv, { decimals: 0 })}</span></span>
-                  </span>
-                  <span class="catbar-track" aria-hidden="true"><i style={{ width: `${maxCat ? Math.max(2, (x.dop / maxCat) * 100) : 0}%` }} /></span>
-                </button>
-              );
-            })}
-          </div>
-          {sum.paidIn.USD > 0 && <span class="small muted">Pagaste {usd(sum.paidIn.USD)} en dólares{sum.paidIn.DOP > 0 ? ` y ${money(sum.paidIn.DOP)} en pesos` : ''}.</span>}
-        </section>
-      )}
-
-      {monthTags.length > 0 && (
-        <section class="card flush" aria-label="Etiquetas del mes">
-          <div style={{ padding: '14px 0 4px' }}><h2 class="h2">Etiquetas</h2></div>
-          {monthTags.map((tg) => (
-            <button type="button" key={tg} class="lrow" onClick={() => { setF({ tag: filter.tag === tg ? null : tg }); toList(); }}>
-              <span class="tile sm" style={{ background: 'var(--soft)' }}><Icon name="tag" size={17} /></span>
-              <span class="grow semi">{tg}</span>
-              <span class="stack-xs" style={{ alignItems: 'flex-end', gap: 0 }}><span class="strong tab-num">{money(sum.byTag[tg] || 0)}</span><span class="tiny muted semi tab-num">{usd(sum.byTagUSD[tg] || 0)}</span></span>
-            </button>
-          ))}
-        </section>
-      )}
-
-      <section class="card flush" aria-label="Movimientos" ref={listRef} style={{ scrollMarginTop: 12 }}>
-        <div class="between-c" style={{ padding: '14px 0 6px' }}>
-          <h2 class="h2">Movimientos</h2>
-          <span class="row" style={{ gap: 4 }}>
-            <span class="small muted tab-num">{visible.length}{filtered ? ` de ${sum.count}` : ''}</span>
-            <button type="button" class="icon-btn plain" aria-label="Buscar movimientos" aria-pressed={showSearch ? 'true' : 'false'} onClick={() => { setShowSearch(!showSearch); setQ(''); }}><Icon name="search" size={19} /></button>
-          </span>
-        </div>
-        {showSearch && <input class="input" type="search" value={q} placeholder="Comercio, nota o categoría" aria-label="Buscar movimientos" onInput={(e) => setQ(e.currentTarget.value)} ref={focusOnMount} style={{ marginBottom: 8 }} />}
-        {(sum.count > 0 || filtered) && (
-          <div class="chips scroll" role="group" aria-label="Filtrar movimientos" style={{ margin: '0 -18px', padding: '2px 18px 8px' }}>
-            <TChip sm on={!filtered} onClick={() => { setF({ kind: 'all', cat: null, account: null, tag: null }); setQ(''); }}>Todos</TChip>
-            <TChip sm on={filter.kind === 'gasto'} onClick={() => setF({ kind: filter.kind === 'gasto' ? 'all' : 'gasto' })}>Gastos</TChip>
-            <TChip sm on={filter.kind === 'ingreso'} onClick={() => setF({ kind: filter.kind === 'ingreso' ? 'all' : 'ingreso' })}>Ingresos</TChip>
-            {hasTransfers && <TChip sm on={filter.kind === 'transfer'} onClick={() => setF({ kind: filter.kind === 'transfer' ? 'all' : 'transfer' })}>Entre cuentas</TChip>}
-            {monthAccounts.map((a) => <TChip key={a.id} sm icon={ACC_ICON[a.kind] || 'card'} on={filter.account === a.id} onClick={() => setF({ account: filter.account === a.id ? null : a.id })}>{accountLabel(a)}</TChip>)}
-            {monthTags.map((tg) => <TChip key={tg} sm icon="tag" on={filter.tag === tg} onClick={() => setF({ tag: filter.tag === tg ? null : tg })}>{tg}</TChip>)}
-          </div>
-        )}
-        {filter.cat && (
-          <div class="row" style={{ padding: '0 0 8px', gap: 8 }}>
-            <span class="chip" style={{ background: 'var(--finanzas-soft)', color: 'var(--finanzas-ink)' }}><Icon name="filter" size={13} />{Array.isArray(filter.cat) ? 'Otras categorías' : catName(s, filter.cat)}</span>
-            <button type="button" class="link-btn muted" style={{ minHeight: 30, fontSize: 13 }} onClick={() => setF({ cat: null })}>Quitar filtro</button>
-          </div>
-        )}
-        {!sum.txs.length && <p class="small muted" style={{ padding: '4px 0 16px' }}>Sin movimientos este mes. Toca + para agregar uno, o pega los avisos de tu banco.</p>}
-        {sum.txs.length > 0 && !visible.length && <p class="small muted" style={{ padding: '4px 0 16px' }}>Nada coincide con el filtro.</p>}
-        {days.map((d) => {
-          const net = d.list.reduce((a, t) => a + (txKind(t) === 'gasto' ? -txDOP(t) : txKind(t) === 'ingreso' ? txDOP(t) : 0), 0);
-          return (
-            <div key={d.day} class="txday">
-              <div class="between-c dayhead"><span class="eyebrow" style={{ fontSize: 11.5 }}>{d.day === today ? 'Hoy' : fmtDay(d.day)}</span>{net !== 0 && <span class="tiny strong muted tab-num">{money(net, { sign: net > 0 })}</span>}</div>
-              {d.list.map((t) => <TxRow key={t.id} s={s} t={t} onOpen={() => setSheet({ kind: 'tx', tx: t })} />)}
-            </div>
-          );
-        })}
-        {visible.length > shown.length && <button type="button" class="lrow" style={{ justifyContent: 'center', fontWeight: 700, minHeight: 52 }} onClick={() => setLimit(limit + 60)}>Ver {Math.min(60, visible.length - shown.length)} más</button>}
-      </section>
+      <Nav active="areas" fab={sel ? null : { onClick: () => setSheet({ kind: 'tx' }), label: 'Nuevo movimiento' }} />
+      {sheet && sheet.kind === 'tx' && <TxSheet key={sheet.tx ? sheet.tx.id : `nuevo-${sheet.link ? sheet.link.plan + sheet.link.date : sheet.to || ''}`} s={s} initial={sheet} tx={sheet.tx} onClose={close}
+        onSplit={(id) => setSheet({ kind: 'split', id })} onOpenTx={(t) => setSheet({ kind: 'tx', tx: t })} onWork={() => setSheet({ kind: 'work' })} />}
+      {sheet && sheet.kind === 'alert' && <AlertSheet onClose={close} />}
+      {sheet && sheet.kind === 'budgets' && <BudgetSheet s={s} rate={rate} onClose={close} />}
+      {sheet && sheet.kind === 'suggest' && <BudgetSuggestSheet s={s} onClose={close} />}
+      {sheet && sheet.kind === 'budgetcat' && <BudgetCatSheet s={s} id={sheet.id} onClose={close} onMovements={showMovements} onDetail={(id) => setSheet({ kind: 'catdetail', id })} />}
+      {sheet && sheet.kind === 'fx' && <FxSheet s={s} onClose={close} />}
+      {sheet && sheet.kind === 'more' && <MoreSheet s={s} per={per} today={today} onPick={(k) => (k === 'accounts' ? (setSheet(null), setTab('cuentas')) : setSheet({ kind: k }))} onClose={close} />}
+      {sheet && sheet.kind === 'cats' && <CatsSheet s={s} onClose={close} onMove={(id) => setSheet({ kind: 'movecat', id })} onDetail={(id) => setSheet({ kind: 'catdetail', id })} />}
+      {sheet && sheet.kind === 'card' && <CardSheet s={s} id={sheet.id} onClose={close} onPay={pay} onMovements={showMovements} onDebts={() => setSheet({ kind: 'debts' })} />}
+      {sheet && sheet.kind === 'account' && <AccountSheet s={s} id={sheet.id} onClose={close} onMovements={showMovements} />}
+      {sheet && sheet.kind === 'plan' && <PlanSheet key={sheet.id || (sheet.tpl ? sheet.tpl.name : sheet.planKind || 'nuevo')} s={s} id={sheet.id} tpl={sheet.tpl} planKind={sheet.planKind} future={sheet.future} onClose={close} />}
+      {sheet && sheet.kind === 'due' && <DueSheet s={s} item={sheet.item} onClose={close} onPay={pay} onEdit={() => setSheet({ kind: 'plan', id: sheet.item.plan })} />}
+      {sheet && sheet.kind === 'fund' && <FundSheet s={s} id={sheet.id} onClose={close} />}
+      {sheet && sheet.kind === 'work' && <WorkSheet s={s} onClose={close} />}
+      {sheet && sheet.kind === 'tax' && <TaxSheet s={s} onClose={close} />}
+      {sheet && sheet.kind === 'rules' && <RulesSheet s={s} onClose={close} />}
+      {sheet && sheet.kind === 'debts' && <DebtSheet s={s} onClose={close} />}
+      {sheet && sheet.kind === 'catdetail' && <CatDetailSheet s={s} id={sheet.id} onClose={close} onMovements={(cats, p) => showMovements(null, cats, p)} onBudget={(id) => setSheet({ kind: 'budgetcat', id })} onMove={(id) => setSheet({ kind: 'movecat', id })} />}
+      {sheet && sheet.kind === 'movecat' && <MoveCatSheet s={s} from={sheet.id} onClose={close} />}
+      {sheet && sheet.kind === 'split' && <SplitSheet s={s} id={sheet.id} onClose={close} onOpenTx={(t) => setSheet({ kind: 'tx', tx: t })} />}
     </>
   );
 }
@@ -303,44 +151,21 @@ function Movements({ s, today, mk, setMk, filter, setFilter, setSheet }) {
 function RecentTx({ s, today, onOpen, onAll }) {
   const list = s.money.tx.filter((t) => t.day <= today).slice(0, 4);
   if (!list.length) return null;
+  const wi = workInfo(s, today);
   return (
     <section class="card flush" aria-label="Últimos movimientos">
       <div class="between-c" style={{ padding: '14px 0 4px' }}>
         <h2 class="h2">Últimos movimientos</h2>
         <button type="button" class="link-btn" onClick={onAll}>Ver todos<Icon name="right" size={16} /></button>
       </div>
-      {list.map((t) => <TxRow key={t.id} s={s} t={t} day={relDay(t.day, today)} onOpen={() => onOpen(t)} />)}
+      {list.map((t) => <TxRow key={t.id} s={s} t={t} wi={wi} day={relDay(t.day, today)} onOpen={() => onOpen(t)} />)}
     </section>
-  );
-}
-
-// ---------- Fila de un movimiento ----------
-
-function TxRow({ s, t, onOpen, day = null }) {
-  const c = catOf(s, t.cat);
-  const k = txKind(t);
-  const a = accountOf(s, t.account);
-  const to = k === 'transfer' ? accountOf(s, t.to) : null;
-  const where = to ? `${a ? `${accountLabel(a)} → ` : '→ '}${accountLabel(to)}` : a && accountLabel(a);
-  const tone = k === 'ingreso' ? ['var(--good-soft)', 'var(--good-ink)'] : k === 'transfer' ? ['var(--soft)', 'var(--muted)'] : ['var(--finanzas-soft)', 'var(--finanzas-ink)'];
-  return (
-    <button type="button" class="lrow txrow" onClick={onOpen} aria-label={`${t.merchant || c.name}, ${signed(t)}, ${c.name}`}>
-      <span class="tile sm" style={{ background: tone[0], color: tone[1] }}><Icon name={c.icon || 'tag'} size={18} /></span>
-      <span class="stack-xs grow" style={{ minWidth: 0 }}>
-        <span class="strong clip">{t.merchant || c.name}</span>
-        <span class="tiny muted semi clamp2">{[day, t.time, to ? null : c.name, where, t.tag].filter(Boolean).join(' · ')}</span>
-      </span>
-      <span class="stack-xs" style={{ alignItems: 'flex-end', flexShrink: 0, gap: 2 }}>
-        <span class="strong tab-num" style={{ color: k === 'ingreso' ? 'var(--good-ink)' : k === 'transfer' ? 'var(--muted)' : 'var(--ink)' }}>{signed(t)}</span>
-        <span class="tiny muted semi tab-num">{otherSide(s, t)}</span>
-      </span>
-    </button>
   );
 }
 
 // ---------- Hoja: nuevo o editar movimiento ----------
 
-export function TxSheet({ s, initial, tx, onClose }) {
+export function TxSheet({ s, initial, tx, onClose, onSplit = null, onOpenTx = null, onWork = null }) {
   const today = s.energy.day;
   const editing = !!tx;
   const lastAcc = (s.money.tx.find((t) => t.account && accountOf(s, t.account)) || {}).account || '';
@@ -363,11 +188,26 @@ export function TxSheet({ s, initial, tx, onClose }) {
   const [photos, setPhotos] = useState(tx ? tx.photos || [] : initial.photos || []);
   const [newCat, setNewCat] = useState(false);
   const [newAcc, setNewAcc] = useState(false);
+  // 1.9: impuesto y comisión de la transferencia, «no contar» y horas de trabajo.
+  const kids = tx ? taxChildren(s, tx.id) : [];
+  const kidTax = kids.find((k) => k.taxKind === 'tax') || null;
+  const kidFee = kids.find((k) => k.taxKind === 'fee') || null;
+  const looseTax = tx && !kidTax ? findTaxFor(s, tx) : null;
+  const [taxPick, setTaxPick] = useState(null);
+  const [showFee, setShowFee] = useState(!!kidFee);
+  const [fee, setFee] = useState(kidFee ? String(txOrig(kidFee)) : s.money.tax.fee ? String(s.money.tax.fee) : '');
+  const [noStats, setNoStats] = useState(tx ? !!tx.noStats : false);
+  const parent = tx && tx.taxOf ? s.money.tx.find((t) => t.id === tx.taxOf) : null;
   const n = toNumber(String(amount).replace(/[^\d.,]/g, '')) || 0;
   const guess = guessTxCat(s, { merchant, text: note, type });
   const effCat = cat && catOf(s, cat).type === type ? cat : guess;
   const c = catOf(s, effCat);
   const tags = txTags(s);
+  const sug = tx && tx.taxOf ? { can: false } : taxSuggestion(s, { type, cat: effCat, account, amount: n, currency, day, merchant, note, split: tx && tx.split });
+  const taxOn = taxPick != null ? taxPick : editing ? !!kidTax : sug.on;
+  const wi = workInfo(s, today);
+  const dop = toDOP(n, currency, rate);
+  const hrs = type === 'gasto' && wi.ready && n > 0 ? fmtWork(workHours(dop, wi), wi) : '';
 
   // La tasa sigue la fecha (si no la cambiaste tú). Para días pasados se busca la de ese día.
   useEffect(() => {
@@ -376,22 +216,36 @@ export function TxSheet({ s, initial, tx, onClose }) {
     if (currency === 'USD' && day !== today) rateForDay(day).then((r) => { if (r && !touched.current) setRate(r); });
   }, [day, currency]);
 
-  const converted = currency === 'USD' ? money(toDOP(n, 'USD', rate)) : usd(toUSD(n, rate));
-  const save = () => {
+  const converted = currency === 'USD' ? money(dop) : usd(toUSD(n, rate));
+  const save = async () => {
     if (!n) return;
     const p = { type, amount: n, currency, rate, cat: effCat, merchant, day, account, to: type === 'transfer' ? to : '', tag, note, photos };
-    act((st, t, ev) => {
-      if (editing) updateTx(st, tx.id, p);
-      else {
-        addTx(st, { ...p, source: initial.source || 'manual', link: link && type !== 'transfer' ? link : null }, t, ev);
-        if (cat && merchant && type === 'gasto') learnRule(st, merchant, effCat);
+    const feeN = sug.can && showFee ? num(fee) : 0;
+    const res = act((st, t, ev) => {
+      if (editing) {
+        const nt = updateTx(st, tx.id, { ...p, noStats });
+        if (!nt) return null;
+        if (sug.can && !looseTax) setTaxRecords(st, tx.id, { tax: taxOn, fee: feeN });
+        else if (!sug.can && kids.length) setTaxRecords(st, tx.id, { tax: false, fee: 0 });
+        // ¿Otros gastos de este comercio en otra categoría? Se ofrece cambiarlos también.
+        return { nt, others: nt.cat !== tx.cat && nt.kind === 'gasto' && !nt.split ? sameMerchantOthers(st, nt).map((x) => x.id) : [] };
       }
+      const nt = addTx(st, { ...p, source: initial.source || 'manual', link: link && type !== 'transfer' ? link : null, tax: sug.can && taxOn, fee: feeN }, t, ev);
+      if (cat && merchant && type === 'gasto') learnRule(st, merchant, effCat);
+      return { nt, others: [] };
     });
     toast(editing ? 'Movimiento actualizado' : link ? `«${link.name}»: ${type === 'ingreso' ? 'recibido' : 'pagado'}` : type === 'ingreso' ? 'Ingreso guardado' : type === 'transfer' ? (effCat === 'pago_tarjeta' ? 'Pago de tarjeta guardado' : 'Movimiento entre cuentas guardado') : 'Gasto guardado', 'check');
     onClose();
+    if (res && res.others && res.others.length) {
+      const nm = res.nt.merchant;
+      if (await ask(`Hay ${plural(res.others.length, 'gasto más', 'gastos más')} de «${nm}» en otra categoría. ¿Pasarlos también a «${catName(s, res.nt.cat)}»?`, { ok: `Pasar ${res.others.length === 1 ? 'ese' : `los ${res.others.length}`}` })) {
+        const k = act((st) => bulkEdit(st, res.others, { cat: res.nt.cat }, { label: `Pasaste ${plural(res.others.length, 'gasto', 'gastos')} de «${nm}» a «${catName(s, res.nt.cat)}»` }));
+        toast(`Listo: ${plural(k, 'gasto', 'gastos')} en «${catName(s, res.nt.cat)}»`, 'check');
+      }
+    }
   };
   const del = async () => {
-    if (!(await ask('¿Borrar este movimiento?', { ok: 'Borrar', danger: true }))) return;
+    if (!(await ask(kids.length ? '¿Borrar este movimiento? También se borra su impuesto.' : '¿Borrar este movimiento?', { ok: 'Borrar', danger: true }))) return;
     act((st) => removeTx(st, tx.id));
     toast('Movimiento borrado', 'trash');
     onClose();
@@ -405,6 +259,12 @@ export function TxSheet({ s, initial, tx, onClose }) {
   return (
     <Sheet onClose={onClose} label={editing ? 'Editar movimiento' : 'Nuevo movimiento'}>
       <SheetHead title={editing ? 'Movimiento' : link ? `${initial.type === 'ingreso' ? 'Cobro' : 'Pago'}: ${link.name}` : initial.cat === 'pago_tarjeta' ? 'Pago de tarjeta' : 'Nuevo movimiento'} onClose={onClose} />
+      {parent && (
+        <div class="note"><Icon name="percent" size={18} /><span class="stack-xs">Es el {tx.taxKind === 'fee' ? 'cargo del banco' : 'impuesto'} de «{parent.merchant || catName(s, parent.cat)}» ({cur(txOrig(parent), txCur(parent))}, {fmtShort(parent.day)}).{onOpenTx && <button type="button" class="link-btn" style={{ minHeight: 30, alignSelf: 'flex-start' }} onClick={() => onOpenTx(parent)}>Abrir la transferencia<Icon name="right" size={14} /></button>}</span></div>
+      )}
+      {tx && tx.split && (
+        <div class="note"><Icon name="scissors" size={18} /><span class="stack-xs">Parte {tx.split.i + 1} de {tx.split.n} de un movimiento de {cur(tx.split.total, txCur(tx))}.{onSplit && <button type="button" class="link-btn" style={{ minHeight: 30, alignSelf: 'flex-start' }} onClick={() => onSplit(tx.id)}>Ver las partes<Icon name="right" size={14} /></button>}</span></div>
+      )}
       <div class="seg" role="tablist" aria-label="Tipo de movimiento">
         {['gasto', 'ingreso', 'transfer'].map((k) => <button key={k} type="button" role="tab" aria-selected={type === k ? 'true' : 'false'} onClick={() => setType(k)}>{KIND_LABEL[k]}</button>)}
       </div>
@@ -421,6 +281,8 @@ export function TxSheet({ s, initial, tx, onClose }) {
           <span class="semi tab-num">= {converted}</span>
           <button type="button" class="link-btn muted" style={{ minHeight: 30, fontSize: 13 }} onClick={() => { setEditRate(!editRate); setRateTxt(String(rate)); }}>a {rateText(rate)} por US$1<Icon name={editRate ? 'down' : 'edit'} size={13} /></button>
         </div>
+        {hrs && <span class="small semi row hrs" style={{ color: 'var(--finanzas-ink)' }} aria-live="polite"><Icon name="clock" size={14} stroke={2.3} />{hrs} de tu trabajo</span>}
+        {type === 'gasto' && !wi.ready && onWork && n > 0 && <button type="button" class="link-btn muted" style={{ minHeight: 30, fontSize: 13, alignSelf: 'flex-start' }} onClick={onWork}><Icon name="clock" size={13} />¿Cuántas horas de trabajo es? Pon tu ingreso</button>}
         {editRate && (
           <div class="numrow">
             <span class="unit">US$1 =</span>
@@ -453,6 +315,7 @@ export function TxSheet({ s, initial, tx, onClose }) {
             {newCat && <CatForm type={type} onDone={(id) => { setNewCat(false); if (id) { setCat(id); setPickCat(false); } }} />}
           </>
         )}
+        {editing && onSplit && !tx.split && !tx.taxOf && type !== 'transfer' && txKind(tx) !== 'transfer' && <button type="button" class="link-btn" style={{ alignSelf: 'flex-start', minHeight: 32 }} onClick={() => onSplit(tx.id)}><Icon name="scissors" size={15} />Dividir en varias categorías</button>}
       </div>
       <div class="grid2">
         <div class="field"><label for="tday">Fecha</label><input id="tday" type="date" class="input" value={day} max={today} onInput={(e) => { setDay(e.currentTarget.value || today); }} /></div>
@@ -478,10 +341,32 @@ export function TxSheet({ s, initial, tx, onClose }) {
           </div>
         </div>
       )}
+      {sug.can && effCat !== 'retiro' && (looseTax ? (
+        <div class="note"><Icon name="percent" size={18} /><span>Su impuesto ya está anotado aparte: {cur(txOrig(looseTax), txCur(looseTax))} el {fmtShort(looseTax.day)}.</span></div>
+      ) : (
+        <section class="panel stack-sm" aria-label="Impuesto a transferencias">
+          <label class="between-c" style={{ cursor: 'pointer', gap: 12 }}>
+            <span class="stack-xs">
+              <span class="semi">Impuesto a transferencias ({taxPct(sug.rate)})</span>
+              <span class="small muted">{sug.exempt ? 'Entre tus cuentas no se paga. Márcalo solo si tu banco te lo cobró.' : taxOn ? `${cur(sug.tax, sug.currency)} aparte, como gasto en «Comisiones e impuestos del banco».` : sug.likely ? `Una transferencia así suele pagarlo: serían ${cur(sug.tax, sug.currency)}.` : 'Las transferencias a otras personas y los pagos de tarjeta o préstamo desde tu cuenta lo pagan; las compras con tarjeta, no.'}</span>
+            </span>
+            <Switch checked={taxOn} onChange={(v) => setTaxPick(v)} label={`Anotar el impuesto a transferencias de ${cur(sug.tax || 0, sug.currency)}`} />
+          </label>
+          {showFee ? (
+            <div class="field"><label for="tfee2">Comisión del banco (otro banco, ACH o LBTR)</label><div class="numrow"><span class="unit">{sug.currency === 'USD' ? 'US$' : 'RD$'}</span><input id="tfee2" class="input" inputMode="decimal" value={fee} placeholder="0" onInput={(e) => setFee(e.currentTarget.value)} ref={kidFee ? undefined : focusOnMount} /><button type="button" class="btn xs ghost" onClick={() => { setShowFee(false); setFee(''); }}>Quitar</button></div></div>
+          ) : <button type="button" class="link-btn" style={{ alignSelf: 'flex-start', minHeight: 30, fontSize: 13.5 }} onClick={() => setShowFee(true)}><Icon name="plus" size={14} />Comisión del banco</button>}
+        </section>
+      ))}
       {link && type !== 'transfer' && <div class="note tone-good"><Icon name="calendar" size={18} /><span>Se marca «{link.name}» del {fmtDay(link.date, { weekdayName: false })} como {type === 'ingreso' ? 'recibido' : 'pagado'}.</span></div>}
       <div class="field"><label for="tnote">Nota (opcional)</label><input id="tnote" class="input" value={note} maxLength={200} onInput={(e) => setNote(e.currentTarget.value)} placeholder="Detalle, para quién, número de referencia…" /></div>
       <PhotoStrip ids={photos} onChange={setPhotos} kind="recibo" label="Foto del recibo o factura (opcional)" max={4} />
       {type === 'transfer' && <div class="note"><Icon name="info" size={18} /><span>Los pagos de tarjeta y lo que mueves entre tus cuentas no cuentan como gasto (las compras ya se cuentan una por una), pero sí mueven tus saldos.</span></div>}
+      {editing && (
+        <label class="between-c panel" style={{ cursor: 'pointer' }}>
+          <span class="stack-xs"><span class="semi">No contar en el análisis</span><span class="small muted">Sigue moviendo tu saldo, pero no suma en gastos, presupuestos ni gráficas. Para un préstamo que diste o algo que te van a reembolsar.</span></span>
+          <Switch checked={noStats} onChange={setNoStats} label="No contar en el análisis" />
+        </label>
+      )}
       <button type="button" class="btn block" disabled={!n} onClick={save}><Icon name="check" size={20} />{editing ? 'Guardar cambios' : 'Guardar'}</button>
       {editing && (
         <>
@@ -491,6 +376,7 @@ export function TxSheet({ s, initial, tx, onClose }) {
               {tx.rnc && <div class="lrow"><span class="grow muted semi">RNC</span><span class="strong">{tx.rnc}</span></div>}
               {tx.ncf && <div class="lrow"><span class="grow muted semi">NCF / e-NCF</span><span class="strong">{tx.ncf}</span></div>}
               {tx.itbis > 0 && <div class="lrow"><span class="grow muted semi">ITBIS</span><span class="strong">{money(tx.itbis)}</span></div>}
+              {kids.map((k) => <button key={k.id} type="button" class="lrow" onClick={() => onOpenTx && onOpenTx(k)} disabled={!onOpenTx}><span class="grow muted semi">{k.taxKind === 'fee' ? 'Comisión del banco' : TAX_LABEL}</span><span class="strong">{cur(txOrig(k), txCur(k))}</span></button>)}
             </div>
           )}
           <button type="button" class="link-btn" style={{ color: 'var(--vit-ink)', alignSelf: 'center' }} onClick={del}><Icon name="trash" size={16} />Borrar movimiento</button>
@@ -531,18 +417,26 @@ function AlertSheet({ onClose }) {
   );
 }
 
-// ---------- Hoja: presupuestos ----------
+// ---------- Hoja: presupuestos (por categoría o por toda una familia) ----------
 
 function BudgetSheet({ s, rate, onClose }) {
   const today = s.energy.day;
   const mp = monthPlan(s, monthKey(today), today);
   const income = mp.income;
   const cats = catsOfType(s, 'gasto');
+  const gb = s.money.groupBudgets || {};
   const [vals, setVals] = useState(Object.fromEntries(cats.map((c) => [c.id, c.budget ? String(c.budget) : ''])));
-  const [open, setOpen] = useState(() => Object.fromEntries(CATEGORY_GROUPS.map((g) => [g.id, cats.some((c) => c.group === g.id && c.budget > 0)])));
-  const total = Object.values(vals).reduce((a, v) => a + (toNumber(v) || 0), 0);
+  const [gvals, setGvals] = useState(Object.fromEntries(CATEGORY_GROUPS.map((g) => [g.id, gb[g.id] && gb[g.id].budget ? String(gb[g.id].budget) : ''])));
+  const [open, setOpen] = useState(() => Object.fromEntries(CATEGORY_GROUPS.map((g) => [g.id, cats.some((c) => c.group === g.id && c.budget > 0) || !!(gb[g.id] && gb[g.id].budget)])));
+  // Lo asignado sin contar dos veces: si una familia tiene tope, sus categorías ya van dentro.
+  const groupsOn = new Set(Object.entries(gvals).filter(([, v]) => (toNumber(v) || 0) > 0).map(([k]) => k));
+  const total = [...groupsOn].reduce((a, g) => a + (toNumber(gvals[g]) || 0), 0)
+    + cats.filter((c) => !groupsOn.has(c.group)).reduce((a, c) => a + (toNumber(vals[c.id]) || 0), 0);
   const save = () => {
-    act((st, t) => { for (const [k, v] of Object.entries(vals)) setBudget(st, k, toNumber(v) || 0, t); });
+    act((st, t) => {
+      for (const [k, v] of Object.entries(vals)) setBudget(st, k, toNumber(v) || 0, t);
+      for (const [g, v] of Object.entries(gvals)) if ((toNumber(v) || 0) > 0 || (st.money.groupBudgets || {})[g]) setGroupBudget(st, g, toNumber(v) || 0, t);
+    });
     toast('Presupuestos guardados', 'check');
     onClose();
   };
@@ -556,14 +450,22 @@ function BudgetSheet({ s, rate, onClose }) {
         {mp.funds > 0 && <div class="between"><span class="small semi muted">Apartados</span><span class="small strong tab-num">−{money(mp.funds)}</span></div>}
         {income > 0 && (() => { const free = income - mp.fixed - mp.funds - total; return <div class="between"><span class="small strong">{free >= 0 ? 'Sin asignar' : 'Te pasaste'}</span><span class="small strong tab-num" style={{ color: free < 0 ? 'var(--vit-ink)' : 'var(--good-ink)' }}>{money(Math.abs(free))}</span></div>; })()}
       </div>
-      <span class="small muted">En pesos. Los gastos en dólares cuentan convertidos con la tasa de su día. Toca un presupuesto en «Plan» para que lo que sobre pase al mes siguiente.</span>
+      <span class="small muted">En pesos. Los gastos en dólares cuentan convertidos con la tasa de su día. Puedes ponerle tope a toda una familia (por ejemplo, Comida: súper, restaurantes, café y delivery) o a cada categoría. Toca un presupuesto en «Plan» para que lo que sobre pase al mes siguiente.</span>
       {catGroups(s, 'gasto').map((g) => {
         const sub = g.cats.reduce((a, c) => a + (toNumber(vals[c.id]) || 0), 0);
+        const gv = toNumber(gvals[g.id]) || 0;
         return (
           <div key={g.id} class="card flush">
             <button type="button" class="lrow" style={{ minHeight: 52 }} aria-expanded={open[g.id] ? 'true' : 'false'} onClick={() => setOpen({ ...open, [g.id]: !open[g.id] })}>
-              <span class="grow strong">{g.name}</span><span class="small muted tab-num">{sub ? money(sub) : ''}</span><Icon name={open[g.id] ? 'down' : 'right'} size={16} />
+              <span class="grow strong">{g.name}</span><span class="small muted tab-num">{gv ? `Tope ${money(gv)}` : sub ? money(sub) : ''}</span><Icon name={open[g.id] ? 'down' : 'right'} size={16} />
             </button>
+            {open[g.id] && (
+              <label class="lrow" style={{ minHeight: 60, background: 'var(--soft)', margin: '0 -18px', padding: '10px 18px', width: 'calc(100% + 36px)' }}>
+                <span class="tile xs" style={{ background: 'var(--surface)' }}><Icon name="grid" size={15} /></span>
+                <span class="stack-xs grow" style={{ gap: 0 }}><span class="semi">Toda la familia</span><span class="tiny muted semi">Tope para todas (opcional)</span></span>
+                <input class="input" inputMode="decimal" value={gvals[g.id]} placeholder="0" onInput={(e) => setGvals({ ...gvals, [g.id]: e.currentTarget.value })} style={{ width: 120, minHeight: 44, textAlign: 'right' }} aria-label={`Tope de toda la familia ${g.name} en pesos`} />
+              </label>
+            )}
             {open[g.id] && g.cats.map((c) => (
               <label key={c.id} class="lrow" style={{ minHeight: 56 }}>
                 <span class="tile xs" style={{ background: 'var(--soft)' }}><Icon name={c.icon || 'tag'} size={15} /></span>
@@ -571,6 +473,7 @@ function BudgetSheet({ s, rate, onClose }) {
                 <input class="input" inputMode="decimal" value={vals[c.id]} placeholder="0" onInput={(e) => setVals({ ...vals, [c.id]: e.currentTarget.value })} style={{ width: 120, minHeight: 44, textAlign: 'right' }} aria-label={`Presupuesto de ${c.name} en pesos`} />
               </label>
             ))}
+            {open[g.id] && gv > 0 && sub > gv && <p class="tiny" style={{ color: 'var(--xp-ink)', padding: '0 0 10px' }}>Las categorías suman {money(sub)}, más que el tope de la familia.</p>}
           </div>
         );
       })}
@@ -640,25 +543,21 @@ function FxSheet({ s, onClose }) {
 
 // ---------- Hoja: más opciones ----------
 
-function csvOf(s, mk) {
-  const q = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
-  const rows = [['Fecha', 'Hora', 'Tipo', 'Comercio o descripción', 'Categoría', 'Cuenta', 'Etiqueta', 'Moneda', 'Monto original', 'Tasa', 'Monto en RD$', 'Equivalente en US$', 'Nota']];
-  for (const t of monthSummary(s, mk).txs) {
-    const k = txKind(t);
-    const sign = k === 'ingreso' ? 1 : -1;
-    rows.push([t.day, t.time || '', KIND_LABEL[k], t.merchant, catName(s, t.cat), accountLabel(accountOf(s, t.account)), t.tag || '', txCur(t), (sign * txOrig(t)).toFixed(2), txRate(s, t).toFixed(4), (sign * txDOP(t)).toFixed(2), (sign * txUSD(s, t)).toFixed(2), t.note || '']);
-  }
-  return `﻿${rows.map((r) => r.map(q).join(',')).join('\r\n')}\r\n`;
-}
-
-function MoreSheet({ s, mk, onPick, onClose }) {
+function MoreSheet({ s, per, today, onPick, onClose }) {
+  const wi = workInfo(s, today);
+  const nRules = rulesList(s).length;
+  const r = periodRange(per, today);
   const items = [
     ['download', 'Importar movimientos', 'Estado de cuenta en Excel o CSV, avisos del banco o un archivo de Astra', () => { onClose(); go('/importar'); }],
-    ['tag', 'Categorías', `${catsOfType(s, 'gasto').length} de gastos y ${catsOfType(s, 'ingreso').length} de ingresos`, () => onPick('cats')],
+    ['tag', 'Categorías', `${catsOfType(s, 'gasto').length} de gastos y ${catsOfType(s, 'ingreso').length} de ingresos · pasar o unir`, () => onPick('cats')],
+    ['sparkle', 'Reglas de categorías', nRules ? `${plural(nRules, 'comercio', 'comercios')} con su categoría` : 'Este comercio siempre va en esta categoría', () => onPick('rules')],
     ['card', 'Cuentas y tarjetas', plural(s.money.accounts.length, 'cuenta', 'cuentas'), () => onPick('accounts')],
-    ['swap', 'Dólares y pesos', `US$1 = ${rateText(fxRate(s, s.energy.day))}`, () => onPick('fx')],
-    ['upload', 'Exportar el mes (Excel)', 'Archivo CSV con pesos, dólares y tasa', async () => {
-      const ok = await saveFile(`astra-movimientos-${mk}.csv`, csvOf(s, mk), 'text/csv');
+    ['clock', 'Tu hora de trabajo', wi.ready ? `${money(Math.round(wi.rate))} la hora · cuánto trabajo cuesta cada gasto` : 'Cuánto trabajo cuesta cada gasto', () => onPick('work')],
+    ['percent', 'Impuesto a transferencias', `${taxPct(transferTaxRate(s, today))} · se anota aparte como gasto`, () => onPick('tax')],
+    ['trend', 'Salir de deudas', 'Avalancha o bola de nieve: cuándo terminas y cuánto ahorras', () => onPick('debts')],
+    ['swap', 'Dólares y pesos', `US$1 = ${rateText(fxRate(s, today))}`, () => onPick('fx')],
+    ['upload', r.kind === 'mes' ? 'Exportar el mes (Excel)' : 'Exportar el período (Excel)', 'Archivo CSV con pesos, dólares, tasa y horas de trabajo', async () => {
+      const ok = await saveFile(`astra-movimientos-${r.kind === 'mes' ? r.mk : `${r.from}-a-${r.to > today ? today : r.to}`}.csv`, csvOf(s, filterTx(s, r, {}), wi), 'text/csv');
       if (ok) toast('Archivo descargado', 'download');
       onClose();
     }],
@@ -681,7 +580,7 @@ function MoreSheet({ s, mk, onPick, onClose }) {
 
 // ---------- Categorías ----------
 
-function CatForm({ type, cat, onDone }) {
+function CatForm({ type, cat, onDone, onMove = null, count = 0 }) {
   const [name, setName] = useState(cat ? cat.name : '');
   const [icon, setIcon] = useState(cat ? cat.icon || 'tag' : 'tag');
   const [group, setGroup] = useState(cat ? cat.group : type === 'ingreso' ? 'ingresos' : 'otros');
@@ -701,17 +600,20 @@ function CatForm({ type, cat, onDone }) {
         <button type="button" class="btn sm grow" disabled={name.trim().length < 2} onClick={save}><Icon name="check" size={18} />Guardar</button>
         <button type="button" class="btn sm ghost" onClick={() => onDone(null)}>Cancelar</button>
       </div>
+      {cat && onMove && <button type="button" class="link-btn" style={{ alignSelf: 'flex-start' }} onClick={() => onMove(cat.id)}><Icon name="swap" size={16} />{count ? `Pasar sus ${plural(count, 'movimiento', 'movimientos')} a otra categoría` : 'Unir con otra categoría'}</button>}
       {cat && cat.custom && <button type="button" class="link-btn" style={{ color: 'var(--vit-ink)', alignSelf: 'flex-start' }} onClick={async () => { if (await ask(`¿Borrar «${cat.name}»? Sus movimientos pasan a «Otros».`, { ok: 'Borrar', danger: true })) { act((st) => removeCategory(st, cat.id)); onDone(null); } }}><Icon name="trash" size={16} />Borrar categoría</button>}
       {cat && !cat.custom && <button type="button" class="link-btn muted" style={{ alignSelf: 'flex-start' }} onClick={() => { act((st) => updateCategory(st, cat.id, { hidden: true })); toast(`«${cat.name}» ya no aparece al elegir`, 'eyeoff'); onDone(null); }}><Icon name="eyeoff" size={16} />Ocultar al elegir</button>}
     </section>
   );
 }
 
-function CatsSheet({ s, onClose }) {
+function CatsSheet({ s, onClose, onMove, onDetail }) {
   const [type, setType] = useState('gasto');
   const [editing, setEditing] = useState(null);
   const [adding, setAdding] = useState(false);
   const hidden = s.money.categories.filter((c) => c.hidden && c.type === type);
+  const counts = {};
+  for (const t of s.money.tx) counts[t.cat] = (counts[t.cat] || 0) + 1;
   return (
     <Sheet onClose={onClose} label="Categorías">
       <SheetHead title="Categorías" onClose={onClose} />
@@ -719,15 +621,19 @@ function CatsSheet({ s, onClose }) {
         {[['gasto', 'Gastos'], ['ingreso', 'Ingresos'], ['transfer', 'Entre cuentas']].map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={type === k ? 'true' : 'false'} onClick={() => { setType(k); setEditing(null); setAdding(false); }}>{l}</button>)}
       </div>
       {!adding && !editing && <button type="button" class="btn ghost block" onClick={() => setAdding(true)}><Icon name="plus" size={18} />Nueva categoría</button>}
-      {(adding || editing) && <CatForm key={editing ? editing.id : `new-${type}`} type={type} cat={editing} onDone={() => { setAdding(false); setEditing(null); }} />}
+      {(adding || editing) && <CatForm key={editing ? editing.id : `new-${type}`} type={type} cat={editing} count={editing ? counts[editing.id] || 0 : 0} onMove={onMove} onDone={() => { setAdding(false); setEditing(null); }} />}
       {catGroups(s, type).map((g) => (
         <section key={g.id} class="card flush" aria-label={g.name}>
           <div style={{ padding: '12px 0 2px' }}><span class="tiny strong muted" style={{ letterSpacing: 0.6, textTransform: 'uppercase' }}>{g.name}</span></div>
           {g.cats.map((c) => (
-            <button type="button" key={c.id} class="lrow" style={{ minHeight: 52 }} onClick={() => { setEditing(c); setAdding(false); }} aria-label={`Editar ${c.name}`}>
-              <span class="tile xs" style={{ background: 'var(--soft)' }}><Icon name={c.icon || 'tag'} size={15} /></span>
-              <span class="grow semi">{c.name}</span>{c.custom && <span class="chip sm">Tuya</span>}<Icon name="edit" size={15} />
-            </button>
+            <div key={c.id} class="lrow" style={{ minHeight: 52 }}>
+              <button type="button" class="row grow" style={{ gap: 12, background: 'none', border: 0, padding: 0, color: 'inherit', textAlign: 'left', font: 'inherit', minWidth: 0 }} onClick={() => { setEditing(c); setAdding(false); }} aria-label={`Editar ${c.name}`}>
+                <span class="tile xs" style={{ background: 'var(--soft)' }}><Icon name={c.icon || 'tag'} size={15} /></span>
+                <span class="grow semi">{c.name}</span>{c.custom && <span class="chip sm">Tuya</span>}
+                {counts[c.id] > 0 && <span class="tiny muted semi tab-num">{counts[c.id]}</span>}
+              </button>
+              {type === 'gasto' && counts[c.id] > 0 && <button type="button" class="icon-btn plain" aria-label={`Ver el detalle de ${c.name}`} onClick={() => onDetail(c.id)}><Icon name="chart" size={17} /></button>}
+            </div>
           ))}
         </section>
       ))}

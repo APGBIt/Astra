@@ -137,9 +137,10 @@ export function resetAll() {
 const resetSubs = new Set();
 export const onReset = (fn) => { resetSubs.add(fn); return () => resetSubs.delete(fn); };
 
-// Datos sin tus claves (para copias y para Drive).
+// Datos sin tus claves (para copias y para Drive). El «deshacer» de lo último que cambiaste en grupo
+// se queda solo en este teléfono.
 export function cleanData(s = state) {
-  return { ...s, settings: { ...s.settings, aiKey: '', serverToken: '' } };
+  return { ...s, settings: { ...s.settings, aiKey: '', serverToken: '' }, ...(s.money ? { money: { ...s.money, lastBulk: null } } : {}) };
 }
 
 export function exportData() {
