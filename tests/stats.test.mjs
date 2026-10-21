@@ -49,8 +49,11 @@ test('categorías frente al promedio a esta altura del mes', () => {
   const comida = rows.find((r) => r.cat === 'comida');
   assert.equal(comida.total, 6000);
   assert.equal(comida.avg, 3000);
-  // Esperado a esta altura: 3000 × 19/31; llevas 6000.
-  assert.ok(Math.abs(comida.delta - (6000 - 3000 * 19 / 31) / (3000 * 19 / 31)) < 1e-9);
+  // Esperado a esta altura (1.10): lo que llevabas al día 19 en julio, agosto y septiembre (7 × 300); llevas 6000.
+  assert.equal(comida.expect, 2100);
+  assert.ok(Math.abs(comida.delta - (6000 - 2100) / 2100) < 1e-9);
+  // El súper del día 10 ya estaba pagado a esta altura en los otros meses: va igual, sin flecha.
+  assert.equal(rows.find((r) => r.cat === 'super').delta, 0);
   assert.equal(rows[0].cat, 'comida');
   const p3 = T.periodOf('3m', D);
   assert.deepEqual(p3.mks, ['2026-08', '2026-09', '2026-10']);

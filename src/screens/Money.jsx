@@ -12,11 +12,13 @@ import {
   fundInfo, addToFund, setRollover, carryFor, planFreqLabel, recurringSuggestions, dismissRecurring, setAvailable, spentByMonth, budgetFor,
   weekFlex, budgetCatOf, isGroupId, setGroupBudget, planHistory,
 } from '../game/money.js';
-import { monthProjection, budgetPace, budgetSuggestions, split503020, prevMonth, monthShort } from '../game/stats.js';
+import { monthProjection, projectionNote, budgetPace, budgetSuggestions, split503020, prevMonth, monthShort } from '../game/stats.js';
 import { CATEGORY_GROUPS } from '../game/content.js';
 import { ACCOUNT_KINDS, PLAN_TEMPLATES } from '../game/content.js';
 import { toNumber } from '../game/parse.js';
 import { CatPicker } from '../ui/catpicker.jsx';
+import { LoansCard, WorthCard } from './Loans.jsx';
+import { loanTotals } from '../game/loans.js';
 
 const ACC_ICON = Object.fromEntries(ACCOUNT_KINDS.map((k) => [k.key, k.icon]));
 const num = (v) => toNumber(String(v || '').replace(/[^\d.,-]/g, '')) || 0;
@@ -74,6 +76,8 @@ export function payInitial(s, it, today) {
 export function MoneyOverview({ s, today, setSheet, setTab }) {
   const bal = balances(s);
   const t = moneyTotals(s, today, bal);
+  const lt = loanTotals(s, today);
+  const net = t.net + lt.me - lt.yo;
   const pay = untilPayday(s, today);
   const due = dueItems(s, today, addDays(today, 14), today, { bal }).filter((it) => !it.estimate);
   const salary = PLAN_TEMPLATES.ingreso[0];
@@ -93,7 +97,17 @@ export function MoneyOverview({ s, today, setSheet, setTab }) {
                 <span class="grow semi">Debes en tarjetas</span><Amt o={t.owe} color="var(--vit-ink)" /><Icon name="right" size={16} />
               </button>
             )}
-            <div class="lrow" style={{ minHeight: 48 }}><span class="grow semi">Neto</span><span class="strong tab-num" style={{ color: t.net < 0 ? 'var(--vit-ink)' : 'var(--ink)' }}>{money(t.net)}</span></div>
+            {(lt.me > 0 || lt.yo > 0) && (
+              <button type="button" class="lrow" style={{ minHeight: 48 }} onClick={() => setTab('cuentas')}>
+                <span class="grow semi">{lt.me > 0 && lt.yo > 0 ? 'Te deben · debes a personas' : lt.me > 0 ? 'Te deben' : 'Debes a personas'}</span>
+                <span class="stack-xs" style={{ alignItems: 'flex-end', gap: 0 }}>
+                  {lt.me > 0 && <span class="strong tab-num" style={{ color: 'var(--good-ink)' }}>{money(Math.round(lt.me))}</span>}
+                  {lt.yo > 0 && <span class="strong tab-num" style={{ color: 'var(--vit-ink)' }}>−{money(Math.round(lt.yo))}</span>}
+                </span>
+                <Icon name="right" size={16} />
+              </button>
+            )}
+            <div class="lrow" style={{ minHeight: 48 }}><span class="grow semi">Neto</span><span class="strong tab-num" style={{ color: net < 0 ? 'var(--vit-ink)' : 'var(--ink)' }}>{money(Math.round(net))}</span></div>
             {t.credit && (t.credit.DOP > 0 || t.credit.USD > 0) && (
               <button type="button" class="lrow" style={{ minHeight: 48 }} onClick={() => setTab('cuentas')}>
                 <span class="stack-xs grow" style={{ gap: 0 }}><span class="semi">Crédito disponible</span><span class="tiny muted semi">En tus tarjetas: no es dinero tuyo</span></span><Amt o={t.credit} /><Icon name="right" size={16} />
@@ -160,7 +174,7 @@ function ProjectionCard({ s, today, onMore }) {
         {pr.left > 0 && <span><i class="sw pb-daily" />Día a día {money(Math.round(pr.daily * pr.left))}</span>}
         {pr.projIncome > 0 && <span><i class="sw mark" />Ingresos {money(Math.round(pr.projIncome))}</span>}
       </div>
-      {pr.projIncome > 0 && <span class="small strong" style={{ color: pr.projNet < 0 ? 'var(--vit-ink)' : 'var(--finanzas-ink)' }}>{pr.projNet >= 0 ? `Te quedarían unos ${money(Math.round(pr.projNet))}.` : pr.daily + pr.projNet / Math.max(1, pr.left) > 0 ? `Te faltarían unos ${money(Math.round(-pr.projNet))}: para cuadrar, gasta hasta ${money(Math.round(pr.daily + pr.projNet / Math.max(1, pr.left)))} por día.` : `Te faltarían unos ${money(Math.round(-pr.projNet))}, aunque no gastes nada más: revisa lo programado.`}</span>}
+      {pr.projIncome > 0 && <span class="small strong" style={{ color: pr.projNet < 0 ? 'var(--vit-ink)' : 'var(--finanzas-ink)' }}>{projectionNote(pr)}</span>}
       <button type="button" class="link-btn" style={{ alignSelf: 'flex-start', minHeight: 32 }} onClick={onMore}><Icon name="chart" size={15} />Ver el análisis</button>
     </section>
   );
@@ -177,12 +191,12 @@ function PaydayCard({ s, pay, today }) {
       {pay.ready ? (pay.free >= 0 ? (
         <span class="stack-xs">
           <span class="small semi muted">Puedes gastar</span>
-          <span class="display-num tab-num" style={{ fontSize: 34 }}>{money(pay.free)}</span>
-          {pay.perDay != null && <span class="small strong" style={{ color: 'var(--finanzas-ink)' }}>{money(pay.perDay)} por día hasta cobrar</span>}
-          {pay.savings > 0 && <span class="tiny muted semi">Sin contar tus ahorros ({money(pay.savings)}).</span>}
+          <span class="display-num tab-num" style={{ fontSize: 34 }}>{money(Math.round(pay.free))}</span>
+          {pay.perDay != null && <span class="small strong" style={{ color: 'var(--finanzas-ink)' }}>{money(Math.round(pay.perDay))} por día hasta cobrar</span>}
+          {pay.savings > 0 && <span class="tiny muted semi">Sin contar tus ahorros ({money(Math.round(pay.savings))}).</span>}
         </span>
       ) : (
-        <div class="note tone-vit"><Icon name="info" size={18} /><span>Te faltan <b>{money(-pay.free)}</b> para cubrir los pagos antes de cobrar. Mira si alguno se puede mover.</span></div>
+        <div class="note tone-vit"><Icon name="info" size={18} /><span>Te faltan <b>{money(Math.round(-pay.free))}</b> para cubrir los pagos antes de cobrar. Mira si alguno se puede mover.</span></div>
       )) : <span class="small muted">Pon el saldo de tus cuentas para saber cuánto puedes gastar por día.</span>}
       <div class="stack-xs">
         <div class="lrow" style={{ minHeight: 46 }}>
@@ -190,11 +204,11 @@ function PaydayCard({ s, pay, today }) {
           <span class="grow semi">Cobras: {pay.next.p.name} · {whenText(pay.next.date, today)}</span>
           <span class="strong tab-num" style={{ color: 'var(--good-ink)' }}>+{cur(amt, pay.next.p.currency)}</span>
         </div>
-        {pay.items.length > 0 && (
+        {pay.items.length + pay.loans.length > 0 && (
           <div class="lrow" style={{ minHeight: 46 }}>
             <span class="tile xs" style={{ background: 'var(--finanzas-soft)', color: 'var(--finanzas-ink)' }}><Icon name="calendar" size={15} /></span>
-            <span class="grow semi">Antes pagas {plural(pay.items.length, 'cosa', 'cosas')}</span>
-            <span class="strong tab-num">−{money(pay.pay)}</span>
+            <span class="grow semi">Antes pagas {plural(pay.items.length + pay.loans.length, 'cosa', 'cosas')}{pay.loans.length ? ` (con lo que le debes a ${pay.loans.map((x) => x.l.who).slice(0, 2).join(' y ')})` : ''}</span>
+            <span class="strong tab-num">−{money(Math.round(pay.pay))}</span>
           </div>
         )}
       </div>
@@ -230,15 +244,20 @@ export function DueRow({ s, it, today, onPay, onOpen }) {
 export function AccountsTab({ s, today, setSheet }) {
   const bal = balances(s);
   const t = moneyTotals(s, today, bal);
+  const lt = loanTotals(s, today);
+  const net = t.net + lt.me - lt.yo;
   const cards = s.money.accounts.filter((a) => isCard(a) && !a.hidden);
   const others = s.money.accounts.filter((a) => !isCard(a) && !a.hidden);
   return (
     <>
       <section class="card flush" aria-label="Resumen de cuentas">
         <div class="lrow" style={{ minHeight: 52 }}><span class="grow semi muted">Tienes</span><Amt o={t.have} /></div>
-        <div class="lrow" style={{ minHeight: 52 }}><span class="grow semi muted">Debes</span><Amt o={t.owe} color={t.oweDOP > 0 ? 'var(--vit-ink)' : undefined} /></div>
-        <div class="lrow" style={{ minHeight: 52 }}><span class="grow semi muted">Neto</span><span class="strong tab-num" style={{ color: t.net < 0 ? 'var(--vit-ink)' : 'var(--good-ink)', fontSize: 19 }}>{money(t.net)}</span></div>
+        <div class="lrow" style={{ minHeight: 52 }}><span class="grow semi muted">Debes en tarjetas</span><Amt o={t.owe} color={t.oweDOP > 0 ? 'var(--vit-ink)' : undefined} /></div>
+        {lt.me > 0 && <div class="lrow" style={{ minHeight: 52 }}><span class="grow semi muted">Te deben</span><span class="strong tab-num" style={{ color: 'var(--good-ink)' }}>{money(Math.round(lt.me))}</span></div>}
+        {lt.yo > 0 && <div class="lrow" style={{ minHeight: 52 }}><span class="grow semi muted">Debes a personas</span><span class="strong tab-num" style={{ color: 'var(--vit-ink)' }}>{money(Math.round(lt.yo))}</span></div>}
+        <div class="lrow" style={{ minHeight: 52 }}><span class="grow semi muted">Neto</span><span class="strong tab-num" style={{ color: net < 0 ? 'var(--vit-ink)' : 'var(--good-ink)', fontSize: 19 }}>{money(Math.round(net))}</span></div>
       </section>
+      <WorthCard s={s} today={today} />
       {!t.ready && <div class="note tone-xp"><Icon name="info" size={18} /><span>Toca cada cuenta y pon su saldo de hoy (y en cada tarjeta, lo que debes). Así los saldos cuadran con tu banco.</span></div>}
 
       <section class="card flush" aria-label="Tarjetas de crédito">
@@ -266,6 +285,7 @@ export function AccountsTab({ s, today, setSheet }) {
         })}
       </section>
       <button type="button" class="btn ghost block" onClick={() => setSheet({ kind: 'account', id: null })}><Icon name="plus" size={18} />Agregar cuenta o tarjeta</button>
+      <LoansCard s={s} today={today} setSheet={setSheet} />
     </>
   );
 }
@@ -615,8 +635,8 @@ export function PlanTab({ s, today, setSheet }) {
           <PlanLine label="Gastos del día a día" sub="hasta hoy" value={-mp.variable} />
         </div>
         <div class="between-c" style={{ borderTop: '1.5px solid var(--line)', paddingTop: 10 }}>
-          <span class="stack-xs"><span class="strong">{mp.left >= 0 ? 'Te queda' : 'Te pasaste'}</span>{mp.perDay != null && mp.left > 0 && <span class="small semi" style={{ color: 'var(--finanzas-ink)' }}>{money(mp.perDay)} por día hasta fin de mes</span>}</span>
-          <span class="display-num tab-num" style={{ fontSize: 28, color: mp.left < 0 ? 'var(--vit-ink)' : 'var(--ink)' }}>{money(Math.abs(mp.left))}</span>
+          <span class="stack-xs"><span class="strong">{mp.left >= 0 ? 'Te queda' : 'Te pasaste'}</span>{mp.perDay != null && mp.left > 0 && <span class="small semi" style={{ color: 'var(--finanzas-ink)' }}>{money(Math.round(mp.perDay))} por día hasta fin de mes</span>}</span>
+          <span class="display-num tab-num" style={{ fontSize: 28, color: mp.left < 0 ? 'var(--vit-ink)' : 'var(--ink)' }}>{money(Math.round(Math.abs(mp.left)))}</span>
         </div>
         <WeekBlock s={s} today={today} />
       </section>
@@ -631,14 +651,14 @@ export function PlanTab({ s, today, setSheet }) {
           <div class={`note ${fc.low.bal < 0 ? 'tone-vit' : ''}`} style={{ marginBottom: 6 }}>
             <Icon name={fc.low.bal < 0 ? 'info' : 'chart'} size={18} />
             <span>{fc.low.bal < 0
-              ? <>El <b>{fmtDay(fc.low.date, { weekdayName: false })}</b> tus cuentas quedarían en <b>{money(fc.low.bal)}</b>. Mueve un pago o aparta antes.</>
-              : <>Hoy tienes {money(fc.start)} en cuentas; con lo que viene, el punto más bajo es {money(fc.low.bal)} ({whenText(fc.low.date, today).toLowerCase()}) y terminas con {money(fc.end)}.</>}</span>
+              ? <>El <b>{fmtDay(fc.low.date, { weekdayName: false })}</b> tus cuentas quedarían en <b>{money(Math.round(fc.low.bal))}</b>. Mueve un pago o aparta antes.</>
+              : <>Hoy tienes {money(Math.round(fc.start))} en cuentas; con lo que viene, el punto más bajo es {money(Math.round(fc.low.bal))} ({whenText(fc.low.date, today).toLowerCase()}) y terminas con {money(Math.round(fc.end))}.</>}</span>
           </div>
         )}
         {!byDay.length && <p class="small muted" style={{ padding: '2px 0 14px' }}>Sin pagos ni cobros en este período.</p>}
         {byDay.map((d) => (
           <div key={d.day} class="txday">
-            <div class="between-c dayhead"><span class="eyebrow" style={{ fontSize: 11.5 }}>{d.day === today ? 'Hoy' : dayShort(d.day)}</span>{fc.ready && <span class="tiny strong tab-num" style={{ color: d.bal < 0 ? 'var(--vit-ink)' : 'var(--muted)', whiteSpace: 'nowrap' }}>Quedaría {money(d.bal)}</span>}</div>
+            <div class="between-c dayhead"><span class="eyebrow" style={{ fontSize: 11.5 }}>{d.day === today ? 'Hoy' : dayShort(d.day)}</span>{fc.ready && <span class="tiny strong tab-num" style={{ color: d.bal < 0 ? 'var(--vit-ink)' : 'var(--muted)', whiteSpace: 'nowrap' }}>Quedaría {money(Math.round(d.bal))}</span>}</div>
             {d.list.map((it) => <DueRow key={`${it.type}-${it.type === 'card' ? it.a.id : it.p.id}-${it.date}-${it.estimate ? 'e' : ''}`} s={s} it={it} today={today} onPay={() => setSheet(payInitial(s, it, today))} onOpen={() => setSheet(it.type === 'card' ? { kind: 'card', id: it.a.id } : { kind: 'due', item: { plan: it.p.id, date: it.date } })} />)}
           </div>
         ))}
@@ -677,13 +697,13 @@ export function PlanTab({ s, today, setSheet }) {
         <div class="between-c"><h2 class="h2">Presupuestos</h2><span class="row" style={{ gap: 14 }}><button type="button" class="link-btn" onClick={() => setSheet({ kind: 'suggest' })}><Icon name="sparkle" size={15} />Sugerir</button><button type="button" class="link-btn" onClick={() => setSheet({ kind: 'budgets' })}>Asignar<Icon name="right" size={16} /></button></span></div>
         {mp.income > 0 && (
           <span class="small semi" style={{ color: mp.unassigned < 0 ? 'var(--vit-ink)' : 'var(--muted)' }}>
-            {mp.unassigned > 0 ? `Sin asignar: ${money(mp.unassigned)} de tus ingresos del mes.` : mp.unassigned < 0 ? `Asignaste ${money(-mp.unassigned)} más de lo que entra.` : 'Cada peso del mes tiene un trabajo.'}
+            {mp.unassigned >= 1 ? `Sin asignar: ${money(Math.round(mp.unassigned))} de tus ingresos del mes.` : mp.unassigned <= -1 ? `Asignaste ${money(Math.round(-mp.unassigned))} más de lo que entra.` : 'Cada peso del mes tiene un trabajo.'}
           </span>
         )}
         {!rows.length && <span class="small muted">Ponle un tope a lo que más se te va (comida, salidas, compras) y te aviso al llegar al 80 %.</span>}
         {rows.map((r) => <BudgetRow key={r.c.id} r={r} today={today} onOpen={() => setSheet({ kind: 'budgetcat', id: r.c.id })} />)}
       </section>
-      <Split503020 s={s} mk={mk} />
+      <Split503020 s={s} mk={mk} expected={mp.income} />
     </>
   );
 }
@@ -727,23 +747,27 @@ function DebtCard({ s, today, onOpen }) {
 }
 
 // 50/30/20: lo que se fue en necesidades, en gustos y en ahorro o deudas, frente a lo que entró.
-function Split503020({ s, mk }) {
+// A mitad de mes se compara con lo que esperas recibir en el mes (lo que ya entró y lo que falta cobrar), no solo
+// con lo que ha entrado hasta hoy: así no sale «necesidades 150 %» el día antes de cobrar (1.10).
+function Split503020({ s, mk, expected = 0 }) {
   const sp = split503020(s, mk);
-  if (!(sp.income > 0)) return null;
+  const base = Math.max(sp.income, Number(expected) || 0);
+  if (!(base > 0)) return null;
+  const waiting = base > sp.income + 0.5;
   const rows = [['necesidades', 'Necesidades', 0.5, 'Casa, comida del súper, transporte, salud, servicios'], ['gustos', 'Gustos', 0.3, 'Salidas, compras, viajes, suscripciones'], ['ahorro', 'Ahorro y deudas', 0.2, 'Ahorro, inversión y abonos a deudas']];
   return (
     <section class="card" aria-label="Regla 50/30/20">
-      <div class="between-c"><h2 class="h2">50/30/20</h2><span class="small muted">De {money(sp.income)} que entraron</span></div>
-      <span class="small muted">Una guía sencilla: la mitad para lo necesario, un 30 % para gustos y un 20 % para ahorrar o pagar deudas.</span>
+      <div class="between-c"><h2 class="h2">50/30/20</h2><span class="small muted" style={{ textAlign: 'right' }}>{waiting ? `De ${money(Math.round(base))} del mes` : `De ${money(Math.round(base))} que entraron`}</span></div>
+      <span class="small muted">Una guía sencilla: la mitad para lo necesario, un 30 % para gustos y un 20 % para ahorrar o pagar deudas.{waiting ? ` Cuenta lo que esperas este mes: ya entraron ${money(Math.round(sp.income))}.` : ''}</span>
       {rows.map(([k, l, target, d]) => {
         const v = sp[k];
-        const share = v / sp.income;
+        const share = v / base;
         const off = k === 'ahorro' ? share < target - 0.05 : share > target + 0.05;
         return (
           <div key={k} class="stack-xs">
             <span class="between-c"><span class="semi">{l}</span><span class="small strong tab-num">{Math.round(share * 100)} % <span class="muted semi">· meta {Math.round(target * 100)} %</span></span></span>
             <span class="pace"><Bar value={Math.min(1, share)} size="lg" color="var(--finanzas)" /><b style={{ left: `${target * 100}%` }} title={`Meta ${Math.round(target * 100)} %`} /></span>
-            <span class="tiny muted semi">{money(v)} · {d}{off ? (k === 'ahorro' ? ' · por debajo de la meta' : ' · por encima de la meta') : ''}</span>
+            <span class="tiny muted semi">{money(Math.round(v))} · {d}{off ? (k === 'ahorro' ? ' · por debajo de la meta' : ' · por encima de la meta') : ''}</span>
           </div>
         );
       })}
@@ -793,7 +817,7 @@ function PlanLine({ label, sub, value, tone }) {
   return (
     <div class="between-c" style={{ minHeight: 30 }}>
       <span class="stack-xs" style={{ gap: 0 }}><span class="semi">{label}</span>{sub && <span class="tiny muted semi">{sub}</span>}</span>
-      <span class="strong tab-num" style={{ color: tone === 'good' ? 'var(--good-ink)' : 'var(--ink)' }}>{value > 0 ? '+' : value < 0 ? '−' : ''}{money(Math.abs(value))}</span>
+      <span class="strong tab-num" style={{ color: tone === 'good' ? 'var(--good-ink)' : 'var(--ink)' }}>{value > 0 ? '+' : value < 0 ? '−' : ''}{money(Math.round(Math.abs(value)))}</span>
     </div>
   );
 }

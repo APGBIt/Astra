@@ -101,7 +101,7 @@ export function Settings() {
       </section>
 
       <section class="card" aria-label="Lectura con IA">
-        <div class="stack-xs"><h2 class="h2">Lectura con IA</h2><span class="small muted">Para leer recibos y frases difíciles. Estado: <b>{prov === undefined ? 'revisando…' : providerLabel(prov)}</b>.</span></div>
+        <div class="stack-xs"><h2 class="h2">Lectura con IA</h2><span class="small muted">Para leer recibos, comprobantes y frases difíciles. Estado: <b>{prov === undefined ? 'revisando…' : providerLabel(prov)}</b>. Sin IA, los recibos y comprobantes se leen con el lector de texto del teléfono (OCR), que no envía la foto a ningún lado.</span></div>
         <div class="chips">
           {[['auto', 'Automático'], ['server', 'Servidor propio'], ['key', 'Clave en este teléfono'], ['off', 'Desactivada']].map(([k, l]) => <TChip key={k} sm on={mode === k} onClick={() => set((st) => { st.settings.aiMode = k; })}>{l}</TChip>)}
         </div>

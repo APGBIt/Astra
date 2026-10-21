@@ -24,11 +24,17 @@ import { monthPlan, isCard, setGroupBudget } from '../game/money.js';
 import { Analysis } from './Stats.jsx';
 import { Movements, TxRow, csvOf, KIND_LABEL, fxWhen } from './Movements.jsx';
 import { WorkSheet, TaxSheet, RulesSheet, DebtSheet, CatDetailSheet, MoveCatSheet, SplitSheet } from './FinTools.jsx';
+import { LoanSheet } from './Loans.jsx';
+import { takePendingTx } from '../app/handoff.js';
+import { ocrSupported, readText, ocrErrorText } from '../app/ocr.js';
+import { photoURL } from '../app/photos.js';
+import { parseScan, voucherTx } from '../game/scan.js';
+import { loanForTx, loanFromTx, openLoans, payLoan, leftOf } from '../game/loans.js';
 import {
   emptyFilter, normFilter, workInfo, workHours, fmtWork, sameMerchantOthers, bulkEdit, rulesList, periodRange, filterTx,
 } from '../game/ledger.js';
 
-const SRC_LABEL = { recibo: 'Recibo', alerta: 'Aviso del banco', voz: 'Registro rápido', manual: 'A mano', importado: 'Importado', correo: 'Correo del banco' };
+const SRC_LABEL = { recibo: 'Recibo', comprobante: 'Comprobante', alerta: 'Aviso del banco', voz: 'Registro rápido', manual: 'A mano', importado: 'Importado', correo: 'Correo del banco' };
 const ACC_ICON = Object.fromEntries(ACCOUNT_KINDS.map((k) => [k.key, k.icon]));
 const num = (v) => toNumber(String(v || '').replace(/[^\d.,]/g, '')) || 0;
 
@@ -39,7 +45,8 @@ export function Finance({ query }) {
   const today = s.energy.day;
   const q0 = query.get('tab');
   const [tab, setTabState] = useState(TABS.some(([k]) => k === q0) ? q0 : 'resumen');
-  const [sheet, setSheet] = useState(query.get('alerta') ? { kind: 'alert' } : query.get('nuevo') ? { kind: 'tx' } : null);
+  // «nuevo»: un movimiento a medio llenar que puede venir de otra pantalla (un comprobante leído, 1.10).
+  const [sheet, setSheet] = useState(() => (query.get('alerta') ? { kind: 'alert' } : query.get('nuevo') ? { kind: 'tx', ...(takePendingTx() || {}) } : null));
   const [filter, setFilter] = useState(emptyFilter());
   const [per, setPer] = useState({ kind: 'mes', mk: monthKey(today) });
   const [sel, setSel] = useState(null);
@@ -122,7 +129,7 @@ export function Finance({ query }) {
       </main>
       <Nav active="areas" fab={sel ? null : { onClick: () => setSheet({ kind: 'tx' }), label: 'Nuevo movimiento' }} />
       {sheet && sheet.kind === 'tx' && <TxSheet key={sheet.tx ? sheet.tx.id : `nuevo-${sheet.link ? sheet.link.plan + sheet.link.date : sheet.to || ''}`} s={s} initial={sheet} tx={sheet.tx} onClose={close}
-        onSplit={(id) => setSheet({ kind: 'split', id })} onOpenTx={(t) => setSheet({ kind: 'tx', tx: t })} onWork={() => setSheet({ kind: 'work' })} />}
+        onSplit={(id) => setSheet({ kind: 'split', id })} onOpenTx={(t) => setSheet({ kind: 'tx', tx: t })} onWork={() => setSheet({ kind: 'work' })} onLoan={(id) => setSheet({ kind: 'loan', id })} />}
       {sheet && sheet.kind === 'alert' && <AlertSheet onClose={close} />}
       {sheet && sheet.kind === 'budgets' && <BudgetSheet s={s} rate={rate} onClose={close} />}
       {sheet && sheet.kind === 'suggest' && <BudgetSuggestSheet s={s} onClose={close} />}
@@ -142,6 +149,7 @@ export function Finance({ query }) {
       {sheet && sheet.kind === 'catdetail' && <CatDetailSheet s={s} id={sheet.id} onClose={close} onMovements={(cats, p) => showMovements(null, cats, p)} onBudget={(id) => setSheet({ kind: 'budgetcat', id })} onMove={(id) => setSheet({ kind: 'movecat', id })} />}
       {sheet && sheet.kind === 'movecat' && <MoveCatSheet s={s} from={sheet.id} onClose={close} />}
       {sheet && sheet.kind === 'split' && <SplitSheet s={s} id={sheet.id} onClose={close} onOpenTx={(t) => setSheet({ kind: 'tx', tx: t })} />}
+      {sheet && sheet.kind === 'loan' && <LoanSheet key={sheet.id || 'nuevo'} s={s} id={sheet.id} initial={sheet.initial} onClose={close} onOpenTx={(t) => setSheet({ kind: 'tx', tx: t })} />}
     </>
   );
 }
@@ -165,7 +173,7 @@ function RecentTx({ s, today, onOpen, onAll }) {
 
 // ---------- Hoja: nuevo o editar movimiento ----------
 
-export function TxSheet({ s, initial, tx, onClose, onSplit = null, onOpenTx = null, onWork = null }) {
+export function TxSheet({ s, initial, tx, onClose, onSplit = null, onOpenTx = null, onWork = null, onLoan = null }) {
   const today = s.energy.day;
   const editing = !!tx;
   const lastAcc = (s.money.tx.find((t) => t.account && accountOf(s, t.account)) || {}).account || '';
@@ -193,9 +201,10 @@ export function TxSheet({ s, initial, tx, onClose, onSplit = null, onOpenTx = nu
   const kidTax = kids.find((k) => k.taxKind === 'tax') || null;
   const kidFee = kids.find((k) => k.taxKind === 'fee') || null;
   const looseTax = tx && !kidTax ? findTaxFor(s, tx) : null;
-  const [taxPick, setTaxPick] = useState(null);
-  const [showFee, setShowFee] = useState(!!kidFee);
-  const [fee, setFee] = useState(kidFee ? String(txOrig(kidFee)) : s.money.tax.fee ? String(s.money.tax.fee) : '');
+  // Un comprobante leído puede traer el impuesto y la comisión que cobró el banco.
+  const [taxPick, setTaxPick] = useState(!tx && initial.tax ? true : null);
+  const [showFee, setShowFee] = useState(!!kidFee || (!tx && Number(initial.fee) > 0));
+  const [fee, setFee] = useState(kidFee ? String(txOrig(kidFee)) : !tx && Number(initial.fee) > 0 ? String(initial.fee) : s.money.tax.fee ? String(s.money.tax.fee) : '');
   const [noStats, setNoStats] = useState(tx ? !!tx.noStats : false);
   const parent = tx && tx.taxOf ? s.money.tx.find((t) => t.id === tx.taxOf) : null;
   const n = toNumber(String(amount).replace(/[^\d.,]/g, '')) || 0;
@@ -208,6 +217,47 @@ export function TxSheet({ s, initial, tx, onClose, onSplit = null, onOpenTx = nu
   const wi = workInfo(s, today);
   const dop = toDOP(n, currency, rate);
   const hrs = type === 'gasto' && wi.ready && n > 0 ? fmtWork(workHours(dop, wi), wi) : '';
+  // 1.10: préstamos con personas. Un préstamo que das (o te hacen) va a «Te deben» (o «Debes») y no cuenta como gasto;
+  // un cobro de «Préstamos que te devuelven» o un «Pago de deuda» puede ser el abono de uno.
+  const lk = tx ? loanForTx(s, tx.id) : null;
+  const loanable = !lk && !(tx && (tx.taxOf || tx.split)) && ((type === 'gasto' && (effCat === 'prestamo_dado' || effCat === 'terceros')) || (type === 'ingreso' && effCat === 'prestamo_recibido'));
+  const [loanPick, setLoanPick] = useState(null);
+  const loanOn = loanable && (loanPick != null ? loanPick : !editing && (effCat === 'prestamo_dado' || effCat === 'prestamo_recibido'));
+  const [loanDue, setLoanDue] = useState('');
+  const payDir = !editing ? (type === 'ingreso' && effCat === 'prestamo_cobrado' ? 'me' : type === 'gasto' && effCat === 'deuda' ? 'yo' : null) : null;
+  const payable = payDir ? openLoans(s, payDir) : [];
+  const [payTo, setPayTo] = useState(null);
+  const inLoanCur = (l) => (l.currency === currency ? n : l.currency === 'USD' ? toUSD(dop, rate) : dop);
+  // 1.10: leer la foto que adjuntaste (recibo o comprobante) con el lector de texto del teléfono y llenar lo que falta.
+  const [scan, setScan] = useState(null);
+  const readPhoto = async () => {
+    const id = photos[photos.length - 1];
+    if (!id || scan) return;
+    setScan({ label: 'Preparando el lector…', pct: 0.02 });
+    try {
+      const url = await photoURL(id);
+      if (!url) throw new Error('missing');
+      const bmp = await createImageBitmap(await (await fetch(url)).blob());
+      const { text } = await readText(bmp, setScan);
+      const r = parseScan(text, today);
+      const v = r.kind === 'transferencia' ? voucherTx(s, r) : null;
+      let got = 0;
+      if (!n && r.total) { setAmount(String(r.total)); if (r.currency === 'USD') setCurrency('USD'); got += 1; }
+      const name = v ? v.merchant : r.merchant;
+      if (!merchant.trim() && name) { setMerchant(name); got += 1; }
+      if (r.day && day === today && r.day !== today) { setDay(r.day); got += 1; }
+      if (v) {
+        if (!note.trim() && v.note) { setNote(v.note); got += 1; }
+        if (!account && v.account) setAccount(v.account);
+        if (!cat && v.cat && v.type === type) setCat(v.cat);
+      } else if (!cat && r.cat && r.cat !== 'otros' && type === 'gasto') setCat(r.cat);
+      toast(got ? 'Leí la foto: revisa los datos' : 'No encontré datos claros en la foto', got ? 'check' : 'info');
+    } catch (e) {
+      toast(ocrErrorText(e), 'info');
+    } finally {
+      setScan(null);
+    }
+  };
 
   // La tasa sigue la fecha (si no la cambiaste tú). Para días pasados se busca la de ese día.
   useEffect(() => {
@@ -225,6 +275,7 @@ export function TxSheet({ s, initial, tx, onClose, onSplit = null, onOpenTx = nu
       if (editing) {
         const nt = updateTx(st, tx.id, { ...p, noStats });
         if (!nt) return null;
+        if (loanOn) loanFromTx(st, nt.id, { due: loanDue || null }, t, ev);
         if (sug.can && !looseTax) setTaxRecords(st, tx.id, { tax: taxOn, fee: feeN });
         else if (!sug.can && kids.length) setTaxRecords(st, tx.id, { tax: false, fee: 0 });
         // ¿Otros gastos de este comercio en otra categoría? Se ofrece cambiarlos también.
@@ -232,9 +283,12 @@ export function TxSheet({ s, initial, tx, onClose, onSplit = null, onOpenTx = nu
       }
       const nt = addTx(st, { ...p, source: initial.source || 'manual', link: link && type !== 'transfer' ? link : null, tax: sug.can && taxOn, fee: feeN }, t, ev);
       if (cat && merchant && type === 'gasto') learnRule(st, merchant, effCat);
+      if (nt && loanOn) loanFromTx(st, nt.id, { due: loanDue || null }, t, ev);
+      const pl = nt && payTo ? payable.find((l) => l.id === payTo) : null;
+      if (pl) payLoan(st, pl.id, { amount: inLoanCur(pl), day: nt.day, tx: nt.id }, t, ev);
       return { nt, others: [] };
     });
-    toast(editing ? 'Movimiento actualizado' : link ? `«${link.name}»: ${type === 'ingreso' ? 'recibido' : 'pagado'}` : type === 'ingreso' ? 'Ingreso guardado' : type === 'transfer' ? (effCat === 'pago_tarjeta' ? 'Pago de tarjeta guardado' : 'Movimiento entre cuentas guardado') : 'Gasto guardado', 'check');
+    toast(loanOn ? (type === 'gasto' ? 'Préstamo anotado en «Te deben»' : 'Préstamo anotado en «Debes»') : !editing && payTo ? 'Abono anotado en el préstamo' : editing ? 'Movimiento actualizado' : link ? `«${link.name}»: ${type === 'ingreso' ? 'recibido' : 'pagado'}` : type === 'ingreso' ? 'Ingreso guardado' : type === 'transfer' ? (effCat === 'pago_tarjeta' ? 'Pago de tarjeta guardado' : 'Movimiento entre cuentas guardado') : 'Gasto guardado', 'check');
     onClose();
     if (res && res.others && res.others.length) {
       const nm = res.nt.merchant;
@@ -258,7 +312,8 @@ export function TxSheet({ s, initial, tx, onClose, onSplit = null, onOpenTx = nu
 
   return (
     <Sheet onClose={onClose} label={editing ? 'Editar movimiento' : 'Nuevo movimiento'}>
-      <SheetHead title={editing ? 'Movimiento' : link ? `${initial.type === 'ingreso' ? 'Cobro' : 'Pago'}: ${link.name}` : initial.cat === 'pago_tarjeta' ? 'Pago de tarjeta' : 'Nuevo movimiento'} onClose={onClose} />
+      <SheetHead title={editing ? 'Movimiento' : link ? `${initial.type === 'ingreso' ? 'Cobro' : 'Pago'}: ${link.name}` : initial.scanned ? 'Revisa el comprobante' : initial.cat === 'pago_tarjeta' ? 'Pago de tarjeta' : 'Nuevo movimiento'} onClose={onClose} />
+      {initial.scanned && !editing && <div class="note tone-good"><Icon name="eye" size={18} /><span>Lo leí del comprobante. Revisa el monto, la cuenta y el impuesto antes de guardar.</span></div>}
       {parent && (
         <div class="note"><Icon name="percent" size={18} /><span class="stack-xs">Es el {tx.taxKind === 'fee' ? 'cargo del banco' : 'impuesto'} de «{parent.merchant || catName(s, parent.cat)}» ({cur(txOrig(parent), txCur(parent))}, {fmtShort(parent.day)}).{onOpenTx && <button type="button" class="link-btn" style={{ minHeight: 30, alignSelf: 'flex-start' }} onClick={() => onOpenTx(parent)}>Abrir la transferencia<Icon name="right" size={14} /></button>}</span></div>
       )}
@@ -358,12 +413,37 @@ export function TxSheet({ s, initial, tx, onClose, onSplit = null, onOpenTx = nu
         </section>
       ))}
       {link && type !== 'transfer' && <div class="note tone-good"><Icon name="calendar" size={18} /><span>Se marca «{link.name}» del {fmtDay(link.date, { weekdayName: false })} como {type === 'ingreso' ? 'recibido' : 'pagado'}.</span></div>}
+      {lk && (
+        <div class="note tone-good"><Icon name="coins" size={18} /><span class="stack-xs">{lk.pay ? `Es un abono de tu préstamo con ${lk.loan.who}.` : lk.loan.dir === 'me' ? `Es un préstamo a ${lk.loan.who}: ${lk.loan.closed ? 'ya está saldado' : `te debe ${cur(leftOf(lk.loan), lk.loan.currency)}`}.` : `Es un préstamo de ${lk.loan.who}: ${lk.loan.closed ? 'ya está saldado' : `le debes ${cur(leftOf(lk.loan), lk.loan.currency)}`}.`}{onLoan && <button type="button" class="link-btn" style={{ minHeight: 30, alignSelf: 'flex-start', color: 'inherit' }} onClick={() => onLoan(lk.loan.id)}>Ver el préstamo<Icon name="right" size={14} /></button>}</span></div>
+      )}
+      {loanable && (
+        <section class="panel stack-sm" aria-label="Préstamo">
+          <label class="between-c" style={{ cursor: 'pointer', gap: 12 }}>
+            <span class="stack-xs"><span class="semi">{type === 'gasto' ? 'Es un préstamo: me lo van a devolver' : 'Es un préstamo: lo tengo que devolver'}</span><span class="small muted">Lo anoto en «{type === 'gasto' ? 'Te deben' : 'Debes'}» y no cuenta como {type === 'gasto' ? 'gasto' : 'ingreso'}.</span></span>
+            <Switch checked={loanOn} onChange={(v) => setLoanPick(v)} label="Es un préstamo" />
+          </label>
+          {loanOn && <div class="field"><label for="tldue">¿Para cuándo quedó? (opcional)</label><input id="tldue" type="date" class="input" value={loanDue} min={day} onInput={(e) => setLoanDue(e.currentTarget.value)} /></div>}
+        </section>
+      )}
+      {payable.length > 0 && (
+        <div class="stack-sm">
+          <span class="label">{payDir === 'me' ? '¿Quién te pagó?' : '¿Es lo que le debes a alguien?'}</span>
+          <div class="chips" role="group" aria-label={payDir === 'me' ? 'Quién te pagó' : 'A quién le pagaste'}>
+            {payDir === 'yo' && <TChip sm on={!payTo} onClick={() => setPayTo(null)}>No, es otra deuda</TChip>}
+            {payable.map((l) => <TChip key={l.id} sm on={payTo === l.id} onClick={() => setPayTo(payTo === l.id ? null : l.id)}>{l.who} · {cur(leftOf(l), l.currency)}</TChip>)}
+          </div>
+          {payTo && <span class="small muted">Se anota como abono y no cuenta como {payDir === 'me' ? 'ingreso' : 'gasto'}.</span>}
+        </div>
+      )}
       <div class="field"><label for="tnote">Nota (opcional)</label><input id="tnote" class="input" value={note} maxLength={200} onInput={(e) => setNote(e.currentTarget.value)} placeholder="Detalle, para quién, número de referencia…" /></div>
-      <PhotoStrip ids={photos} onChange={setPhotos} kind="recibo" label="Foto del recibo o factura (opcional)" max={4} />
+      <PhotoStrip ids={photos} onChange={setPhotos} kind="recibo" label="Foto del recibo, factura o comprobante (opcional)" max={4} />
+      {photos.length > 0 && ocrSupported() && (scan ? (
+        <div class="stack-xs" aria-live="polite"><span class="small semi muted">{scan.label}</span><Bar value={scan.pct} color="var(--finanzas)" label="Leyendo la foto" /></div>
+      ) : <button type="button" class="link-btn" style={{ alignSelf: 'flex-start', minHeight: 32 }} onClick={readPhoto}><Icon name="eye" size={15} />Leer los datos de la foto</button>)}
       {type === 'transfer' && <div class="note"><Icon name="info" size={18} /><span>Los pagos de tarjeta y lo que mueves entre tus cuentas no cuentan como gasto (las compras ya se cuentan una por una), pero sí mueven tus saldos.</span></div>}
       {editing && (
         <label class="between-c panel" style={{ cursor: 'pointer' }}>
-          <span class="stack-xs"><span class="semi">No contar en el análisis</span><span class="small muted">Sigue moviendo tu saldo, pero no suma en gastos, presupuestos ni gráficas. Para un préstamo que diste o algo que te van a reembolsar.</span></span>
+          <span class="stack-xs"><span class="semi">No contar en el análisis</span><span class="small muted">Sigue moviendo tu saldo, pero no suma en gastos, presupuestos ni gráficas. Para algo que te van a reembolsar (los préstamos con personas van en «Te deben»).</span></span>
           <Switch checked={noStats} onChange={setNoStats} label="No contar en el análisis" />
         </label>
       )}

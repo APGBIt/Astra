@@ -4,6 +4,7 @@ import { defaultState, reconcile, ensureRecord, ensureMoney, ensureHome } from '
 import { ensureMind } from '../game/mind.js';
 import { ensureGrowth, claimQuit } from '../game/growth.js';
 import { ensureNotify } from '../game/reminders.js';
+import { ensureHealthPlus } from '../game/health.js';
 import { dayKey } from './dates.js';
 
 const KEY = 'astra.v1';
@@ -24,7 +25,7 @@ export function migrate(s) {
   if (!s || typeof s !== 'object') return d;
   const m = merge(d, s);
   // Listas: si vienen dañadas, se reinician vacías.
-  for (const k of ['missions', 'vitLog', 'campaigns', 'bosses', 'moods', 'people', 'contacts', 'books', 'reads', 'cards', 'practice', 'focus', 'rewards', 'redeemed', 'titles', 'journal', 'todos', 'todoLists', 'chores', 'wins']) {
+  for (const k of ['missions', 'vitLog', 'campaigns', 'bosses', 'moods', 'people', 'contacts', 'books', 'reads', 'cards', 'practice', 'focus', 'rewards', 'redeemed', 'titles', 'journal', 'todos', 'todoLists', 'chores', 'wins', 'meds']) {
     if (!Array.isArray(m[k])) m[k] = [];
   }
   // Pendientes y categorías dañados se descartan uno a uno (no toda la lista).
@@ -42,6 +43,8 @@ export function migrate(s) {
   // 1.8: dejar de hacer, metas con progreso y cosas por lograr.
   ensureGrowth(m);
   ensureNotify(m);
+  // 1.10: medicinas y suplementos, actividad con intensidad.
+  ensureHealthPlus(m);
   m.v = 4;
   if (!Array.isArray(m.profile.classKeys)) m.profile.classKeys = [];
   if (!Array.isArray(m.streak.freezeDays)) m.streak.freezeDays = [];

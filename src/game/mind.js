@@ -2,10 +2,10 @@
 // descarga mental, pensamientos replanteados, chequeo OMS-5, rueda de la vida, valores y revisión de la semana.
 import { addDays, diffDays, weekday, monthKey } from '../app/dates.js';
 import {
-  EMOTIONS, LEGACY_EMOTIONS, STRATEGIES, PROGRAM, WHO5_LOW, WHEEL, VALUE, JOURNAL_PROMPTS, BODY_SPOTS,
+  EMOTIONS, LEGACY_EMOTIONS, STRATEGIES, PROGRAM, WHO5_LOW, WHEEL, VALUE, JOURNAL_PROMPTS, BODY_SPOTS, COPING_IDEAS,
 } from './wellness.js';
 import { INFLUENCES } from './content.js';
-import { gainXP, addGold, autoCheck, checkAchievements, addTodo, uid, dailyGoal, getDay, logCalm, txKind, txDOP } from './logic.js';
+import { gainXP, addGold, autoCheck, checkAchievements, addTodo, uid, dailyGoal, getDay, logCalm, txKind, txDOP, inStats } from './logic.js';
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -16,7 +16,7 @@ const plain = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[̀
 // ---------- Datos ----------
 
 export function defaultMind() {
-  return { calm: [], program: {}, checks: [], wheel: [], values: { keys: [], since: null }, reviews: [], worries: [], thoughts: [], intents: {} };
+  return { calm: [], program: {}, checks: [], wheel: [], values: { keys: [], since: null }, reviews: [], worries: [], thoughts: [], intents: {}, cards: [] };
 }
 
 export function ensureMind(s) {
@@ -30,6 +30,11 @@ export function ensureMind(s) {
   if (!isObj(m.values)) m.values = { keys: [], since: null };
   if (!Array.isArray(m.values.keys)) m.values.keys = [];
   m.values.keys = m.values.keys.filter((k) => VALUE[k]).slice(0, 5);
+  // 1.10: tus cartas para días difíciles.
+  if (!Array.isArray(m.cards)) m.cards = [];
+  m.cards = m.cards.filter((c) => isObj(c) && c.id && txt(c.text, 160)).map((c) => ({
+    id: String(c.id), text: txt(c.text, 160), kind: c.kind === 'accion' ? 'accion' : 'frase', quads: cardQuads(c.quads),
+  })).slice(0, 40);
   if (!Array.isArray(s.journal)) s.journal = [];
   s.journal = s.journal.filter((j) => isObj(j) && j.id && isDay(j.day) && typeof j.text === 'string');
   // Misiones de meditar o respirar con minutos: se completan solas con tus sesiones de calma.
@@ -216,6 +221,82 @@ export function distinctEmotions(s) {
 
 export const BODY = BODY_SPOTS;
 
+// ---------- Corregir o borrar un check-in (1.10) ----------
+
+export function updateMood(s, id, p) {
+  const m = s.moods.find((x) => x.id === id);
+  if (!m) return null;
+  if (p.quad != null) {
+    const q = clamp(Math.round(Number(p.quad) || 0), 0, 3);
+    if (q !== m.quad) { m.quad = q; if (!Array.isArray(p.words)) m.words = []; }
+  }
+  if (Array.isArray(p.words)) m.words = p.words.map((w) => txt(w, 30)).filter(Boolean).slice(0, 4);
+  if (Array.isArray(p.influences)) m.influences = p.influences.filter((k) => INFLUENCES.some((i) => i.key === k)).slice(0, 6);
+  if (Array.isArray(p.body)) { const b = p.body.map((x) => txt(x, 30)).filter(Boolean).slice(0, 5); if (b.length) m.body = b; else delete m.body; }
+  if (p.note !== undefined) m.note = txt(p.note, 500);
+  return m;
+}
+
+// Se borra el registro; la XP que ya diste no se quita (no es un castigo).
+export function removeMood(s, id) {
+  const before = s.moods.length;
+  s.moods = s.moods.filter((x) => x.id !== id);
+  return s.moods.length < before;
+}
+
+// Semana a semana: qué parte de tus check-ins fue agradable (bloques de 7 días que terminan hoy, del más viejo al más nuevo).
+export function moodWeeks(s, today, n = 12) {
+  const out = [];
+  for (let w = n - 1; w >= 0; w--) {
+    const to = addDays(today, -7 * w);
+    const from = addDays(to, -6);
+    const list = s.moods.filter((m) => m.day >= from && m.day <= to);
+    out.push({ from, to, n: list.length, pleasant: share(list), tense: list.filter((m) => m.quad === 0).length, low: list.filter((m) => m.quad === 2).length });
+  }
+  return out;
+}
+
+// ---------- Tus cartas para días difíciles (1.10) ----------
+
+function cardQuads(q) {
+  const out = [...new Set((Array.isArray(q) ? q : [0, 2]).map(Number).filter((x) => x === 0 || x === 2))];
+  return out.length ? out : [0, 2];
+}
+
+export function addCoping(s, p) {
+  const text = txt(p.text, 160);
+  if (!text || s.mind.cards.some((c) => plain(c.text) === plain(text))) return null;
+  const c = { id: uid(), text, kind: p.kind === 'accion' ? 'accion' : 'frase', quads: cardQuads(p.quads) };
+  s.mind.cards.push(c);
+  s.mind.cards = s.mind.cards.slice(0, 40);
+  return c;
+}
+
+export function updateCoping(s, id, p) {
+  const c = s.mind.cards.find((x) => x.id === id);
+  if (!c) return null;
+  if (p.text !== undefined && txt(p.text, 160)) c.text = txt(p.text, 160);
+  if (p.kind !== undefined) c.kind = p.kind === 'accion' ? 'accion' : 'frase';
+  if (p.quads !== undefined) c.quads = cardQuads(p.quads);
+  return c;
+}
+
+export function removeCoping(s, id) {
+  s.mind.cards = s.mind.cards.filter((x) => x.id !== id);
+}
+
+// Las cartas para cómo te sientes (tenso o bajo); primero las frases, luego las acciones.
+export function copingFor(s, quad) {
+  const list = ((s.mind && s.mind.cards) || []).filter((c) => quad == null || c.quads.includes(quad));
+  return [...list.filter((c) => c.kind === 'frase'), ...list.filter((c) => c.kind === 'accion')];
+}
+
+// Ideas para empezar (las que todavía no tienes).
+export function copingIdeas(s) {
+  const have = new Set(((s.mind && s.mind.cards) || []).map((c) => plain(c.text)));
+  return COPING_IDEAS.filter((c) => !have.has(plain(c.text)));
+}
+
 // ---------- Salud: lo destacado de la semana (como «Destacados» de Apple Salud) ----------
 
 const avg = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
@@ -244,12 +325,13 @@ export function healthHighlights(s, today) {
     out.push({ key: 'steps', icon: 'pulse', score: b ? Math.abs(diff) / Math.max(1, b) : 0.1, tone: big ? (diff > 0 ? 'good' : 'vit') : '',
       text: `Caminaste ${a.toLocaleString('en-US')} pasos al día en promedio${big ? `, ${Math.abs(diff).toLocaleString('en-US')} ${diff > 0 ? 'más' : 'menos'} que la semana anterior` : ''}.` });
   }
-  // Actividad
+  // Actividad (los minutos intensos cuentan doble para la meta de la OMS, 1.10)
   const ec = vals(cur, 'exercise').reduce((a, b) => a + b, 0); const ep = vals(prev, 'exercise').reduce((a, b) => a + b, 0);
+  const eq = cur.reduce((a, d) => { const h = s.health[d] || {}; return a + (h.exercise || 0) + Math.min(h.exercise || 0, h.exVig || 0); }, 0);
   if (ec > 0 || ep > 0) {
     const diff = ec - ep;
-    out.push({ key: 'exercise', icon: 'dumbbell', score: Math.abs(diff) / Math.max(30, ep), tone: ec >= 150 ? 'good' : diff < -30 ? 'vit' : '',
-      text: `${ec} minutos de actividad en 7 días${ep ? ` (${diff >= 0 ? '+' : '−'}${Math.abs(diff)} frente a la semana anterior)` : ''}${ec >= 150 ? ': cumples lo que recomienda la OMS.' : '.'}` });
+    out.push({ key: 'exercise', icon: 'dumbbell', score: Math.abs(diff) / Math.max(30, ep), tone: eq >= 150 ? 'good' : diff < -30 ? 'vit' : '',
+      text: `${ec} minutos de actividad en 7 días${ep ? ` (${diff >= 0 ? '+' : '−'}${Math.abs(diff)} frente a la semana anterior)` : ''}${eq >= 150 ? `: cumples lo que recomienda la OMS${eq > ec ? ' (los intensos cuentan doble)' : ''}.` : '.'}` });
   }
   // Agua
   const wc = vals(cur, 'water'); const goal = dailyGoal(s, 'water');
@@ -470,7 +552,7 @@ export function weekSummary(s, today) {
   for (const m of s.moods) if (inWeek(m.day)) moods[m.quad] += 1;
   const sleeps = Object.entries(s.health || {}).filter(([d, h]) => inWeek(d) && h && h.sleep != null).map(([, h]) => h.sleep);
   const exercise = Object.entries(s.health || {}).filter(([d]) => inWeek(d)).reduce((a, [, h]) => a + ((h && h.exercise) || 0), 0);
-  const spent = ((s.money && s.money.tx) || []).filter((t) => inWeek(t.day) && txKind(t) === 'gasto').reduce((a, t) => a + txDOP(t), 0);
+  const spent = ((s.money && s.money.tx) || []).filter((t) => inWeek(t.day) && txKind(t) === 'gasto' && inStats(t)).reduce((a, t) => a + txDOP(t), 0);
   return {
     missions, todos: (s.todos || []).filter((t) => t.done && inWeek(t.done)).length, moods, sleep: avg(sleeps), exercise,
     calm: s.mind ? calmWeek(s, today).reduce((a, d) => a + d.minutes, 0) : 0, journal: (s.journal || []).filter((j) => inWeek(j.day)).length,

@@ -7,7 +7,7 @@ import { DAYS, DAYS_SHORT, fmtShort, monthKey, monthName, weekday } from '../app
 import { catOf } from '../game/logic.js';
 import {
   PERIODS, periodOf, cashflow, totals, categoryStats, merchantStats, accountStats, weekdayStats, dailyTotals, paceSeries,
-  monthProjection, insights, monthShort, prevMonth, compareTotals, groupStats, incomeStats, smallSpends, bankCosts, healthSnapshot,
+  monthProjection, insights, monthShort, prevMonth, compareTotals, groupStats, incomeStats, smallSpends, bankCosts, healthSnapshot, moodMoney,
 } from '../game/stats.js';
 import { workInfo, workHours, fmtWork } from '../game/ledger.js';
 import { WorkCalc } from './FinTools.jsx';
@@ -62,11 +62,12 @@ export function Analysis({ s, today, onCat, setSheet = () => {} }) {
       {per === 'mes' && <Insights s={s} today={today} onCat={onCat} />}
       {per === 'mes' && <PaceCard s={s} today={today} />}
       <HealthCard s={s} today={today} />
-      <CashflowCard s={s} mks={cfMks} />
+      <CashflowCard s={s} mks={cfMks} today={today} />
       {any && <CategoriesCard s={s} period={period} today={today} onCat={onCat} wi={wi} />}
       {any && <IncomeCard s={s} period={period} />}
       {any && <WorkCard s={s} period={period} wi={wi} onSet={() => setSheet({ kind: 'work' })} />}
       {any && <AntsCard s={s} period={period} wi={wi} onCat={onCat} />}
+      <MoodMoneyCard s={s} today={today} onCat={onCat} />
       {any && <BankCard s={s} period={period} wi={wi} onTax={() => setSheet({ kind: 'tax' })} />}
       {any && <MerchantsCard s={s} period={period} />}
       {single && any && <CalendarCard s={s} mk={period.mks[0]} today={today} />}
@@ -171,8 +172,9 @@ function PaceCard({ s, today }) {
 
 // ---------- Ingresos y gastos por mes ----------
 
-function CashflowCard({ s, mks }) {
+function CashflowCard({ s, mks, today }) {
   const rows = cashflow(s, mks);
+  const curMk = monthKey(today);
   const [tip, setTip] = useState(null);
   const W = 340; const H = 170; const L = 40; const R = 6; const T = 10; const B = 36;
   const max = niceMax(Math.max(...rows.map((r) => Math.max(r.income, r.spent)), 1));
@@ -208,7 +210,7 @@ function CashflowCard({ s, mks }) {
                 {bar(gx, r.income, 's-in fill', `${monthShort(r.mk)}: ingresos ${money(r.income)}`)}
                 {bar(gx + bw + 2, r.spent, 's-out fill', `${monthShort(r.mk)}: gastos ${money(r.spent)}`)}
                 <text x={L + i * gw + gw / 2} y={H - B + 14} text-anchor="middle" class="axis strong-axis">{cap(monthShort(r.mk))}</text>
-                <text x={L + i * gw + gw / 2} y={H - B + 28} text-anchor="middle" class="axis">{r.rate != null ? pct(r.rate) : '—'}</text>
+                <text x={L + i * gw + gw / 2} y={H - B + 28} text-anchor="middle" class="axis">{r.mk === curMk ? 'en curso' : r.rate != null ? pct(r.rate) : '—'}</text>
               </g>
             );
           })}
@@ -222,8 +224,8 @@ function CashflowCard({ s, mks }) {
           </div>
         )}
       </div>
-      <span class="tiny muted">Debajo de cada mes: qué parte de lo que entró guardaste. Toca un mes para ver los montos.</span>
-      {last && <span class="small muted">En {monthName(last.mk).split(' ')[0]} entraron {whole(last.income)} y salieron {whole(last.spent)}.</span>}
+      <span class="tiny muted">Debajo de cada mes: qué parte de lo que entró guardaste{rows.some((r) => r.mk === curMk) ? ' (el mes en curso todavía no termina)' : ''}. Toca un mes para ver los montos.</span>
+      {last && <span class="small muted">En {monthName(last.mk).split(' ')[0]}{last.mk === curMk ? ', hasta hoy,' : ''} entraron {whole(last.income)} y salieron {whole(last.spent)}.</span>}
       <details class="table-view"><summary>Ver como tabla</summary>
         <table><thead><tr><th>Mes</th><th>Ingresos</th><th>Gastos</th><th>Quedó</th></tr></thead>
           <tbody>{rows.map((r) => <tr key={r.mk}><td style={{ textTransform: 'capitalize' }}>{monthShort(r.mk)}</td><td class="tab-num">{money(r.income)}</td><td class="tab-num">{money(r.spent)}</td><td class="tab-num">{money(r.net)}</td></tr>)}</tbody>
@@ -350,6 +352,50 @@ function AntsCard({ s, period, wi, onCat }) {
         ))}
       </div>
       {a.merchants.length > 0 && <span class="small muted">Donde más: {a.merchants.slice(0, 3).map((m) => `${m.name} (${m.n})`).join(', ')}.</span>}
+    </section>
+  );
+}
+
+// ---------- Tu ánimo y tus gastos (1.10) ----------
+
+export function moodMoneyText(mm) {
+  const d = mm.wants.delta;
+  if (d == null) return mm.wants.bad > 0 ? 'Los días tensos o bajos gastas en gustos y los días agradables casi nada.' : 'Todavía no hay gustos en tus días con check-in.';
+  if (d >= 0.15) return `Los días tensos o bajos gastas ${pct(d)} más en gustos que los días agradables.`;
+  if (d <= -0.15) return `Los días tensos o bajos gastas ${pct(-d)} menos en gustos que los días agradables.`;
+  return 'Tu ánimo casi no cambia lo que gastas en gustos.';
+}
+
+function MoodMoneyCard({ s, today, onCat }) {
+  const mm = moodMoney(s, today);
+  if (!mm.ready) return null;
+  const max = Math.max(mm.wants.good || 0, mm.wants.bad || 0, 1);
+  const row = (label, v) => (
+    <div class="cmp-row" style={{ gridTemplateColumns: '100px 1fr auto' }}><span class="tiny muted semi">{label}</span><span class="cmp-bar"><i style={{ width: `${Math.max(2, (v / max) * 100)}%`, background: 'var(--finanzas)' }} /></span><span class="tiny strong tab-num" style={{ textAlign: 'right', minWidth: 64 }}>{whole(v)}</span></div>
+  );
+  return (
+    <section class="card" aria-label="Tu ánimo y tus gastos">
+      <div class="stack-xs"><h2 class="h2">Tu ánimo y tus gastos</h2><span class="small muted">Últimos 90 días, con tus check-ins: {plural(mm.nGood, 'día agradable', 'días agradables')} y {plural(mm.nBad, 'día tenso o bajo', 'días tensos o bajos')}.</span></div>
+      <div class="stack-xs cmp">
+        <span class="semi">En gustos, por día</span>
+        {row('Agradables', mm.wants.good)}
+        {row('Tensos o bajos', mm.wants.bad)}
+        <span class="tiny muted">Comer fuera, delivery, antojos, salidas, compras y ropa.</span>
+      </div>
+      <span class="small strong" style={{ color: mm.wants.delta >= 0.15 ? 'var(--vit-ink)' : 'var(--finanzas-ink)' }}>{moodMoneyText(mm)}</span>
+      {mm.cats.length > 0 && mm.wants.delta >= 0.15 && (
+        <div class="stack-xs">
+          {mm.cats.map((c) => (
+            <button key={c.cat} type="button" class="between-c insight" style={{ minHeight: 40 }} onClick={() => onCat(c.cat)}>
+              <span class="semi clip" style={{ textAlign: 'left' }}>{catOf(s, c.cat).name}</span>
+              <span class="small strong tab-num" style={{ whiteSpace: 'nowrap' }}>{whole(c.bad)} vs {whole(c.good)}</span>
+            </button>
+          ))}
+          <span class="tiny muted">Por día tenso o bajo frente a un día agradable.</span>
+        </div>
+      )}
+      <span class="small muted">En todo el día a día: {whole(mm.all.bad)} por día tenso o bajo, frente a {whole(mm.all.good)} en un día agradable.</span>
+      {mm.wants.delta >= 0.15 && <div class="note" style={{ margin: 0 }}><Icon name="sparkle" size={18} /><span>Cuando estés mal y te den ganas de comprar, espera 10 minutos o haz una pausa en Calma primero. La tristeza puede hacer que pagues más por lo mismo (estudio de Harvard y Carnegie Mellon).</span></div>}
     </section>
   );
 }

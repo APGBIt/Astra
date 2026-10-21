@@ -1,0 +1,4 @@
+Lector de texto (OCR) de Astra
+Tesseract.js 6.0.1 y tesseract.js-core 6.0.0 (licencia Apache 2.0),
+con el modelo de español de tessdata (paquete @tesseract.js-data/spa, licencia MIT; datos de Tesseract, Apache 2.0).
+En teléfonos sin WebAssembly SIMD, el núcleo sin SIMD se descarga de cdn.jsdelivr.net.

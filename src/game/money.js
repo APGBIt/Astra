@@ -7,6 +7,7 @@ import {
   gainXP, addGold, bossFeed, inStats,
 } from './logic.js';
 import { CATEGORY_GROUPS } from './content.js';
+import { ensureLoans, openLoans, leftOf } from './loans.js';
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const CURS = ['DOP', 'USD'];
@@ -501,11 +502,23 @@ export function recurringSuggestions(s, today, { months = 4, max = 4 } = {}) {
     if (!groups.has(id)) groups.set(id, { id, kind: k, key, list: [] });
     groups.get(id).list.push(t);
   }
-  const planned = new Set((s.money.plans || []).map((p) => `${p.kind}:${merchantKey(p.name)}`));
+  const plans = s.money.plans || [];
+  const planned = new Set(plans.map((p) => `${p.kind}:${merchantKey(p.name)}`));
   const dismissed = new Set(s.money.recurNo || []);
+  // Lo que ya pagaste como parte de tu plan (1.10): Altice ligado a «Internet y cable» no se vuelve a sugerir.
+  const linked = new Set();
+  for (const p of plans) for (const v of Object.values(p.done || {})) if (v && v !== 'skip') linked.add(v);
+  // Un pago de tu plan con otro nombre, pero de la misma categoría y con monto y día parecidos.
+  const samePlan = (kind, cat, avg, day) => plans.some((p) => {
+    if (p.kind !== kind || p.cat !== cat || !p.freq || p.freq.type !== 'month') return false;
+    const amt = planDOP(s, p, today);
+    if (!(amt > 0) || Math.abs(amt - avg) > Math.max(amt, avg) * 0.25) return false;
+    return (p.freq.days || []).some((d) => dayGap(Math.min(30, d), Math.min(30, day)) <= 5);
+  });
   const out = [];
   for (const g of groups.values()) {
     if (planned.has(g.id) || dismissed.has(g.id)) continue;
+    if (g.list.some((t) => linked.has(t.id))) continue;
     const byMonth = new Map();
     for (const t of g.list) { const mk = monthKey(t.day); if (!byMonth.has(mk)) byMonth.set(mk, t); }
     if (byMonth.size < 2 || g.list.length > byMonth.size + 1) continue; // el súper de cada semana no es un pago fijo
@@ -518,6 +531,7 @@ export function recurringSuggestions(s, today, { months = 4, max = 4 } = {}) {
     const days = list.map((t) => Number(t.day.slice(8)));
     if (days.some((d) => days.some((e) => dayGap(d, e) > 5))) continue;
     const day = days[days.length - 1];
+    if (samePlan(g.kind, last.cat, avg, day)) continue;
     out.push({
       id: g.id, kind: g.kind, name: last.merchant, amount: r2(txOrig(last)), currency: txCur(last), cat: last.cat,
       account: last.account || '', day: day >= 29 ? 31 : day, count: list.length, variable: amts.some((a) => Math.abs(a - avg) > avg * 0.03),
@@ -628,10 +642,13 @@ export function untilPayday(s, today) {
   const bal = balances(s);
   const t = moneyTotals(s, today, bal);
   const items = next.date > today ? dueItems(s, today, addDays(next.date, -1), today, { bal }).filter((it) => it.kind === 'gasto' && !(it.type === 'plan' && it.viaCard) && !it.estimate) : [];
-  const pay = r2(items.reduce((a, it) => a + it.dop, 0));
+  // Lo que quedaste en pagarle a alguien antes de cobrar (1.10).
+  const rate = fxRate(s, today);
+  const loans = openLoans(s, 'yo').filter((l) => l.due && l.due < next.date).map((l) => ({ l, dop: toDOP(leftOf(l), l.currency, rate) }));
+  const pay = r2(items.reduce((a, it) => a + it.dop, 0) + loans.reduce((a, x) => a + x.dop, 0));
   const days = diffDays(today, next.date);
   const free = t.ready ? r2(t.liquid - pay) : null;
-  return { next, days, items, pay, free, perDay: free != null && days > 0 ? r2(free / days) : null, liquid: t.liquid, savings: t.savings, ready: t.ready };
+  return { next, days, items, loans, pay, free, perDay: free != null && days > 0 ? r2(free / days) : null, liquid: t.liquid, savings: t.savings, ready: t.ready };
 }
 
 // ----- Presupuestos: lo de cada mes, el sobrante que pasa y el ritmo -----
@@ -933,4 +950,6 @@ export function ensureMoneyPlus(s) {
     if (t.noStats !== undefined && !t.noStats) delete t.noStats;
     if (t.split && (typeof t.split !== 'object' || !t.split.id || !(Number(t.split.total) > 0))) delete t.split;
   }
+  // 1.10: préstamos con personas.
+  ensureLoans(s);
 }

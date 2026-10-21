@@ -173,20 +173,24 @@ const CAT_IDS = SPEND.filter((c) => !['deuda', 'ahorro', 'terceros', 'familia'].
 const INCOME_IDS = CATEGORIES.filter((c) => c.type === 'ingreso').map((c) => c.id).join('|');
 
 export function receiptPrompt() {
-  return `Eres un asistente contable en República Dominicana. La imagen es un recibo o factura de compra.
+  return `Eres un asistente contable en República Dominicana. La imagen es un recibo o factura de compra, o un comprobante de transferencia o de pago (por ejemplo, una captura de la app del banco).
 Extrae los datos tal como aparecen; no inventes nada. Si un dato no se ve, usa null.
+- "tipo": "recibo" si es una factura o recibo de compra; "transferencia" si es un comprobante de transferencia o de pago.
 - Montos como números sin símbolos ni separadores de miles (ej. 1500.50).
 - ITBIS es el impuesto (normalmente 18 %). "Ley" o "propina legal" es el 10 % de servicio.
 - NCF o e-NCF es el comprobante fiscal (ej. B0100000123 o E310000000123). RNC es el número del comercio.
 - Fecha en formato AAAA-MM-DD.
-- Elige la categoría más probable entre: ${CAT_IDS}.
+- En un comprobante: el beneficiario (a quién se envió), el banco de destino, los últimos 4 dígitos de la cuenta de origen y de destino, la referencia o número de confirmación, el concepto, la comisión y el impuesto (DGII, 0.15 % o 0.20 %) si aparecen. "pago_de": "tarjeta" si es el pago de una tarjeta de crédito, "servicio" si es una factura de luz, agua, teléfono o internet, "prestamo" si es la cuota de un préstamo, "tercero" si es una transferencia a otra persona.
+- En un recibo, elige la categoría más probable entre: ${CAT_IDS}.
 Devuelve JSON con esta forma:
-{"comercio": "texto", "rnc": "texto o null", "ncf": "texto o null", "fecha": "AAAA-MM-DD o null", "hora": "HH:MM o null", "subtotal": número o null, "itbis": número o null, "propina": número o null, "total": número, "moneda": "DOP" o "USD", "metodo_pago": "efectivo, tarjeta, transferencia o null", "tarjeta_ultimos4": "texto o null", "categoria": "id", "articulos": [{"descripcion": "texto", "total": número}], "dudas": ["nombres de campos que no se leen con seguridad"]}
+{"tipo": "recibo" o "transferencia", "comercio": "texto", "rnc": "texto o null", "ncf": "texto o null", "fecha": "AAAA-MM-DD o null", "hora": "HH:MM o null", "subtotal": número o null, "itbis": número o null, "propina": número o null, "total": número, "moneda": "DOP" o "USD", "metodo_pago": "efectivo, tarjeta, transferencia o null", "tarjeta_ultimos4": "texto o null", "categoria": "id", "articulos": [{"descripcion": "texto", "total": número}], "beneficiario": "texto o null", "banco_destino": "texto o null", "cuenta_origen_ultimos4": "texto o null", "cuenta_destino_ultimos4": "texto o null", "referencia": "texto o null", "concepto": "texto o null", "comision": número o null, "impuesto": número o null, "pago_de": "tarjeta, servicio, prestamo, tercero o null", "dudas": ["nombres de campos que no se leen con seguridad"]}
 Incluye como máximo 25 artículos.`;
 }
 
+const l4 = (v) => (String(v || '').match(/(\d{4})\s*$/) || [])[1] || '';
 export function checkReceipt(r) {
   const out = {
+    kind: r.tipo === 'transferencia' ? 'transferencia' : 'recibo',
     merchant: String(r.comercio || '').slice(0, 60),
     rnc: r.rnc || '',
     ncf: r.ncf || '',
@@ -203,7 +207,17 @@ export function checkReceipt(r) {
     items: Array.isArray(r.articulos) ? r.articulos.slice(0, 25).map((a) => ({ desc: String(a.descripcion || '').slice(0, 60), total: Number(a.total) || 0 })) : [],
     doubts: new Set(Array.isArray(r.dudas) ? r.dudas.map(String) : []),
   };
-  if (out.subtotal != null && out.total) {
+  if (out.kind === 'transferencia') {
+    const pay = ['tarjeta', 'servicio', 'prestamo', 'tercero'].includes(r.pago_de) ? r.pago_de : 'tercero';
+    Object.assign(out, {
+      payKind: pay, toName: String(r.beneficiario || '').slice(0, 60), toBank: String(r.banco_destino || '').slice(0, 40),
+      fromLast4: l4(r.cuenta_origen_ultimos4), toLast4: l4(r.cuenta_destino_ultimos4), cardLast4: pay === 'tarjeta' ? l4(r.cuenta_destino_ultimos4 || r.tarjeta_ultimos4) : '',
+      ref: String(r.referencia || '').slice(0, 40), concept: String(r.concepto || '').slice(0, 80), fee: Number(r.comision) || 0, tax: Number(r.impuesto) || 0,
+    });
+    out.cat = pay === 'tarjeta' ? 'pago_tarjeta' : pay === 'prestamo' ? 'deuda' : pay === 'servicio' ? out.cat : 'terceros';
+    out.merchant = pay === 'tarjeta' ? 'Pago de tarjeta' : pay === 'servicio' ? out.merchant : out.toName || out.merchant || 'Transferencia';
+  }
+  if (out.kind === 'recibo' && out.subtotal != null && out.total) {
     const sum = out.subtotal + out.itbis + out.tip;
     if (Math.abs(sum - out.total) > 1) out.doubts.add('total');
   }

@@ -21,8 +21,10 @@ import { AREA, MOOD_QUADS } from '../game/content.js';
 import {
   playerLevel, className, energyInfo, statuses, dayMissions, isDone, completeMission, undoMission, slipMission,
   missionXP, activeCampaigns, campaignProgress, currentChapter, inRecovery, autoLabel, logHealth, dailyGoal,
-  usePotion, fmtHours, bossHP, todosDue, pendingTodos, sortTodos, duePeople, winPromptDue, txKind, txDOP, accountLabel,
+  usePotion, fmtHours, bossHP, todosDue, pendingTodos, sortTodos, duePeople, winPromptDue, txKind, txDOP, accountLabel, fmtClock, timeToMin,
 } from '../game/logic.js';
+import { dosesFor, logDose } from '../game/health.js';
+import { DoseRow } from './HealthPlus.jsx';
 
 // Hoy: lo esencial en una sola pantalla. Un aviso a la vez, registro rápido sin salir de aquí
 // y una sola lista con todo lo del día (misiones, pendientes y tareas del hogar), para hacerlo ahí mismo.
@@ -49,9 +51,17 @@ export function Home() {
     || (s.profile.classKeys.includes(b.area) - s.profile.classKeys.includes(a.area))
     || (a.cost - b.cost));
   const todos = sortTodos(todosDue(s, today));
-  const items = [...missions.map((m) => ({ kind: 'm', m })), ...todos.map((t) => ({ kind: 't', t }))];
+  // Medicinas y suplementos de hoy (1.10): primero las que ya tocan.
+  const doses = dosesFor(s, today);
+  const nowM = hourMin();
+  const pendingDoses = doses.filter((d) => !d.status);
+  const takenDoses = doses.filter((d) => d.status === 'si');
+  const dueDoses = pendingDoses.filter((d) => timeToMin(d.time) <= nowM + 30);
+  const laterDoses = pendingDoses.filter((d) => timeToMin(d.time) > nowM + 30);
+  const items = [...dueDoses.map((d) => ({ kind: 'd', d })), ...missions.map((m) => ({ kind: 'm', m })), ...todos.map((t) => ({ kind: 't', t })), ...laterDoses.map((d) => ({ kind: 'd', d }))];
   const doneTodos = s.todos.filter((t) => t.done === today);
-  const doneCount = done.length + doneTodos.length;
+  const doneCount = done.length + doneTodos.length + takenDoses.length;
+  const markDose = (d, st) => { act((x, t, ev) => logDose(x, today, d.key, st, t, ev)); if (st === 'si') toast(`${d.med.name}: tomada`, 'pill'); };
   const total = items.length + doneCount;
   const planned = pending.reduce((a, m) => a + m.cost, 0);
   const openTodos = pendingTodos(s).length;
@@ -116,7 +126,8 @@ export function Home() {
           <div>
             {(more ? items : items.slice(0, SHOW)).map((x) => (x.kind === 'm'
               ? <MissionRow key={x.m.id} m={x.m} done={false} onToggle={() => toggle(x.m)} />
-              : <TodoRow key={x.t.id} s={s} t={x.t} today={today} />))}
+              : x.kind === 'd' ? <DoseRow key={x.d.key} d={x.d} late={timeToMin(x.d.time) + 60 < nowM} href="#/area/salud" onMark={(st) => markDose(x.d, st)} />
+                : <TodoRow key={x.t.id} s={s} t={x.t} today={today} />))}
           </div>
           {items.length > SHOW && (
             <button type="button" class="link-btn" style={{ alignSelf: 'flex-start' }} aria-expanded={more ? 'true' : 'false'} onClick={() => setMore(!more)}>
@@ -134,6 +145,7 @@ export function Home() {
               {showDone && (
                 <div style={{ padding: '0 0 4px' }}>
                   {done.map((m) => <MissionRow key={m.id} m={m} done onToggle={() => toggle(m)} />)}
+                  {takenDoses.map((d) => <DoseRow key={d.key} d={d} href="#/area/salud" onMark={(st) => markDose(d, st)} />)}
                   {doneTodos.map((t) => <TodoRow key={t.id} s={s} t={t} today={today} />)}
                 </div>
               )}
@@ -410,6 +422,8 @@ function MoodSheet({ onClose, onAction }) {
 }
 
 // ---------- Fila de una misión (también en las áreas) ----------
+
+const hourMin = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); };
 
 export function MissionRow({ m, done, onToggle }) {
   return (

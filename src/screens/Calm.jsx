@@ -11,6 +11,7 @@ import { logCalmSession, setCalmAfter, calmStats, calmWeek, programState, addWor
 import { usePotion } from '../game/logic.js';
 import { go } from '../app/router.js';
 import { bell, startAmbient, stopAmbient, speak, hush, canSpeak, keepAwake, pref, setPref, unlockAudio } from '../app/sound.js';
+import { CopingSheet } from './Coping.jsx';
 
 // Calma: respiraciones, meditaciones guiadas, meditación libre con campanas y sonidos, pausa SOS,
 // programa de siete días y herramientas para la mente (descarga mental y replantear un pensamiento).
@@ -283,6 +284,7 @@ export function Calm({ query }) {
             <button type="button" class="btn sm" onClick={() => setPlay(sosSession())}><Icon name="play" size={16} fill />Pausa SOS · 3 min</button>
             <button type="button" class="btn sm ghost" onClick={() => setSheet('ayuda')}>Necesito ayuda</button>
           </div>
+          {(s.mind.cards || []).length > 0 && <button type="button" class="link-btn" style={{ alignSelf: 'flex-start', minHeight: 32, color: 'inherit' }} onClick={() => setSheet('cartas')}><Icon name="cards" size={15} />Leer tus cartas para días difíciles</button>}
         </section>
 
         <section class="card" aria-label={PROGRAM.title}>
@@ -343,6 +345,11 @@ export function Calm({ query }) {
             <span class="stack-xs grow"><span class="strong">Replantear un pensamiento</span><span class="tiny muted semi">Revisa un pensamiento que te pesa y busca una forma más justa de verlo.</span></span>
             <Icon name="right" size={18} />
           </button>
+          <button type="button" class="lrow" style={{ minHeight: 64 }} onClick={() => setSheet('cartas')}>
+            <span class="tile sm" style={{ background: areaSoft('emocional'), color: areaColor('emocional') }}><Icon name="cards" size={18} /></span>
+            <span class="stack-xs grow"><span class="strong">Tus cartas para días difíciles</span><span class="tiny muted semi">{(s.mind.cards || []).length ? `${(s.mind.cards || []).length} ${(s.mind.cards || []).length === 1 ? 'carta' : 'cartas'}: frases y acciones que te ayudan.` : 'Escribe frases y acciones que te ayudan cuando estás tenso o bajo.'}</span></span>
+            <Icon name="right" size={18} />
+          </button>
           <a class="lrow" style={{ minHeight: 64, textDecoration: 'none', color: 'var(--ink)' }} href="#/diario">
             <span class="tile sm" style={{ background: areaSoft('crecimiento'), color: areaColor('crecimiento') }}><Icon name="book" size={18} /></span>
             <span class="stack-xs grow"><span class="strong">Diario</span><span class="tiny muted semi">Escribe lo que sientes, tres cosas buenas o lo que aprendiste.</span></span>
@@ -387,6 +394,7 @@ export function Calm({ query }) {
       {sheet === 'descarga' && <WorrySheet onClose={() => setSheet(null)} />}
       {sheet === 'replantear' && <ThoughtSheet onClose={() => setSheet(null)} />}
       {sheet === 'ayuda' && <HelpSheet onClose={() => setSheet(null)} />}
+      {sheet === 'cartas' && <CopingSheet onClose={() => setSheet(null)} />}
       {play && <CalmPlayer session={play} onClose={() => setPlay(null)} />}
     </>
   );

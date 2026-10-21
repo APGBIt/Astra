@@ -73,6 +73,7 @@ export function defaultState(today = dayKey()) {
     campaigns: [],
     bosses: [],
     health: {},
+    meds: [],
     moods: [],
     inn: {},
     people: [],
@@ -823,9 +824,22 @@ export function logHealth(s, day, patch, today, ev) {
       let extra = Object.values(h.exTypes).reduce((a, b) => a + b, 0) - h.exercise;
       for (const k of Object.keys(h.exTypes).reverse()) { if (extra <= 0) break; const cut = Math.min(extra, h.exTypes[k]); h.exTypes[k] -= cut; extra -= cut; if (!h.exTypes[k]) delete h.exTypes[k]; }
     }
-    if (h.exercise > before) gainXP(s, 'salud', Math.min(30, Math.round((h.exercise - before) / 2)), day, ev);
+    // Intensidad (1.10): los minutos intensos se guardan aparte y cuentan doble para la meta de la OMS.
+    // Si no se dice, se usa la del tipo (correr y deporte, intensos). Gimnasio o pesas cuenta como día de fuerza.
+    const added = h.exercise - before;
+    const type = EXERCISE_TYPES.find((x) => x.key === patch.exType);
+    const inten = patch.exIntensity || (type && type.intensity) || 'moderada';
+    let addedVig = 0;
+    if (added > 0 && inten === 'intensa') { addedVig = added; h.exVig = (h.exVig || 0) + added; }
+    if (h.exVig) { h.exVig = Math.min(h.exVig, h.exercise); if (!h.exVig) delete h.exVig; }
+    if (added > 0 && (patch.strength || (patch.strength === undefined && type && type.strength))) {
+      if (!h.strength) { h.strength = true; gainXP(s, 'salud', 5, day, ev); }
+    }
+    if (h.exercise > before) gainXP(s, 'salud', Math.min(30, Math.round((added + addedVig) / 2)), day, ev);
     if (h.exercise >= 20) bossFeed(s, 'training', 1, day, ev);
   }
+  if (patch.exercise == null && patch.strength !== undefined) h.strength = !!patch.strength || undefined;
+  if (h.strength === undefined) delete h.strength;
   if (day === today) autoCheck(s, today, ev);
   checkAchievements(s, today, ev);
 }
@@ -1109,6 +1123,8 @@ export function defaultMoney() {
     groupBudgets: {},
     debts: { method: 'avalanche', extra: 0, items: [] },
     lastBulk: null,
+    // 1.10
+    loans: [],
   };
 }
 
@@ -2283,6 +2299,8 @@ export function sleepInsights(s, today) {
   const wakes = nights.map((x) => timeToMin(x.wake)).filter((m) => m != null);
   const mean = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
   const spread = beds.length >= 3 ? Math.max(...beds) - Math.min(...beds) : null;
+  // Regularidad al levantarte (1.10): también cuenta (Windred y colegas, Sleep 2023: la regularidad predice mejor que las horas).
+  const wakeSpread = wakes.length >= 3 ? Math.max(...wakes) - Math.min(...wakes) : null;
   const avgBed = beds.length ? minToTime(mean(beds) + 720) : null;
   const avgWake = wakes.length ? minToTime(mean(wakes)) : null;
   const q = nights.map((x) => x.quality).filter((v) => v >= 1 && v <= 4);
@@ -2292,10 +2310,11 @@ export function sleepInsights(s, today) {
   for (let i = 1; i <= 7; i++) { const inn = s.inn[addDays(today, -i)]; if (inn && Array.isArray(inn.routine)) routine.push(inn.routine.length); }
   let tip = null;
   if (n >= 2 && debt >= 3) tip = { icon: 'moon', text: `Te faltaron ${fmtHours(debt)} de sueño esta semana. Acostarte 30 minutos antes unos días la paga sin dormir de más el fin de semana.` };
-  else if (spread != null && spread > 90) tip = { icon: 'clock', text: `Tu hora de acostarte varía ${fmtHours(spread / 60)} entre noches. Una hora fija (más o menos media hora) hace que te duermas antes y despiertes con más energía.` };
+  else if (spread != null && spread > 90) tip = { icon: 'clock', text: `Tu hora de acostarte varía ${fmtHours(Math.round(spread / 15) / 4)} entre noches. Una hora fija (más o menos media hora) hace que te duermas antes y despiertes con más energía.` };
+  else if (wakeSpread != null && wakeSpread > 120) tip = { icon: 'clock', text: `Te levantas a horas muy distintas (hasta ${fmtHours(Math.round(wakeSpread / 15) / 4)} de diferencia). Levantarte a la misma hora todos los días, también el fin de semana, ordena tu reloj: dormir con horario parejo importa tanto como las horas.` };
   else if (q.length >= 3 && mean(q) < 2.5) tip = { icon: 'eyeoff', text: 'Duermes las horas, pero descansas poco. Prueba la rutina para dormir de la posada: sin pantallas y cena ligera.' };
   else if (n >= 5 && met >= 5) tip = { icon: 'star', text: 'Buen descanso: cumpliste tu meta casi todas las noches. Así se sostiene la energía.' };
-  return { goal, n, avg, debt, met, spread, avgBed, avgWake, quality: q.length ? mean(q) : null, wakeAt, bedAt, routineNights: routine.filter((x) => x > 0).length, tip };
+  return { goal, n, avg, debt, met, spread, wakeSpread, avgBed, avgWake, quality: q.length ? mean(q) : null, wakeAt, bedAt, routineNights: routine.filter((x) => x > 0).length, tip };
 }
 
 // Hora sugerida para acostarte según a qué hora te levantas y tu meta de sueño.

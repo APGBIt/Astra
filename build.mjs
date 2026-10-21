@@ -117,13 +117,19 @@ writeFileSync('dist/sw.js', `// Astra · caché para usar sin conexión (no guar
 const CACHE = 'astra-${version}';
 const CORE = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE)).then(() => self.skipWaiting())); });
-self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
+// El lector de texto (ocr/) vive en su propia caché: no se vuelve a descargar con cada versión de la app.
+const OCR = 'astra-ocr-1';
+self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE && k !== OCR).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (req.mode === 'navigate') {
     e.respondWith(fetch(req).then((r) => { const cp = r.clone(); caches.open(CACHE).then((c) => c.put('./index.html', cp)); return r; }).catch(() => caches.match('./index.html')));
+    return;
+  }
+  if (url.origin === location.origin && url.pathname.includes('/ocr/')) {
+    e.respondWith(caches.open(OCR).then((c) => c.match(req).then((hit) => hit || fetch(req).then((r) => { if (r.ok) c.put(req, r.clone()); return r; }))));
     return;
   }
   if (url.origin === location.origin || url.host.endsWith('fonts.googleapis.com') || url.host.endsWith('fonts.gstatic.com')) {
@@ -194,8 +200,10 @@ Tus datos se guardan en tu teléfono y, si lo conectas, en tu propio Google Driv
    Android (Chrome): menú ⋮ → «Instalar app».
    iPhone (Safari): Compartir → «Agregar a inicio».
 
-4) LECTURA DE RECIBOS CON IA
-   Personaje → Ajustes → Lectura con IA. Lo más seguro es el servidor propio (carpeta server/).
+4) LECTURA DE RECIBOS Y COMPROBANTES
+   Finanzas → Recibo: toma la foto o sube la captura. Sin IA, Astra lee el texto en el teléfono (OCR, carpeta ocr/):
+   la primera vez descarga el lector (unos 6 MB) y después funciona sin internet.
+   Con IA lee mejor: Personaje → Ajustes → Lectura con IA. Lo más seguro es el servidor propio (carpeta server/).
 
 5) TUS DATOS
    Personaje → Ajustes → «Descargar copia» para guardar tu progreso o pasarlo a otro teléfono.
@@ -257,6 +265,24 @@ document.getElementById('copy').addEventListener('click', async function () {
 </script>
 </body>
 </html>
+`);
+
+// Lector de texto para recibos y comprobantes (OCR, 1.10): Tesseract.js en español, junto a la app.
+// Se descarga la primera vez que se usa (unos 6 MB) y luego queda guardado para usarlo sin internet.
+rmSync('dist/ocr', { recursive: true, force: true });
+mkdirSync('dist/ocr', { recursive: true });
+for (const [from, to] of [
+  ['node_modules/tesseract.js/dist/tesseract.min.js', 'tesseract.min.js'],
+  ['node_modules/tesseract.js/dist/worker.min.js', 'worker.min.js'],
+  ['node_modules/tesseract.js-core/tesseract-core-simd-lstm.wasm.js', 'tesseract-core-simd-lstm.wasm.js'],
+  ['node_modules/@tesseract.js-data/spa/4.0.0_best_int/spa.traineddata.gz', 'spa.traineddata.gz'],
+  ['node_modules/tesseract.js/LICENSE.md', 'LICENSE-tesseract.js.md'],
+  ['node_modules/tesseract.js-core/LICENSE', 'LICENSE-tesseract.js-core.txt'],
+]) cpSync(from, `dist/ocr/${to}`);
+writeFileSync('dist/ocr/LEEME.txt', `Lector de texto (OCR) de Astra
+Tesseract.js ${JSON.parse(readFileSync('node_modules/tesseract.js/package.json', 'utf8')).version} y tesseract.js-core ${JSON.parse(readFileSync('node_modules/tesseract.js-core/package.json', 'utf8')).version} (licencia Apache 2.0),
+con el modelo de español de tessdata (paquete @tesseract.js-data/spa, licencia MIT; datos de Tesseract, Apache 2.0).
+En teléfonos sin WebAssembly SIMD, el núcleo sin SIMD se descarga de cdn.jsdelivr.net.
 `);
 
 // Copia para GitHub Pages (se publica la carpeta docs/).

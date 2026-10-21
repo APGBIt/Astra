@@ -210,7 +210,7 @@ export function plannedMonthlyIncome(s, today) {
 }
 
 // Promedio de lo que entró en los últimos meses completos (sin reembolsos ni préstamos que te devuelven).
-const NOT_EARNED = new Set(['reembolsos', 'prestamo_cobrado']);
+const NOT_EARNED = new Set(['reembolsos', 'prestamo_cobrado', 'prestamo_recibido']);
 export function avgMonthlyIncome(s, today, n = 3) {
   const mks = [prevMk(monthKey(today))];
   while (mks.length < n) mks.push(prevMk(mks[mks.length - 1]));

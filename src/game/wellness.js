@@ -520,3 +520,21 @@ export const HELP = {
   lineDesc: 'Línea nacional y gratuita, atendida por psicólogos: orientación, apoyo emocional y, si hace falta, referimiento a un servicio de salud.',
   abroad: 'Si vives en otro país, busca la línea de ayuda de tu país o el número de emergencias local.',
 };
+
+// ---------- Tus cartas para días difíciles (1.10) ----------
+// Como las «coping cards» de MindShift (Anxiety Canada): frases y acciones que te escribes en un día tranquilo
+// para leerlas cuando estés tenso o bajo. `quads`: 0 = tenso, 2 = bajo.
+export const COPING_IDEAS = [
+  { kind: 'frase', text: 'Esto es incómodo, pero puedo manejarlo.', quads: [0, 2] },
+  { kind: 'frase', text: 'Lo que siento es real, pero no siempre dice la verdad.', quads: [0, 2] },
+  { kind: 'frase', text: 'Un paso a la vez: solo el siguiente.', quads: [0, 2] },
+  { kind: 'frase', text: 'No tengo que resolverlo todo hoy.', quads: [0] },
+  { kind: 'frase', text: 'Ya he salido de días así antes.', quads: [2] },
+  { kind: 'frase', text: 'Me hablo como le hablaría a alguien que quiero.', quads: [0, 2] },
+  { kind: 'accion', text: 'Respirar un minuto: inhalo en 4, exhalo en 6.', quads: [0] },
+  { kind: 'accion', text: 'Salir a caminar 10 minutos.', quads: [0, 2] },
+  { kind: 'accion', text: 'Escribirle a alguien de confianza.', quads: [2] },
+  { kind: 'accion', text: 'Tomar agua y comer algo.', quads: [2] },
+  { kind: 'accion', text: 'Poner la canción que me sube el ánimo.', quads: [2] },
+  { kind: 'accion', text: 'Sacar de la cabeza lo que me preocupa: escribirlo y ver qué depende de mí.', quads: [0] },
+];

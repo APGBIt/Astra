@@ -2,6 +2,37 @@
 
 Tu vida en modo juego de rol. App web instalable (y futura APK) para crecer en seis áreas de la vida con barras de vitalidad y energía, caminos, misiones y jefes.
 
+## Novedades de la versión 1.10 (lector de recibos sin IA, préstamos con personas, patrimonio, medicinas, actividad y cartas para días difíciles)
+
+Ideas tomadas de Monarch (patrimonio mes a mes), Apple Salud (medicamentos con horario, tomada u omitida), Google Fit y la OMS (los minutos intensos cuentan doble; fuerza 2 días por semana), MindShift (tarjetas para afrontar), Bearable y How We Feel (patrones del ánimo), y de estudios sobre gastos y emociones (Cryder, Lerner y colegas, 2008; Rick y colegas, Universidad de Míchigan, 2014) y sobre la regularidad del sueño (Windred y colegas, *Sleep* 2023).
+
+- **Lector de recibos y comprobantes en el teléfono (OCR, sin IA ni clave)**:
+  - Al tomar la foto o subir la imagen, lee el texto aquí mismo: de un **recibo**, el comercio, RNC, NCF, fecha, ITBIS, propina y total; de un **comprobante** de transferencia o de pago, el monto, el beneficiario, el banco, las cuentas (por sus últimos 4), la referencia, el concepto, la comisión y el impuesto.
+  - Un comprobante se vuelve movimiento con su cuenta de origen, la referencia en la nota y el impuesto a la transferencia (y la comisión, si el comprobante la trae); un pago de tarjeta, transferencia a esa tarjeta. Si lo leyó como recibo, «¿Es un comprobante?» lo vuelve a leer.
+  - Lo que no lee con seguridad sale marcado para revisar. Las capturas en modo oscuro también se leen.
+  - La primera vez descarga el lector (unos 6 MB); después funciona sin internet y la imagen no sale del teléfono. Si tienes la IA configurada, primero lee la IA y el lector queda de respaldo. El código QR de las facturas electrónicas se sigue leyendo.
+  - En un movimiento con foto, «Leer los datos de la foto» llena lo que falta.
+- **Te deben y debes** (Finanzas → Cuentas): lo que prestas o te prestan otras personas, en pesos o dólares, con fecha acordada, abonos, «perdonar lo que falta» y aviso 3 días antes, un día antes y el mismo día.
+  - El dinero que sale o entra se anota en tu cuenta para que el saldo cuadre, pero no cuenta como gasto ni como ingreso. Una transferencia que ya anotaste se marca como préstamo desde el movimiento.
+  - Lo que te deben suma a lo que tienes y lo que debes resta; lo que debes pagarle a alguien antes de cobrar se descuenta de lo que puedes gastar hasta el cobro.
+- **Tu patrimonio mes a mes**: lo que tienes menos lo que debes al cierre de cada mes (hasta 12), con el detalle de cada mes y cuánto cambió.
+- **Tu ánimo y tus gastos** (Análisis y Emociones): cuánto gastas en gustos (comida fuera, delivery, compras, ocio…) los días tensos o bajos frente a los agradables, y en qué. Aparece con al menos 5 días de cada lado.
+- **Finanzas más justas**:
+  - Las flechas de las categorías comparan con lo que solías llevar **a esta misma altura del mes**, no con meses completos: el alquiler que pagas el día 1 ya no sale «subiendo».
+  - El mes en curso sale marcado «en curso» en el flujo de caja; la proyección del mes explica mejor qué falta por pagar.
+  - La regla 50/30/20 usa lo que esperas cobrar en el mes, no solo lo que ya cobraste.
+  - «Pagos que se repiten» no sugiere lo que ya está en tu plan; la revisión semanal respeta lo que no cuenta en el análisis; montos redondeados donde los centavos estorbaban.
+- **Salud**:
+  - **Medicinas y suplementos**: con dosis, horas, días de la semana y fechas; se marcan tomadas u omitidas en Salud y en **Tu día**, avisan a la hora de cada toma y muestran cuántas tomaste en 30 días. Tomarlas todas da +3 XP de Vigor; no tomarlas no quita nada.
+  - **Actividad con intensidad**: moderada o intensa (la intensa cuenta doble para tu meta de 150 minutos a la semana) y días de fuerza (meta: 2). Correr propone «intensa» y el gimnasio, «fuerza».
+  - **Tus últimas semanas**: 8 semanas de sueño, pasos, actividad y agua, y si vas mejor o peor que las 4 semanas anteriores.
+  - **Regularidad del sueño**: también a qué hora te levantas, con un consejo si cambia mucho.
+- **Emociones**:
+  - Los check-ins se **corrigen o borran** tocándolos.
+  - **Semana a semana** (12 semanas) y **por momento del día**: qué parte de tus check-ins fue agradable.
+  - **Tus cartas para días difíciles**: frases y acciones que escribes en un día tranquilo; Astra te las muestra después de un check-in tenso o bajo, y están en Calma junto a la pausa SOS. Trae 12 ideas para empezar.
+- **Drive**: tablas nuevas «Préstamos» y «Medicinas», y en Salud los minutos intensos, los días de fuerza y las medicinas tomadas.
+
 ## Novedades de la versión 1.9 (Finanzas: filtros, totales, edición en grupo, impuesto a transferencias y horas de trabajo)
 
 Ideas tomadas de YNAB (total de lo que seleccionas), Monarch (editar varios a la vez, reglas que se aplican atrás, reportes con filtros y agrupados, presupuesto flexible por semana), Copilot (dividir un movimiento), Undebt.it (avalancha y bola de nieve) y el libro *La bolsa o la vida* (cada compra cuesta horas de tu vida).
@@ -187,20 +218,22 @@ Ideas tomadas de comparar YNAB, Monarch, Copilot, Simplifi, PocketGuard, Rocket 
 - **Caminos y metas**: eliges hasta dos caminos y una meta (plantilla o propia). Se convierte en una campaña con capítulos, tareas y un **jefe final** con barra de vida.
 - **Misiones**: hábitos, tareas únicas y malos hábitos a evitar. Se agregan en una línea: la app sugiere atributo, costo de energía y XP. Algunas se completan solas (pasos, sueño, gastos, ánimo, contactos, enfoque).
 - **Registrar**: escribe o dicta lo que hiciste («gasté 850 en el súper y caminé 40 minutos») y la app lo convierte en registros.
-- **Finanzas**: saldo y disponible de cuentas y tarjetas, corte y pago de cada tarjeta, sueldo y pagos programados, lo que viene en los próximos días, plan del mes y de la semana, presupuestos por categoría o por familia, plan para salir de deudas, proyección del mes y análisis (ritmo, flujo de caja, salud financiera, categorías y familias, comercios, gastos hormiga, costos del banco, calendario). Movimientos con período, filtros, totales por categoría y edición en grupo con deshacer; impuesto a transferencias aparte y cuántas horas de trabajo cuesta cada gasto. Importa estados de cuenta en CSV o Excel. Tres formas de registrar: recibo con IA (incluye RNC, e-NCF e ITBIS; lee el QR de facturas electrónicas), alerta del banco pegada y entrada manual o por voz.
-- **Áreas**: salud (pasos, sueño, agua, ejercicio, frutas y verduras, calma), ánimo (check-in de dos ejes con 80 emociones, año en píxeles, patrones), calma (respiraciones, meditaciones guiadas y libres, pausa SOS, descarga mental, replantear pensamientos), relaciones (frecuencia por persona, cumpleaños, WhatsApp), crecimiento (dejar de hacer, metas con progreso, cosas por lograr, libros, tarjetas de repaso, práctica, diario, rueda de la vida, valores, bienestar OMS-5) y enfoque (sesiones que se agrietan si sales de la app, cierre de jornada).
+- **Finanzas**: saldo y disponible de cuentas y tarjetas, corte y pago de cada tarjeta, sueldo y pagos programados, lo que viene en los próximos días, plan del mes y de la semana, presupuestos por categoría o por familia, plan para salir de deudas, proyección del mes y análisis (ritmo, flujo de caja, salud financiera, categorías y familias, comercios, gastos hormiga, costos del banco, calendario). Movimientos con período, filtros, totales por categoría y edición en grupo con deshacer; impuesto a transferencias aparte y cuántas horas de trabajo cuesta cada gasto. Importa estados de cuenta en CSV o Excel. Préstamos con personas (te deben y debes) y patrimonio mes a mes. Tres formas de registrar: foto del recibo o del comprobante (lector de texto en el teléfono o IA; incluye RNC, e-NCF e ITBIS y lee el QR de facturas electrónicas), alerta del banco pegada y entrada manual o por voz.
+- **Áreas**: salud (pasos, sueño, agua, ejercicio con intensidad y fuerza, frutas y verduras, calma, medicinas y suplementos con horario, últimas semanas), ánimo (check-in de dos ejes con 80 emociones, año en píxeles, patrones, semana a semana, cartas para días difíciles), calma (respiraciones, meditaciones guiadas y libres, pausa SOS, descarga mental, replantear pensamientos), relaciones (frecuencia por persona, cumpleaños, WhatsApp), crecimiento (dejar de hacer, metas con progreso, cosas por lograr, libros, tarjetas de repaso, práctica, diario, rueda de la vida, valores, bienestar OMS-5) y enfoque (sesiones que se agrietan si sales de la app, cierre de jornada).
 - **Posada** (cierre del día, tres cosas buenas e intención), **Tienda** (recompensas propias con oro, protectores de racha), **Crónica** (semana, revisión semanal, gráfico de vitalidad, XP por atributo, insignias, títulos).
 - Modo claro y oscuro, sin conexión después de la primera visita, copia de seguridad descargable y sincronización con tu propio Google Drive.
 
 ## Privacidad
 
-No hay cuentas ni servidores propios. Todo se guarda en el navegador, también el expediente, y, si la persona lo conecta, en su propio Google Drive. Nadie más tiene acceso: cada quien conecta su Drive y el conector propio solo responde a la app que tiene su clave. La IA es opcional y solo recibe la foto de un recibo o el texto que decides enviar. La copia de seguridad y el archivo de Drive incluyen el expediente: guárdalos en un lugar seguro.
+No hay cuentas ni servidores propios. Todo se guarda en el navegador, también el expediente, y, si la persona lo conecta, en su propio Google Drive. Nadie más tiene acceso: cada quien conecta su Drive y el conector propio solo responde a la app que tiene su clave. La IA es opcional y solo recibe la foto de un recibo o el texto que decides enviar. El lector de texto (OCR) trabaja en el teléfono: la imagen no sale de ahí. La copia de seguridad y el archivo de Drive incluyen el expediente: guárdalos en un lugar seguro.
 
 La tasa del dólar se pide una vez al día a una fuente pública (currency-api por jsDelivr, con ExchangeRate-API de respaldo): solo se pide la tasa, sin enviar ningún dato tuyo. Se puede apagar en Finanzas → Dólares y pesos. Los enlaces para importar movimientos llevan los datos después del «#», que el navegador no envía a ningún servidor.
 
-## Lectura de recibos con IA
+## Lectura de recibos y comprobantes
 
-En **Personaje → Ajustes → Lectura con IA**:
+Sin configurar nada, Astra lee el texto de la foto en el teléfono con [Tesseract.js](https://github.com/naptha/tesseract.js) (Apache 2.0) y el modelo de español de [tessdata](https://github.com/tesseract-ocr/tessdata_best). Sus archivos están en `ocr/`, junto a la app: se descargan la primera vez que se usan (unos 6 MB) y quedan guardados para usarlos sin internet. Solo en teléfonos muy viejos, sin WebAssembly SIMD, el núcleo del lector se pide a jsDelivr.
+
+Para leer con IA (entiende mejor las fotos difíciles y separa los artículos), en **Personaje → Ajustes → Lectura con IA**:
 
 - **Servidor propio** (recomendado): publica `server/worker.js` en Cloudflare Workers. Instrucciones en [`server/README.md`](server/README.md).
 - **Clave en este teléfono**: pega tu clave de la API de Claude (solo en un teléfono que sea tuyo).
@@ -216,8 +249,8 @@ npm run build   # genera dist/, docs/ (GitHub Pages), artifact/ y astra-web.zip
 npm test        # pruebas de la lógica del juego y del analizador de texto
 ```
 
-- `src/game`: reglas del juego (`logic.js`), dinero (`money.js`: saldos, tarjetas, pagos programados, flujo y presupuestos; `ledger.js`: filtros, totales, edición en grupo, reglas, dividir y horas de trabajo; `debts.js`: plan para salir de deudas; `stats.js`: análisis), contenido (`content.js`), analizador de frases y alertas (`parse.js`), frase y palabra del día (`daily.js`, `quotes.js`, `words.js`), fusión de cambios entre equipos (`merge.js`) y tablas legibles (`tables.js`).
-- `src/app`: estado y almacenamiento (`store.js`), sincronización (`sync.js`, `transports.js`, `google.js`), conector de Apps Script (`connector.js`), fotos (`photos.js`, `idb.js`) y configuración pública (`config.js`: ID de cliente de Google para «Conectar con Google»).
+- `src/game`: reglas del juego (`logic.js`), dinero (`money.js`: saldos, tarjetas, pagos programados, flujo y presupuestos; `ledger.js`: filtros, totales, edición en grupo, reglas, dividir y horas de trabajo; `debts.js`: plan para salir de deudas; `loans.js`: préstamos con personas; `worth.js`: patrimonio mes a mes; `scan.js`: lo que dice un recibo o un comprobante; `stats.js`: análisis), salud (`health.js`: medicinas, actividad y últimas semanas), mente (`mind.js`, `wellness.js`), contenido (`content.js`), analizador de frases y alertas (`parse.js`), frase y palabra del día (`daily.js`, `quotes.js`, `words.js`), fusión de cambios entre equipos (`merge.js`) y tablas legibles (`tables.js`).
+- `src/app`: estado y almacenamiento (`store.js`), sincronización (`sync.js`, `transports.js`, `google.js`), conector de Apps Script (`connector.js`), fotos (`photos.js`, `idb.js`), lector de texto (`ocr.js`) y configuración pública (`config.js`: ID de cliente de Google para «Conectar con Google»).
 - `src/ai`: lectura de recibos y frases con IA.
 - `src/screens` y `src/ui`: pantallas y componentes (Preact).
 - `server`: lector de recibos opcional para Cloudflare Workers.

@@ -324,15 +324,16 @@ export const SLEEP_LATENCY_MIN = 15;
 
 // ---------- Ejercicio ----------
 
+// `intensity`: la que se propone al registrarla (1.10). `strength`: trabaja fuerza (la OMS pide 2 días a la semana).
 export const EXERCISE_TYPES = [
-  { key: 'caminar', label: 'Caminar', icon: 'pulse' },
-  { key: 'correr', label: 'Correr', icon: 'bolt' },
-  { key: 'gimnasio', label: 'Gimnasio o pesas', icon: 'dumbbell' },
-  { key: 'bici', label: 'Bicicleta', icon: 'sync' },
-  { key: 'deporte', label: 'Deporte', icon: 'trophy' },
-  { key: 'baile', label: 'Baile', icon: 'sparkle' },
-  { key: 'yoga', label: 'Yoga o estiramiento', icon: 'heart' },
-  { key: 'otro', label: 'Otro', icon: 'plus' },
+  { key: 'caminar', label: 'Caminar', icon: 'pulse', intensity: 'moderada' },
+  { key: 'correr', label: 'Correr', icon: 'bolt', intensity: 'intensa' },
+  { key: 'gimnasio', label: 'Gimnasio o pesas', icon: 'dumbbell', intensity: 'moderada', strength: true },
+  { key: 'bici', label: 'Bicicleta', icon: 'sync', intensity: 'moderada' },
+  { key: 'deporte', label: 'Deporte', icon: 'trophy', intensity: 'intensa' },
+  { key: 'baile', label: 'Baile', icon: 'sparkle', intensity: 'moderada' },
+  { key: 'yoga', label: 'Yoga o estiramiento', icon: 'heart', intensity: 'moderada' },
+  { key: 'otro', label: 'Otro', icon: 'plus', intensity: 'moderada' },
 ];
 // La OMS recomienda al menos 150 minutos de actividad moderada a la semana para adultos.
 export const EXERCISE_WEEK_GOAL = 150;
@@ -547,6 +548,7 @@ export const CATEGORIES = [
   { id: 'intereses', name: 'Intereses y rendimientos', group: 'ingresos', icon: 'chart', type: 'ingreso', budget: 0 },
   { id: 'reembolsos', name: 'Reembolsos y devoluciones', group: 'ingresos', icon: 'undo', type: 'ingreso', budget: 0 },
   { id: 'prestamo_cobrado', name: 'Préstamos que te devuelven', group: 'ingresos', icon: 'coins', type: 'ingreso', budget: 0 },
+  { id: 'prestamo_recibido', name: 'Préstamos que te hacen', group: 'ingresos', icon: 'coins', type: 'ingreso', budget: 0 },
   { id: 'premios', name: 'Premios y cashback', group: 'ingresos', icon: 'trophy', type: 'ingreso', budget: 0 },
   { id: 'ingreso', name: 'Otros ingresos', group: 'ingresos', icon: 'coins', type: 'ingreso', budget: 0 },
   { id: 'pago_tarjeta', name: 'Pago de tarjeta', group: 'movimientos', icon: 'card', type: 'transfer', budget: 0 },
@@ -657,6 +659,7 @@ export const INCOME_WORDS = {
   alquileres: ['alquiler cobrado', 'inquilino', 'renta cobrada', 'cobro de alquiler'],
   pension: ['pension', 'jubilacion', 'afp'],
   prestamo_cobrado: ['me devolvio', 'devolucion de prestamo', 'me pago lo que le preste'],
+  prestamo_recibido: ['me presto', 'me prestaron', 'prestamo de', 'me hizo un prestamo'],
   premios: ['premio', 'cashback', 'millas', 'puntos canjeados', 'sorteo', 'rifa'],
 };
 

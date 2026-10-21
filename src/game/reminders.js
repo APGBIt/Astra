@@ -4,6 +4,8 @@ import { addDays, diffDays } from '../app/dates.js';
 import { dayMissions, todosDue, accountLabel } from './logic.js';
 import { dueItems } from './money.js';
 import { quitDays, QUIT_MILESTONES } from './growth.js';
+import { openLoans, leftOf } from './loans.js';
+import { dosesFor } from './health.js';
 
 export const NOTIFY_KINDS = [
   { key: 'resumen', label: 'Resumen de la mañana', help: 'Misiones, pendientes y pagos del día.', time: 'morning' },
@@ -13,12 +15,13 @@ export const NOTIFY_KINDS = [
   { key: 'dejar', label: 'Días sin lo que quieres dejar', help: 'Cuando cumples 1, 3, 7, 14, 21, 30… días.', time: 'morning' },
   { key: 'metas', label: 'Metas con progreso', help: 'El domingo, si una meta lleva una semana sin avance.', time: 'evening' },
   { key: 'animo', label: 'Cómo te sientes', help: 'Un check-in de ánimo a media tarde.', time: 'afternoon' },
+  { key: 'medicinas', label: 'Medicinas y suplementos', help: 'A la hora de cada toma que pusiste en Salud.', time: 'exact' },
 ];
 
 export function defaultNotify() {
   return {
     on: false,
-    kinds: { resumen: true, pagos: true, misiones: true, posada: true, dejar: true, metas: true, animo: false },
+    kinds: { resumen: true, pagos: true, misiones: true, posada: true, dejar: true, metas: true, animo: false, medicinas: true },
     morning: '08:00', afternoon: '17:30', evening: '20:30', quietFrom: '22:00', quietTo: '07:00',
   };
 }
@@ -86,6 +89,26 @@ function forDay(s, day, today, cfg) {
         push('pagos', 'morning', n === 0 ? `Hoy vence: ${it.p.name}` : `${it.p.name} vence ${whenWord(n)}`, `${it.p.variable ? 'Aproximadamente ' : ''}${rd(it.dop)}${it.status === 'late' ? ' · está atrasado' : ''}.`, '#/finanzas?tab=plan', `plan-${it.p.id}-${it.date}-${n}`);
         if (n === 0) payToday.push(it.p.name);
       }
+    }
+  }
+
+  // Préstamos con personas (1.10): 3 días antes, el día anterior y el mismo día de la fecha acordada.
+  if (k.pagos && s.money) {
+    for (const l of openLoans(s)) {
+      if (!l.due) continue;
+      const n = diffDays(day, l.due);
+      if (!(n === 0 || n === 1 || n === 3)) continue;
+      const amt = l.currency === 'USD' ? `US$${leftOf(l).toFixed(2)}` : rd(leftOf(l));
+      if (l.dir === 'me') push('pagos', 'morning', n === 0 ? `Hoy ${l.who} quedó en devolverte ${amt}` : `${l.who} quedó en devolverte ${amt} ${whenWord(n)}`, 'Si ya te pagó, anota el abono en Astra.', '#/finanzas?tab=cuentas', `loan-${l.id}-${n}`);
+      else push('pagos', 'morning', n === 0 ? `Hoy vence lo que le debes a ${l.who}` : `Lo que le debes a ${l.who} vence ${whenWord(n)}`, `Faltan ${amt}.`, '#/finanzas?tab=cuentas', `loan-${l.id}-${n}`);
+    }
+  }
+
+  // Medicinas y suplementos (1.10): a la hora exacta de cada toma (sin pasar por las horas de silencio).
+  if (k.medicinas) {
+    for (const d of dosesFor(s, day)) {
+      if (d.status) continue;
+      out.push({ id: `${day}:med-${d.key}`, kind: 'medicinas', day, at: atOf(day, d.time), title: `Hora de ${d.med.name}`, body: `${d.med.dose ? `${d.med.dose}. ` : ''}Márcala como tomada en Astra.`, url: '#/area/salud', tag: `astra-med-${d.key}` });
     }
   }
 

@@ -15,8 +15,10 @@ Tus datos se guardan en tu teléfono y, si lo conectas, en tu propio Google Driv
    Android (Chrome): menú ⋮ → «Instalar app».
    iPhone (Safari): Compartir → «Agregar a inicio».
 
-4) LECTURA DE RECIBOS CON IA
-   Personaje → Ajustes → Lectura con IA. Lo más seguro es el servidor propio (carpeta server/).
+4) LECTURA DE RECIBOS Y COMPROBANTES
+   Finanzas → Recibo: toma la foto o sube la captura. Sin IA, Astra lee el texto en el teléfono (OCR, carpeta ocr/):
+   la primera vez descarga el lector (unos 6 MB) y después funciona sin internet.
+   Con IA lee mejor: Personaje → Ajustes → Lectura con IA. Lo más seguro es el servidor propio (carpeta server/).
 
 5) TUS DATOS
    Personaje → Ajustes → «Descargar copia» para guardar tu progreso o pasarlo a otro teléfono.

@@ -9,6 +9,8 @@ import { workInfo, workHours, groupName } from './ledger.js';
 import { debtList, payoff, monthAfter } from './debts.js';
 import { CALM_KINDS } from './mind.js';
 import { WHEEL } from './wellness.js';
+import { loanInfo } from './loans.js';
+import { dosesFor, medAdherence } from './health.js';
 import {
   accountLabel, catName, catOf, choreStatus, freqLabel, repeatLabel, todoCategory, txCur, txDOP, txKind, txOrig, txRate,
 } from './logic.js';
@@ -57,6 +59,14 @@ export function buildTables(s, today) {
         return [d.name, d.kind === 'card' ? 'Tarjeta' : 'Préstamo', round2(d.balance), d.apr || '', round2(d.min), d.on === false ? 'No' : 'Sí', o && o.month != null ? monthAfter(today, o.month) : '', s.money.debts.method === 'snowball' ? 'Bola de nieve' : 'Avalancha', round2(s.money.debts.extra)];
       }),
     ),
+    // 1.10: lo que te deben y lo que debes a personas.
+    Préstamos: table(
+      ['Persona', 'Quién debe', 'Monto', 'Moneda', 'Fecha', 'Quedó para', 'Abonado', 'Falta', 'Estado', 'Nota'],
+      ((s.money && s.money.loans) || []).map((l) => {
+        const i = loanInfo(l, today);
+        return [l.who, l.dir === 'me' ? 'Te debe' : 'Le debes', round2(l.amount), l.currency, l.day, l.due || '', round2(i.paid), round2(i.left), l.closed ? (l.forgiven ? 'Perdonado' : 'Saldado') : i.late ? 'Vencido' : 'Abierto', l.note];
+      }),
+    ),
     // Saldos de hoy. En una tarjeta, el saldo en negativo es lo que debes.
     Cuentas: table(
       ['Cuenta', 'Tipo', 'Saldo RD$', 'Saldo US$', 'Saldo desde', 'Límite RD$', 'Límite US$', 'Día de corte', 'Día de pago', 'Por pagar RD$', 'Por pagar US$', 'Pagar antes del', 'Nota'],
@@ -93,12 +103,22 @@ export function buildTables(s, today) {
         return [c.title, freqLabel(c.freq), c.mins || CHORE_XP.base, c.attr && AREA[c.attr] ? AREA[c.attr].attr : 'Nivel', c.paused ? '' : st.due || '', st.last || '', (c.log || []).length, c.paused ? 'En pausa' : st.state === 'late' ? 'Atrasada' : 'Activa'];
       }),
     ),
+    // 1.10: minutos intensos, día de fuerza y medicinas tomadas.
     Salud: table(
-      ['Fecha', 'Sueño (horas)', 'Me acosté', 'Me levanté', 'Calidad', 'Pasos', 'Agua (vasos)', 'Ejercicio (min)', 'Tipo de ejercicio', 'Frutas y verduras'],
+      ['Fecha', 'Sueño (horas)', 'Me acosté', 'Me levanté', 'Calidad', 'Pasos', 'Agua (vasos)', 'Ejercicio (min)', 'Tipo de ejercicio', 'Frutas y verduras', 'Minutos intensos', 'Fuerza', 'Medicinas tomadas'],
       days.map((d) => {
         const h = s.health[d] || {};
         const types = Object.entries(h.exTypes || {}).map(([k, v]) => `${label(EXERCISE_TYPES, k)} ${v}`).join(', ');
-        return [d, h.sleep ?? '', h.bed || '', h.wake || '', h.quality ? label(SLEEP_QUALITY, h.quality, 'v') : '', h.steps ?? '', h.water ?? '', h.exercise ?? '', types, h.veg ?? ''];
+        const doses = s.meds && s.meds.length ? dosesFor(s, d) : [];
+        return [d, h.sleep ?? '', h.bed || '', h.wake || '', h.quality ? label(SLEEP_QUALITY, h.quality, 'v') : '', h.steps ?? '', h.water ?? '', h.exercise ?? '', types, h.veg ?? '',
+          h.exVig || '', h.strength || (h.exTypes || {}).gimnasio > 0 ? 'Sí' : '', doses.length ? `${doses.filter((x) => x.status === 'si').length} de ${doses.length}` : ''];
+      }),
+    ),
+    Medicinas: table(
+      ['Nombre', 'Dosis', 'Tipo', 'Horas', 'Días', 'Desde', 'Hasta', 'Tomadas en 30 días', 'Nota'],
+      (s.meds || []).map((m) => {
+        const a = medAdherence(s, m, today);
+        return [m.name, m.dose, m.kind === 'suplemento' ? 'Suplemento' : 'Medicina', m.times.join(', '), m.days ? m.days.map((x) => ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'][x]).join(', ') : 'Todos', m.start, m.archived || m.end || '', a.pct != null ? `${Math.round(a.pct * 100)} %` : '', m.note];
       }),
     ),
     Logros: table(

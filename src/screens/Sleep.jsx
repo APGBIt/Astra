@@ -113,6 +113,9 @@ export function SleepInsights({ s, today, onWakeGoal }) {
         <div><span class="v">{ins.met} de {ins.n}</span><span class="l">Noches en tu meta</span></div>
         <div><span class="v">{ins.spread != null ? `±${fmtDur(ins.spread / 2)}` : '—'}</span><span class="l">{ins.spread != null ? 'Variación al acostarte' : 'Usa «Horario» para ver tu regularidad'}</span></div>
       </div>
+      {(ins.spread != null || ins.wakeSpread != null) && (
+        <span class="small">Regularidad: {ins.spread != null ? <>te acuestas con <b>±{fmtDur(ins.spread / 2)}</b> de diferencia</> : null}{ins.spread != null && ins.wakeSpread != null ? ' y ' : ''}{ins.wakeSpread != null ? <>te levantas con <b>±{fmtDur(ins.wakeSpread / 2)}</b></> : null} entre noches. {Math.max(ins.spread || 0, ins.wakeSpread || 0) <= 60 ? 'Bien parejo.' : 'Lo ideal: más o menos media hora, también el fin de semana.'}</span>
+      )}
       {ins.quality != null && <span class="small">Calidad promedio: <b>{qualityLabel(ins.quality)}</b>{ins.routineNights ? ` · rutina para dormir ${plural(ins.routineNights, 'noche', 'noches')}` : ''}</span>}
       {ins.bedAt ? (
         <div class="note" style={{ background: 'var(--ene-soft)', color: 'var(--ene-ink)', margin: 0 }}>

@@ -1,11 +1,14 @@
 import { useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
-import { Nav, TopBar, TChip, toast, areaColor, areaSoft, areaInk, plural } from '../ui/kit.jsx';
+import { Nav, TopBar, TChip, Sheet, SheetHead, toast, ask, money, areaColor, areaSoft, areaInk, plural } from '../ui/kit.jsx';
 import { act, useApp } from '../app/store.js';
-import { relDay, DAYS_SHORT } from '../app/dates.js';
+import { relDay, DAYS_SHORT, fmtShort } from '../app/dates.js';
 import { MOOD_QUADS, INFLUENCES } from '../game/content.js';
 import { addMood } from '../game/logic.js';
-import { emotionsFor, strategiesFor, emotionOf, moodPatterns, dayMoods, calmMinutes, distinctEmotions, BODY } from '../game/mind.js';
+import { emotionsFor, strategiesFor, emotionOf, moodPatterns, dayMoods, calmMinutes, distinctEmotions, BODY, updateMood, removeMood, moodWeeks } from '../game/mind.js';
+import { moodMoney } from '../game/stats.js';
+import { moodMoneyText } from './Stats.jsx';
+import { CopingCards, CopingSheet } from './Coping.jsx';
 import { AreaHeader, AreaMissions } from './Areas.jsx';
 import { AreaTodos } from './Todos.jsx';
 import { CalmPlayer, WorrySheet, ThoughtSheet, runAction } from './Calm.jsx';
@@ -29,6 +32,7 @@ export function CheckIn({ compact = false, onDone, onAction }) {
   const [showBody, setShowBody] = useState(false);
   const [note, setNote] = useState('');
   const [saved, setSaved] = useState(null);
+  const [coping, setCoping] = useState(false);
   const emos = quad == null ? [] : emotionsFor(quad);
   const pick = (w) => { setWords(toggleIn(words, w, 3)); setLast(words.includes(w) ? null : w); };
   const save = () => {
@@ -48,6 +52,8 @@ export function CheckIn({ compact = false, onDone, onAction }) {
           <Icon name="check" size={18} />
           <span>{saved.words.length ? `Nombraste ${saved.words.map((w) => w.toLowerCase()).join(', ')}. ` : ''}{pleasant ? 'Aprovecha este momento:' : 'Ponerle nombre ya ayuda. Si quieres, prueba algo de esto:'}</span>
         </div>
+        {!pleasant && <CopingCards quad={saved.quad} onManage={() => setCoping(true)} max={compact ? 2 : 3} />}
+        {coping && <CopingSheet onClose={() => setCoping(false)} />}
         <div class="stack-xs">
           {list.slice(0, compact ? 3 : 5).map((x) => (
             <button key={x.id} type="button" class="lrow strat" onClick={() => onAction(x.action)}>
@@ -141,6 +147,8 @@ export function Mood() {
         <CheckIn onAction={(a) => runAction(a, { setPlay, setTool })} />
         {s.moods.length > 0 && <Pixels s={s} today={today} />}
         {pat.n >= 5 && <Patterns pat={pat} names={names} />}
+        {pat.n >= 5 && <WeeksCard s={s} today={today} />}
+        <MoodMoneyMini s={s} today={today} />
         {s.moods.length > 0 && <History s={s} today={today} />}
         <AreaMissions area="emocional" />
         <AreaTodos area="emocional" />
@@ -256,6 +264,15 @@ function Patterns({ pat, names }) {
           ))}
         </div>
       )}
+      {['manana', 'tarde', 'noche'].filter((k) => pat.times[k].n >= 3).length >= 2 && (
+        <div class="stack-xs">
+          <span class="label">Por momento del día</span>
+          {[['manana', 'Mañana'], ['tarde', 'Tarde'], ['noche', 'Noche']].filter(([k]) => pat.times[k].n >= 3).map(([k, l]) => (
+            <div key={k} class="cmp-row"><span class="tiny muted semi">{l}</span><span class="cmp-bar" title={`${l}: ${pct(pat.times[k].pct)} agradable`}><i style={{ width: bar(pat.times[k].pct) }} /></span><span class="tiny strong tab-num">{pct(pat.times[k].pct)}</span></div>
+          ))}
+          <span class="tiny muted">Qué parte de tus check-ins de cada momento fue agradable (mañana: antes de las 12; tarde: hasta las 7 p. m.).</span>
+        </div>
+      )}
       <div class="stack-xs">
         <span class="label">Por día de la semana</span>
         <div class="wd-bars" role="img" aria-label={pat.weekdays.map((w, i) => `${DAYS_SHORT[i]}: ${w.n ? pct(w.pct) : 'sin datos'}`).join(', ')}>
@@ -282,6 +299,7 @@ function Patterns({ pat, names }) {
 
 function History({ s, today }) {
   const [all, setAll] = useState(false);
+  const [edit, setEdit] = useState(null);
   const list = s.moods.slice(0, all ? 40 : 8);
   return (
     <section class="card flush" aria-label="Tus check-ins">
@@ -289,7 +307,7 @@ function History({ s, today }) {
       {list.map((m) => {
         const infl = (m.influences || []).map((k) => (INFLUENCES.find((i) => i.key === k) || {}).label).filter(Boolean);
         return (
-          <div class="lrow" key={m.id} style={{ alignItems: 'flex-start', paddingTop: 10, paddingBottom: 10 }}>
+          <button type="button" class="lrow" key={m.id} style={{ alignItems: 'flex-start', paddingTop: 10, paddingBottom: 10 }} onClick={() => setEdit(m.id)} aria-label={`Check-in de ${relDay(m.day, today).toLowerCase()}: ${m.words.length ? m.words.join(', ') : MOOD_QUADS[m.quad].label}. Corregir o borrar`}>
             <svg width="14" height="14" viewBox="0 0 14 14" style={{ flexShrink: 0, marginTop: 4 }} role="img" aria-label={MOOD_QUADS[m.quad].label}><MoodGlyph q={m.quad} x={1} y={1} size={12} /></svg>
             <span class="stack-xs grow" style={{ minWidth: 0 }}>
               <span class="semi">{m.words.length ? m.words.map((w) => (emotionOf(w) || { word: w }).word).join(', ') : MOOD_QUADS[m.quad].label}</span>
@@ -297,10 +315,106 @@ function History({ s, today }) {
               {m.note && <span class="small muted">{m.note}</span>}
             </span>
             <span class="tiny muted" style={{ whiteSpace: 'nowrap' }}>{relDay(m.day, today)}</span>
-          </div>
+          </button>
         );
       })}
       {s.moods.length > 8 && <button type="button" class="lrow" style={{ justifyContent: 'center', fontWeight: 700 }} onClick={() => setAll(!all)}>{all ? 'Ver menos' : 'Ver más'}</button>}
+      {edit && <MoodEditSheet s={s} id={edit} onClose={() => setEdit(null)} />}
     </section>
+  );
+}
+
+// Corregir o borrar un check-in (1.10).
+function MoodEditSheet({ s, id, onClose }) {
+  const m = s.moods.find((x) => x.id === id);
+  const [quad, setQuad] = useState(m ? m.quad : 0);
+  const [words, setWords] = useState(m ? m.words.map((w) => (emotionOf(w) || { word: w }).word) : []);
+  const [infl, setInfl] = useState(m ? [...(m.influences || [])] : []);
+  const [note, setNote] = useState(m ? m.note || '' : '');
+  const [moreW, setMoreW] = useState(false);
+  if (!m) return null;
+  const emos = emotionsFor(quad);
+  const save = () => { act((x) => updateMood(x, m.id, { quad, words, influences: infl, note })); toast('Check-in corregido', 'face'); onClose(); };
+  const del = async () => { if (!(await ask('¿Borrar este check-in?', { ok: 'Borrar', danger: true }))) return; act((x) => removeMood(x, m.id)); toast('Check-in borrado', 'trash'); onClose(); };
+  return (
+    <Sheet onClose={onClose} label="Corregir check-in">
+      <SheetHead title={`Check-in del ${fmtShort(m.day)}`} onClose={onClose} />
+      <div class="mood-grid">
+        {MOOD_QUADS.map((q) => (
+          <button key={q.key} type="button" class={q.tone} aria-pressed={quad === q.key ? 'true' : 'false'} style={{ minHeight: 72 }} onClick={() => { if (q.key !== quad) { setQuad(q.key); setWords([]); } }}>
+            <span class="strong">{q.label}</span><span class="tiny muted">{q.desc}</span>
+          </button>
+        ))}
+      </div>
+      <section class="stack-sm" aria-label="Emociones">
+        <span class="label">Emociones (hasta 3)</span>
+        <div class="chips">
+          {(moreW ? emos : emos.slice(0, SHOW_WORDS)).map((e) => <TChip key={e.word} sm on={words.includes(e.word)} onClick={() => setWords(toggleIn(words, e.word, 3))}>{e.word}</TChip>)}
+          {!moreW && emos.length > SHOW_WORDS && <TChip sm icon="plus" onClick={() => setMoreW(true)}>{emos.length - SHOW_WORDS} más</TChip>}
+        </div>
+      </section>
+      <section class="stack-sm" aria-label="Qué influyó">
+        <span class="label">¿Qué influyó?</span>
+        <div class="chips">{INFLUENCES.map((i) => <TChip key={i.key} sm on={infl.includes(i.key)} icon={i.icon} onClick={() => setInfl(toggleIn(infl, i.key, 6))}>{i.label}</TChip>)}</div>
+      </section>
+      <div class="field"><label for="mednote">Nota</label><textarea id="mednote" class="input" rows={2} value={note} maxLength={500} onInput={(e) => setNote(e.currentTarget.value)} /></div>
+      <button type="button" class="btn block" onClick={save}><Icon name="check" size={20} />Guardar</button>
+      <button type="button" class="link-btn" style={{ color: 'var(--vit-ink)', alignSelf: 'center' }} onClick={del}><Icon name="trash" size={16} />Borrar check-in</button>
+    </Sheet>
+  );
+}
+
+// Semana a semana (1.10): qué parte de tus check-ins fue agradable en cada una de las últimas 12 semanas.
+function WeeksCard({ s, today }) {
+  const weeks = moodWeeks(s, today, 12);
+  const withData = weeks.filter((w) => w.n);
+  if (withData.length < 3) return null;
+  const W = 340; const H = 120; const L = 6; const R = 6; const T = 16; const B = 22;
+  const gw = (W - L - R) / weeks.length;
+  const bw = Math.min(20, gw - 8);
+  const y = (v) => T + (1 - v) * (H - T - B);
+  const recent = withData.slice(-4);
+  const before = withData.slice(-8, -4);
+  const avg = (l) => (l.length ? l.reduce((a, w) => a + (w.pleasant || 0), 0) / l.length : null);
+  const a = avg(recent); const b = avg(before);
+  return (
+    <section class="card" aria-label="Semana a semana">
+      <div class="between-c"><h2 class="h2">Semana a semana</h2><span class="small muted">12 semanas</span></div>
+      <div class="chart-wrap">
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={weeks.map((w) => `Semana del ${fmtShort(w.from)}: ${w.n ? `${pct(w.pleasant)} agradable` : 'sin check-ins'}`).join(', ')}>
+          <line x1={L} x2={W - R} y1={y(0.5)} y2={y(0.5)} class="ref" />
+          {weeks.map((w, i) => {
+            const x = L + i * gw + (gw - bw) / 2;
+            const v = w.n ? Math.max(0.03, w.pleasant || 0) : 0.03;
+            return (
+              <g key={w.to}>
+                <rect x={x} y={y(v)} width={bw} height={H - B - y(v)} rx="4" fill={w.n ? 'var(--emocional)' : 'var(--soft-2)'}><title>{`${fmtShort(w.from)} – ${fmtShort(w.to)}: ${w.n ? `${pct(w.pleasant)} agradable en ${plural(w.n, 'check-in', 'check-ins')}` : 'sin check-ins'}`}</title></rect>
+                {(i === weeks.length - 1 || i % 3 === 2) && <text x={x + bw / 2} y={H - 6} text-anchor="middle" class={`axis${i === weeks.length - 1 ? ' strong-axis' : ''}`}>{i === weeks.length - 1 ? 'Esta' : fmtShort(w.from)}</text>}
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+      <span class="small muted">{a != null && b != null ? `Últimas 4 semanas: ${pct(a)} de check-ins agradables (antes: ${pct(b)}).` : 'Altura: qué parte de tus check-ins de esa semana fue agradable.'}</span>
+      <span class="tiny muted">Cada barra es una semana. Línea punteada: la mitad de tus check-ins en el lado agradable.</span>
+    </section>
+  );
+}
+
+// Ánimo y dinero (1.10): lo que gastas en gustos los días tensos o bajos frente a los agradables.
+function MoodMoneyMini({ s, today }) {
+  const mm = moodMoney(s, today);
+  if (!mm.ready) return null;
+  return (
+    <a href="#/finanzas?tab=analisis" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)' }} aria-label="Tu ánimo y tus gastos: ver en Finanzas">
+      <div class="row" style={{ gap: 12 }}>
+        <span class="tile" style={{ background: 'var(--finanzas-soft)', color: 'var(--finanzas-ink)' }}><Icon name="coins" /></span>
+        <span class="stack-xs grow">
+          <span class="strong">Tu ánimo y tus gastos</span>
+          <span class="small muted">{moodMoneyText(mm)} En gustos: {money(Math.round(mm.wants.bad))} por día tenso o bajo, {money(Math.round(mm.wants.good))} en uno agradable.</span>
+        </span>
+        <Icon name="right" size={18} />
+      </div>
+    </a>
   );
 }

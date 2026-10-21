@@ -9,6 +9,7 @@ import {
   moneyTotals, cardInfo, dayOf,
 } from './money.js';
 import { CATEGORY_GROUPS } from './content.js';
+import { dayMoods } from './mind.js';
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const daysIn = (mk) => Number(monthEnd(mk).slice(8));
@@ -97,7 +98,8 @@ export function compareTotals(s, period, today) {
 }
 
 // Gasto por categoría, comparado con tu promedio de los 3 meses anteriores al período.
-// En el mes en curso se compara con lo que sueles llevar a esta altura del mes.
+// El mes en curso se compara con lo que llevabas ese mismo día en esos meses (1.10): así el alquiler
+// que pagas el día 1 no sale «48 % más» a mitad de mes, y la luz del 18 tampoco.
 export function categoryStats(s, period, today) {
   const { from, to, mks } = period;
   const by = {};
@@ -106,27 +108,45 @@ export function categoryStats(s, period, today) {
     by[t.cat].total += txDOP(t);
     by[t.cat].n += 1;
   }
-  // Base: los 3 meses completos antes del período.
+  const exp = expectedSpend(s, period, today);
+  const total = Object.values(by).reduce((a, x) => a + x.total, 0);
+  return Object.values(by).map((x) => {
+    const e = exp.of(x.cat);
+    return { ...x, total: r2(x.total), share: total ? x.total / total : 0, avg: e.avg, expect: e.expect, delta: e.expect ? (x.total - e.expect) / e.expect : null, isNew: exp.n > 0 && !e.seen };
+  }).sort((a, b) => b.total - a.total);
+}
+
+// Lo que sueles gastar en un período, con los 3 meses completos antes de él. Para el mes en curso, lo que llevabas
+// a ese mismo día del mes; para los meses completos del período, el mes entero. `key(t)` agrupa (categoría o familia).
+export function expectedSpend(s, period, today, key = (t) => t.cat) {
+  const { to, mks } = period;
   const base = [];
   let m = prevMonth(mks[0]);
   while (base.length < 3) { base.unshift(m); m = prevMonth(m); }
-  const prev = {};
+  const cur = monthKey(today);
+  const live = mks.includes(cur) && to >= today;
+  const dayN = Number(today.slice(8));
+  const full = {}; const upTo = {};
   const months = new Set();
   for (const t of s.money.tx) {
     const mk = monthKey(t.day);
     if (!base.includes(mk) || txKind(t) !== 'gasto' || !inStats(t)) continue;
     months.add(mk);
-    prev[t.cat] = (prev[t.cat] || 0) + txDOP(t);
+    const k = key(t);
+    full[k] = (full[k] || 0) + txDOP(t);
+    if (Number(t.day.slice(8)) <= dayN) upTo[k] = (upTo[k] || 0) + txDOP(t);
   }
-  const nBase = months.size;
-  const cur = monthKey(today);
-  const frac = mks.length === 1 && mks[0] === cur ? Number(today.slice(8)) / daysIn(cur) : 1;
-  const total = Object.values(by).reduce((a, x) => a + x.total, 0);
-  return Object.values(by).map((x) => {
-    const avg = nBase ? (prev[x.cat] || 0) / nBase : null;
-    const expect = avg != null ? avg * mks.length * frac : null;
-    return { ...x, total: r2(x.total), share: total ? x.total / total : 0, avg: avg != null ? r2(avg) : null, expect: expect != null ? r2(expect) : null, delta: expect ? (x.total - expect) / expect : null, isNew: nBase > 0 && !(prev[x.cat] > 0) };
-  }).sort((a, b) => b.total - a.total);
+  const n = months.size;
+  const nFull = live ? mks.length - 1 : mks.length;
+  return {
+    n, live,
+    of(k) {
+      if (!n) return { avg: null, expect: null, seen: false };
+      const avg = (full[k] || 0) / n;
+      const expect = avg * nFull + (live ? (upTo[k] || 0) / n : 0);
+      return { avg: r2(avg), expect: r2(expect), seen: (full[k] || 0) > 0 };
+    },
+  };
 }
 
 // Las mismas cifras por familia (comida, transporte, casa…), con sus categorías dentro.
@@ -284,6 +304,17 @@ export function monthProjection(s, today) {
   };
 }
 
+// Qué decir de la proyección (1.10): lo que ya falta aunque no gastes nada más va aparte de lo que faltaría a este ritmo.
+const rdw = (v) => `RD$${Math.round(Math.abs(Number(v) || 0)).toLocaleString('en-US')}`;
+export function projectionNote(pr) {
+  if (pr.projNet >= 0) return `Te quedarían unos ${rdw(pr.projNet)}.`;
+  const already = pr.spent + pr.toPay - pr.projIncome;
+  const atPace = pr.left > 0 ? `; a este ritmo, serían unos ${rdw(pr.projNet)}` : '';
+  if (already <= 0) return `Te faltarían unos ${rdw(pr.projNet)}: para cuadrar, gasta hasta ${rdw(already / Math.max(1, pr.left))} por día.`;
+  if (pr.spent > pr.projIncome) return `Ya gastaste ${rdw(pr.spent - pr.projIncome)} más de lo que entra este mes${atPace}.`;
+  return `Con lo programado que falta, te faltarían ${rdw(already)} aunque no gastes nada más${atPace}. Mira si algún pago se puede mover.`;
+}
+
 // Proyección de cada presupuesto: a este ritmo, ¿en cuánto terminas?
 export function budgetPace(row, today) {
   const mk = monthKey(today);
@@ -438,6 +469,51 @@ export function healthSnapshot(s, today) {
     have: r2(mt.liquid + mt.savings), ready: mt.ready,
     cardUse: limit > 0 ? owedLim / limit : null,
     owe: mt.oweDOP, oweMonths: avgIncome > 0 ? mt.oweDOP / avgIncome : null,
+  };
+}
+
+// ----- Ánimo y dinero (1.10) -----
+// Cuánto gastas los días en que te sentiste tenso o bajo, frente a los días agradables (el ánimo del día es el que
+// más se repitió en tus check-ins): todo el día a día y, aparte, los gustos (comer fuera, delivery, antojos, compras),
+// que es donde más se nota. Sin pagos programados, impuestos ni lo que no cuenta. Solo con al menos 5 días de cada
+// lado, para no sacar conclusiones con muy pocos datos (como Bearable).
+// Estar triste puede hacer que pagues más por lo mismo (Cryder, Lerner y colegas, Psychological Science, 2008).
+// Gustos que suelen moverse con el ánimo: comer fuera, pedir, antojos, salidas, compras, ropa, tecnología, juegos.
+export const IMPULSE_CATS = new Set(['comida', 'cafe', 'delivery', 'bebidas', 'ocio', 'compras', 'ropa', 'tecnologia', 'hobbies', 'loteria', 'cuidado', 'regalos']);
+export function moodMoney(s, today, days = 90) {
+  const from = addDays(today, -days + 1);
+  const dm = dayMoods(s, from, today);
+  const fixed = fixedIds(s);
+  const all = new Map(); const wants = new Map(); const byCat = new Map();
+  const add = (m, k, v) => m.set(k, (m.get(k) || 0) + v);
+  for (const t of s.money.tx) {
+    if (t.day < from || t.day > today || !dm.has(t.day) || txKind(t) !== 'gasto' || !inStats(t) || fixed.has(t.id) || t.taxOf) continue;
+    const v = txDOP(t);
+    add(all, t.day, v);
+    if (IMPULSE_CATS.has(t.cat)) { add(wants, t.day, v); add(byCat, `${t.day}|${t.cat}`, v); }
+  }
+  const entries = [...dm.entries()];
+  const good = entries.filter(([, q]) => q === 1 || q === 3).map(([d]) => d);
+  const tense = entries.filter(([, q]) => q === 0).map(([d]) => d);
+  const low = entries.filter(([, q]) => q === 2).map(([d]) => d);
+  const bad = [...tense, ...low];
+  const base = { nGood: good.length, nBad: bad.length, ready: good.length >= 5 && bad.length >= 5 };
+  if (!base.ready) return base;
+  const avgOf = (m, list) => (list.length ? r2(list.reduce((a, d) => a + (m.get(d) || 0), 0) / list.length) : null);
+  const side = (m) => { const g = avgOf(m, good); const b = avgOf(m, bad); return { good: g, bad: b, delta: g > 0 ? (b - g) / g : null }; };
+  const goodSet = new Set(good);
+  const cats = {};
+  for (const [k, v] of byCat) {
+    const [d, cat] = k.split('|');
+    if (!cats[cat]) cats[cat] = { cat, good: 0, bad: 0 };
+    if (goodSet.has(d)) cats[cat].good += v; else cats[cat].bad += v;
+  }
+  const rows = Object.values(cats).map((c) => ({ cat: c.cat, good: r2(c.good / good.length), bad: r2(c.bad / bad.length) }))
+    .map((c) => ({ ...c, diff: r2(c.bad - c.good) })).filter((c) => c.diff > 0 && c.bad >= 50).sort((x, y) => y.diff - x.diff).slice(0, 3);
+  return {
+    ...base, all: side(all), wants: side(wants), cats: rows,
+    tense: tense.length >= 3 ? { n: tense.length, all: avgOf(all, tense), wants: avgOf(wants, tense) } : null,
+    low: low.length >= 3 ? { n: low.length, all: avgOf(all, low), wants: avgOf(wants, low) } : null,
   };
 }
 
