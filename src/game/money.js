@@ -8,6 +8,8 @@ import {
 } from './logic.js';
 import { CATEGORY_GROUPS } from './content.js';
 import { ensureLoans, openLoans, leftOf } from './loans.js';
+import { ensureCredits, creditDues, creditMonth, creditTxIds, payCredit, autoLinkCredit } from './credits.js';
+import { ensureAssets } from './assets.js';
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const CURS = ['DOP', 'USD'];
@@ -603,6 +605,8 @@ export function dueItems(s, from, to, today, { lateDays = 35, bal = null } = {})
       out.push({ type: 'card', kind: 'gasto', a, date: ci.cycle.nextDue, status: 'later', estimate: true, toPay: ci.since, dop: r2(ci.since.DOP + ci.since.USD * rate), info: ci });
     }
   }
+  // 1.11: las cuotas de tus préstamos (la próxima sin pagar y las que caigan en el rango).
+  for (const it of creditDues(s, from, to, today)) out.push(it);
   return out.sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : 0));
 }
 
@@ -794,6 +798,7 @@ export function monthPlan(s, mk, today) {
     if (o.p.kind === 'ingreso') { income += v; if (o.tx) incomeGot += v; }
     else { fixed += v; if (o.tx) fixedPaid += v; fixedCats.add(o.p.cat); }
   }
+  for (const id of creditTxIds(s)) linked.add(id);
   let extra = 0; let variable = 0;
   for (const t of s.money.tx) {
     if (monthKey(t.day) !== mk || linked.has(t.id) || !inStats(t)) continue;
@@ -801,6 +806,10 @@ export function monthPlan(s, mk, today) {
     if (k === 'ingreso') extra += txDOP(t);
     else if (k === 'gasto') variable += txDOP(t);
   }
+  // 1.11: cuotas de préstamos (pagadas y por pagar) son pagos fijos del mes y no «gasto del día a día».
+  const cm = creditMonth(s, from, to, today);
+  fixed += cm.total; fixedPaid += cm.paid;
+  if (cm.total > 0) fixedCats.add('deuda');
   const isNow = mk === monthKey(today);
   let funds = 0;
   if (isNow) for (const p of s.money.plans || []) { const f = fundInfo(s, p, today); if (f && !f.late && f.next > to) funds += f.perMonth; }
@@ -822,9 +831,14 @@ export function monthPlan(s, mk, today) {
 export function afterTx(s, tx, today, ev = [], link = null) {
   if (!tx) return;
   const k = txKind(tx);
-  if (link && link.plan && link.date) {
+  if (link && link.credit) {
+    payCredit(s, link.credit, { tx: tx.id, kind: link.kind === 'abono' ? 'abono' : 'cuota' }, today, ev);
+  } else if (link && link.plan && link.date) {
     linkPlan(s, link.plan, link.date, tx, today, ev);
-  } else autoLinkPlan(s, tx, today, ev);
+  } else if (!(link && link.skip)) {
+    // Un pago de deuda que se parece a la cuota de un préstamo se anota ahí; si no, se busca entre los pagos fijos.
+    if (!autoLinkCredit(s, tx, today, ev)) autoLinkPlan(s, tx, today, ev);
+  }
   if (k === 'transfer' && tx.to) {
     const a = accountOf(s, tx.to);
     if (isCard(a)) {
@@ -864,6 +878,7 @@ export function weekFlex(s, today) {
   const allowance = mp.income > 0 && flexMonth > 0 ? r2((flexMonth * 7) / daysIn(y, m)) : null;
   const linked = new Set();
   for (const p of s.money.plans || []) for (const v of Object.values(p.done || {})) if (v && v !== 'skip') linked.add(v);
+  for (const id of creditTxIds(s)) linked.add(id);
   let spent = 0;
   for (const t of s.money.tx) if (t.day >= start && t.day <= today && txKind(t) === 'gasto' && inStats(t) && !linked.has(t.id)) spent += txDOP(t);
   const daysLeft = diffDays(today, end) + 1;
@@ -897,7 +912,7 @@ export function ensureMoneyPlus(s) {
   m.debts = {
     method: d0.method === 'snowball' ? 'snowball' : 'avalanche', extra: pos(d0.extra),
     items: (Array.isArray(d0.items) ? d0.items : []).filter((x) => x && typeof x === 'object' && x.id).map((x) => ({
-      id: String(x.id), kind: x.kind === 'card' ? 'card' : 'loan', account: x.account ? String(x.account) : '', name: String(x.name || '').slice(0, 50),
+      id: String(x.id), kind: x.kind === 'card' ? 'card' : x.kind === 'credit' ? 'credit' : 'loan', account: x.account ? String(x.account) : '', name: String(x.name || '').slice(0, 50),
       balance: pos(x.balance), apr: between(x.apr, 0, 300, 0), min: pos(x.min), on: x.on !== false,
     })),
   };
@@ -952,4 +967,7 @@ export function ensureMoneyPlus(s) {
   }
   // 1.10: préstamos con personas.
   ensureLoans(s);
+  // 1.11: préstamos con cuotas y bienes.
+  ensureCredits(s);
+  ensureAssets(s);
 }

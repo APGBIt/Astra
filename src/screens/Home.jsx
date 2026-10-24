@@ -342,7 +342,7 @@ function InnPrompt() {
 // Pagos que vencen (o se pasaron) y cobros de hoy: lo de las tarjetas, 3 días antes.
 function moneyDue(s, today) {
   return dueItems(s, today, addDays(today, 3), today)
-    .filter((it) => !it.estimate && (it.status === 'late' || it.status === 'today' || (it.type === 'card' ? diffDays(today, it.date) <= 3 : it.status === 'soon' && it.kind === 'gasto' && diffDays(today, it.date) <= 1)))
+    .filter((it) => !it.estimate && (it.status === 'late' || it.status === 'today' || (it.type === 'card' ? diffDays(today, it.date) <= 3 : it.type === 'credit' ? diffDays(today, it.date) <= Math.min(3, it.c.remind || 0) : it.status === 'soon' && it.kind === 'gasto' && diffDays(today, it.date) <= 1)))
     .sort((a, b) => ((b.status === 'late') - (a.status === 'late')) || (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 }
 
@@ -351,13 +351,14 @@ function MoneyPrompt({ items, today, onPay }) {
   const card = it.type === 'card';
   const inc = it.kind === 'ingreso';
   const late = it.status === 'late';
-  const name = card ? `Tarjeta ${accountLabel(it.a)}` : it.p.name;
-  const title = inc ? `¿Ya recibiste ${name.toLowerCase()}?` : late ? `Venció: ${name}` : it.date === today ? `Hoy vence: ${name}` : `${name} vence ${whenText(it.date, today).toLowerCase()}`;
-  const amount = card ? both(it.toPay) : `${it.p.variable ? '≈ ' : ''}${inc ? '+' : ''}${cur(it.amount, it.currency)}`;
+  const cr = it.type === 'credit';
+  const name = card ? `Tarjeta ${accountLabel(it.a)}` : cr ? `la cuota de ${it.c.name}` : it.p.name;
+  const title = inc ? `¿Ya recibiste ${name.toLowerCase()}?` : late ? `Venció: ${name}` : it.date === today ? `Hoy toca ${name}` : `${name} vence ${whenText(it.date, today).toLowerCase()}`;
+  const amount = card ? both(it.toPay) : `${!cr && it.p.variable ? '≈ ' : ''}${inc ? '+' : ''}${cur(it.amount, it.currency)}`;
   const tone = late ? 'vit' : inc ? 'good' : 'finanzas';
   return (
     <div class="row" style={{ gap: 12, padding: 16, borderRadius: 20, background: `var(--${tone}-soft)`, color: `var(--${tone}-ink)` }}>
-      <a href="#/finanzas" class="row grow" style={{ gap: 12, color: 'inherit', textDecoration: 'none', minWidth: 0 }}>
+      <a href={cr ? '#/finanzas?tab=deudas' : '#/finanzas'} class="row grow" style={{ gap: 12, color: 'inherit', textDecoration: 'none', minWidth: 0 }}>
         <span class="tile" style={{ background: 'var(--surface)', color: `var(--${tone === 'finanzas' ? 'finanzas' : tone})` }}><Icon name={card ? 'card' : inc ? 'coins' : 'calendar'} /></span>
         <span class="stack-xs grow" style={{ minWidth: 0 }}><span class="strong">{title}</span><span class="small tab-num">{amount}{items.length > 1 ? ` · y ${items.length - 1} más` : ''}</span></span>
       </a>

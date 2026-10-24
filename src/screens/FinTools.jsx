@@ -264,11 +264,11 @@ export function DebtSheet({ s, onClose }) {
 
       <section class="card flush" aria-label="Tus deudas">
         <div class="between-c" style={{ padding: '14px 0 4px' }}><h2 class="h2">Tus deudas</h2><span class="small strong tab-num">{money(Math.round(total))}</span></div>
-        {!list.length && <p class="small muted" style={{ padding: '2px 0 12px' }}>No tienes tarjetas con saldo. Agrega un préstamo para planificarlo.</p>}
+        {!list.length && <p class="small muted" style={{ padding: '2px 0 12px' }}>No tienes tarjetas con saldo ni préstamos. Agrega tu préstamo en la pestaña Deudas, o cualquier otra deuda aquí.</p>}
         {list.map((x) => (
           <div key={x.id} class="lrow" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8, opacity: x.on === false ? 0.55 : 1 }}>
             <button type="button" class="row" style={{ gap: 12, background: 'none', border: 0, padding: 0, color: 'inherit', textAlign: 'left', font: 'inherit' }} onClick={() => setEdit(edit === x.id ? null : x.id)} aria-expanded={edit === x.id ? 'true' : 'false'}>
-              <span class="tile sm" style={{ background: 'var(--finanzas-soft)', color: 'var(--finanzas-ink)' }}><Icon name={x.kind === 'card' ? 'card' : 'bank'} size={17} /></span>
+              <span class="tile sm" style={{ background: 'var(--finanzas-soft)', color: 'var(--finanzas-ink)' }}><Icon name={x.kind === 'card' ? 'card' : x.kind === 'credit' ? x.icon || 'bank' : 'bank'} size={17} /></span>
               <span class="stack-xs grow" style={{ minWidth: 0 }}>
                 <span class="strong clip">{x.name}</span>
                 <span class="tiny muted semi">{x.apr > 0 ? `${x.apr} % al año` : 'sin tasa'} · {x.min > 0 ? `pagas ${money(x.min)} al mes` : 'sin pago mensual'}{x.on === false ? ' · fuera del plan' : ''}</span>
@@ -279,7 +279,7 @@ export function DebtSheet({ s, onClose }) {
           </div>
         ))}
         {edit === 'new' ? <div class="lrow" style={{ flexDirection: 'column', alignItems: 'stretch' }}><DebtForm s={s} x={null} onDone={() => setEdit(null)} /></div>
-          : <button type="button" class="lrow" style={{ justifyContent: 'center', fontWeight: 700, color: 'var(--ink)' }} onClick={() => setEdit('new')}><Icon name="plus" size={18} />Agregar un préstamo u otra deuda</button>}
+          : <button type="button" class="lrow" style={{ justifyContent: 'center', fontWeight: 700, color: 'var(--ink)' }} onClick={() => setEdit('new')}><Icon name="plus" size={18} />Agregar otra deuda</button>}
       </section>
       {list.some((x) => x.usd) && <span class="tiny muted">Lo que debes en dólares se cuenta en pesos con la tasa de hoy.</span>}
 
@@ -338,24 +338,26 @@ function DebtCurve({ plan }) {
 
 function DebtForm({ s, x, onDone }) {
   const card = x && x.kind === 'card';
+  const cred = x && x.kind === 'credit';
   const [name, setName] = useState(x ? x.name : '');
   const [balance, setBalance] = useState(x && !card ? String(x.balance || '') : '');
   const [apr, setApr] = useState(x && x.apr ? String(x.apr) : '');
   const [min, setMin] = useState(x && x.min ? String(x.min) : '');
   const [on, setOn] = useState(x ? x.on !== false : true);
-  const ok = card ? true : name.trim().length >= 2 && num(balance) > 0;
+  const ok = card || cred ? true : name.trim().length >= 2 && num(balance) > 0;
   const save = () => {
-    act((st) => saveDebt(st, card ? { kind: 'card', account: x.account, apr: num(apr), min: num(min), on } : { id: x && x.saved ? x.id : null, kind: 'loan', name, balance: num(balance), apr: num(apr), min: num(min), on }));
+    act((st) => saveDebt(st, cred ? { kind: 'credit', credit: x.credit, on } : card ? { kind: 'card', account: x.account, apr: num(apr), min: num(min), on } : { id: x && x.saved ? x.id : null, kind: 'loan', name, balance: num(balance), apr: num(apr), min: num(min), on }));
     onDone();
   };
   return (
     <div class="panel stack-sm" style={{ background: 'var(--soft)' }}>
-      {!card && <div class="field"><label for="dn">Nombre</label><input id="dn" class="input" value={name} maxLength={50} placeholder="Ej. Préstamo del carro" onInput={(e) => setName(e.currentTarget.value)} ref={focusOnMount} /></div>}
-      {!card && <div class="field"><label for="db">Lo que debes hoy</label><div class="numrow"><span class="unit">RD$</span><input id="db" class="input" inputMode="decimal" value={balance} placeholder="0" onInput={(e) => setBalance(e.currentTarget.value)} /></div></div>}
-      <div class="grid2">
+      {cred && <span class="small muted">La tasa, la cuota y lo que debes salen de tu préstamo; se actualizan solos con cada pago.</span>}
+      {!card && !cred && <div class="field"><label for="dn">Nombre</label><input id="dn" class="input" value={name} maxLength={50} placeholder="Ej. Préstamo del carro" onInput={(e) => setName(e.currentTarget.value)} ref={focusOnMount} /></div>}
+      {!card && !cred && <div class="field"><label for="db">Lo que debes hoy</label><div class="numrow"><span class="unit">RD$</span><input id="db" class="input" inputMode="decimal" value={balance} placeholder="0" onInput={(e) => setBalance(e.currentTarget.value)} /></div></div>}
+      {!cred && <div class="grid2">
         <div class="field"><label for="da">Tasa anual</label><div class="numrow"><input id="da" class="input" inputMode="decimal" value={apr} placeholder={card ? 'Ej. 54' : 'Ej. 14'} onInput={(e) => setApr(e.currentTarget.value)} ref={card ? focusOnMount : undefined} /><span class="unit">%</span></div></div>
         <div class="field"><label for="dm">Pago de cada mes</label><div class="numrow"><span class="unit">RD$</span><input id="dm" class="input" inputMode="decimal" value={min} placeholder={x && x.minStmt ? String(x.minStmt) : '0'} onInput={(e) => setMin(e.currentTarget.value)} /></div></div>
-      </div>
+      </div>}
       {card && <span class="small muted">El saldo es lo que debes según Astra. La tasa está en tu estado de cuenta (tasa anual o «tasa de interés»).{x.minStmt ? ` Tu pago mínimo del estado: ${money(x.minStmt)}.` : ''}</span>}
       <label class="between-c" style={{ cursor: 'pointer' }}><span class="semi">Incluir en el plan</span><Switch checked={on} onChange={setOn} label="Incluir en el plan" /></label>
       <div class="row wrap" style={{ gap: 8 }}>

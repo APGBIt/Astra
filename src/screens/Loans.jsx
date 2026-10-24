@@ -308,6 +308,8 @@ export function WorthCard({ s, today }) {
             <b>{label(t) === 'Hoy' ? 'Hoy' : `Cierre de ${monthName(t.day.slice(0, 7)).split(' ')[0]}`}</b>
             <span>Tienes: {whole(t.have)}</span>
             {t.owe > 0 && <span>Debes en tarjetas: {whole(t.owe)}</span>}
+            {t.credits > 0 && <span>Debes en préstamos: {whole(t.credits)}</span>}
+            {t.assets > 0 && <span>Tus bienes: {whole(t.assets)}</span>}
             {t.lentOut > 0 && <span>Te deben: {whole(t.lentOut)}</span>}
             {t.borrowed > 0 && <span>Debes a personas: {whole(t.borrowed)}</span>}
             <span>Patrimonio: {whole(t.net)}</span>

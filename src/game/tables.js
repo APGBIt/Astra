@@ -10,6 +10,8 @@ import { debtList, payoff, monthAfter } from './debts.js';
 import { CALM_KINDS } from './mind.js';
 import { WHEEL } from './wellness.js';
 import { loanInfo } from './loans.js';
+import { creditInfo, creditKind, creditLedger, CREDIT_FREQS } from './credits.js';
+import { assetInfo, assetKind } from './assets.js';
 import { dosesFor, medAdherence } from './health.js';
 import {
   accountLabel, catName, catOf, choreStatus, freqLabel, repeatLabel, todoCategory, txCur, txDOP, txKind, txOrig, txRate,
@@ -65,6 +67,30 @@ export function buildTables(s, today) {
       ((s.money && s.money.loans) || []).map((l) => {
         const i = loanInfo(l, today);
         return [l.who, l.dir === 'me' ? 'Te debe' : 'Le debes', round2(l.amount), l.currency, l.day, l.due || '', round2(i.paid), round2(i.left), l.closed ? (l.forgiven ? 'Perdonado' : 'Saldado') : i.late ? 'Vencido' : 'Abierto', l.note];
+      }),
+    ),
+    // 1.11: préstamos del banco, cada cuota (pagada o por pagar) y tus bienes.
+    'Préstamos del banco': table(
+      ['Préstamo', 'Tipo', 'Entidad', 'Moneda', 'Monto pedido', 'Tasa anual %', 'Cuotas', 'Cada cuánto', 'Cuota', 'Seguro y cargos por cuota', 'Cuotas pagadas', 'Cuotas que faltan', 'Debes hoy', 'Intereses pagados', 'Intereses que faltan', 'Próxima cuota', 'Monto de la próxima', 'Termina', 'Estado'],
+      ((s.money && s.money.credits) || []).map((c) => {
+        const i = creditInfo(c, today);
+        return [c.name, creditKind(c.kind).label, c.lender, c.currency, round2(c.principal), c.apr, c.term, (CREDIT_FREQS.find((f) => f.key === c.freq) || {}).label || '', round2(c.payment), round2(c.fee), i.nPaid, i.nLeft ?? '', round2(i.balance), round2(i.paidInterest), round2(i.interestLeft), i.next ? i.next.date : '', i.open ? round2(i.nextAmount) : '', i.end || '', c.closed ? 'Pagado' : i.late ? `Atrasado ${i.behind}` : 'Al día'];
+      }),
+    ),
+    Cuotas: table(
+      ['Préstamo', 'Cuota', 'Fecha', 'Tipo', 'Pagado', 'Capital', 'Intereses', 'Seguro y cargos', 'Debes después', 'Estado'],
+      ((s.money && s.money.credits) || []).flatMap((c) => {
+        const i = creditInfo(c, today);
+        const done = creditLedger(c).rows.filter((r) => r.type === 'cuota' || r.type === 'abono').map((r) => [c.name, r.type === 'cuota' ? r.n : '', r.day, r.type === 'cuota' ? 'Cuota' : 'Abono a capital', round2(r.amount), round2(r.principal), round2(r.interest), round2(r.fee), round2(r.balance), 'Pagada']);
+        const todo = i.ok ? i.proj.rows.slice(0, 120).map((r) => [c.name, r.n, r.date, 'Cuota', round2(r.payment + r.fee), round2(r.principal), round2(r.interest), round2(r.fee), round2(r.balance), r.date < today ? 'Atrasada' : 'Por pagar']) : [];
+        return [...done, ...todo];
+      }),
+    ),
+    Bienes: table(
+      ['Bien', 'Tipo', 'Valor estimado', 'Moneda', 'Desde', 'Préstamo ligado', 'Debes de él RD$', 'Es tuyo RD$', 'Nota'],
+      ((s.money && s.money.assets) || []).map((a) => {
+        const i = assetInfo(s, a, today);
+        return [a.name, assetKind(a.kind).label, round2(i.value), a.currency, a.since, i.credit ? i.credit.name : '', round2(i.oweDOP), round2(i.equity), a.note];
       }),
     ),
     // Saldos de hoy. En una tarjeta, el saldo en negativo es lo que debes.

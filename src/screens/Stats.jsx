@@ -8,9 +8,12 @@ import { catOf } from '../game/logic.js';
 import {
   PERIODS, periodOf, cashflow, totals, categoryStats, merchantStats, accountStats, weekdayStats, dailyTotals, paceSeries,
   monthProjection, insights, monthShort, prevMonth, compareTotals, groupStats, incomeStats, smallSpends, bankCosts, healthSnapshot, moodMoney,
+  debtLoad, emergencyFund, subscriptionStats, loanCosts,
 } from '../game/stats.js';
 import { workInfo, workHours, fmtWork } from '../game/ledger.js';
 import { WorkCalc } from './FinTools.jsx';
+import { WorthCard } from './Loans.jsx';
+import { Bar } from '../ui/kit.jsx';
 
 const pct = (v) => { const n = Math.round((v || 0) * 100); return `${n < 0 ? '−' : ''}${Math.abs(n)} %`; };
 // «12 mil», «1.5 mil», «850».
@@ -30,8 +33,11 @@ const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 // «los lunes», «los sábados».
 const daysPlural = (d) => (/s$/.test(d) ? d : `${d}s`);
 
+const VIEWS = [['resumen', 'Resumen'], ['gastos', 'Gastos'], ['ingresos', 'Ingresos'], ['deudas', 'Deudas y ahorro'], ['vida', 'Tu vida']];
+
 export function Analysis({ s, today, onCat, setSheet = () => {} }) {
   const [per, setPer] = useState('mes');
+  const [view, setView] = useState('resumen');
   const period = periodOf(per, today);
   const tot = totals(s, period.from, period.to);
   const cmp = compareTotals(s, period, today);
@@ -59,21 +65,50 @@ export function Analysis({ s, today, onCat, setSheet = () => {} }) {
         {wi.ready && tot.spent > 0 && <span class="small semi row hrs" style={{ color: 'var(--finanzas-ink)' }}><Icon name="clock" size={14} />Lo que gastaste son {fmtWork(workHours(tot.spent, wi), wi)} de tu trabajo.</span>}
       </section>
 
-      {per === 'mes' && <Insights s={s} today={today} onCat={onCat} />}
-      {per === 'mes' && <PaceCard s={s} today={today} />}
-      <HealthCard s={s} today={today} />
-      <CashflowCard s={s} mks={cfMks} today={today} />
-      {any && <CategoriesCard s={s} period={period} today={today} onCat={onCat} wi={wi} />}
-      {any && <IncomeCard s={s} period={period} />}
-      {any && <WorkCard s={s} period={period} wi={wi} onSet={() => setSheet({ kind: 'work' })} />}
-      {any && <AntsCard s={s} period={period} wi={wi} onCat={onCat} />}
-      <MoodMoneyCard s={s} today={today} onCat={onCat} />
-      {any && <BankCard s={s} period={period} wi={wi} onTax={() => setSheet({ kind: 'tax' })} />}
-      {any && <MerchantsCard s={s} period={period} />}
-      {single && any && <CalendarCard s={s} mk={period.mks[0]} today={today} />}
-      {any && <WeekdayCard s={s} period={period} />}
-      {any && <AccountsCard s={s} period={period} />}
-      {!any && <p class="small muted" style={{ textAlign: 'center' }}>Cuando registres o importes movimientos de este período, aquí verás tus números.</p>}
+      <div class="seg fin-tabs" role="tablist" aria-label="Qué quieres ver">
+        {VIEWS.map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={view === k ? 'true' : 'false'} onClick={() => setView(k)}>{l}</button>)}
+      </div>
+      {view === 'resumen' && (
+        <>
+          {per === 'mes' && <Insights s={s} today={today} onCat={onCat} />}
+          {per === 'mes' && <PaceCard s={s} today={today} />}
+          <HealthCard s={s} today={today} />
+          <CashflowCard s={s} mks={cfMks} today={today} />
+          <WorthCard s={s} today={today} />
+        </>
+      )}
+      {view === 'gastos' && (
+        <>
+          {any && <CategoriesCard s={s} period={period} today={today} onCat={onCat} wi={wi} />}
+          {any && <MerchantsCard s={s} period={period} />}
+          <SubsCard s={s} today={today} onCat={onCat} />
+          {any && <BankCard s={s} period={period} wi={wi} onTax={() => setSheet({ kind: 'tax' })} />}
+          {single && any && <CalendarCard s={s} mk={period.mks[0]} today={today} />}
+          {any && <WeekdayCard s={s} period={period} />}
+        </>
+      )}
+      {view === 'ingresos' && (
+        <>
+          {any && <IncomeCard s={s} period={period} />}
+          {any && <WorkCard s={s} period={period} wi={wi} onSet={() => setSheet({ kind: 'work' })} />}
+          {!tot.income && <p class="small muted" style={{ textAlign: 'center' }}>Aquí verás de dónde viene tu dinero cuando registres ingresos en este período.</p>}
+        </>
+      )}
+      {view === 'deudas' && (
+        <>
+          <DebtLoadCard s={s} today={today} onDebts={() => setSheet({ kind: 'debts' })} />
+          <LoanCostCard s={s} period={period} />
+          <EmergencyCard s={s} today={today} />
+          {any && <AccountsCard s={s} period={period} />}
+        </>
+      )}
+      {view === 'vida' && (
+        <>
+          <MoodMoneyCard s={s} today={today} onCat={onCat} />
+          {any && <AntsCard s={s} period={period} wi={wi} onCat={onCat} />}
+        </>
+      )}
+      {!any && (view === 'resumen' || view === 'gastos') && <p class="small muted" style={{ textAlign: 'center' }}>Cuando registres o importes movimientos de este período, aquí verás tus números.</p>}
     </>
   );
 }
@@ -158,14 +193,8 @@ function PaceCard({ s, today }) {
           </div>
         )}
       </div>
-      <div class="stack-xs">
-        <div class="between-c"><span class="small semi muted">Llevas</span><span class="strong tab-num">{whole(pr.spent)}</span></div>
-        {pr.toPay > 0 && <div class="between-c"><span class="small semi muted">Falta pagar de lo programado</span><span class="strong tab-num">{whole(pr.toPay)}</span></div>}
-        {pr.left > 0 && <div class="between-c"><span class="small semi muted">Día a día ({whole(pr.daily)} × {plural(pr.left, 'día', 'días')})</span><span class="strong tab-num">{whole(pr.daily * pr.left)}</span></div>}
-        <div class="between-c" style={{ borderTop: '1.5px solid var(--line)', paddingTop: 8 }}><span class="semi">Gasto estimado del mes</span><span class="strong tab-num">{whole(pr.projected)}</span></div>
-        {pr.projIncome > 0 && <span class="small" style={{ color: pr.projNet < 0 ? 'var(--vit-ink)' : 'var(--muted)' }}>{pr.projNet >= 0 ? `Con ${whole(pr.projIncome)} de ingresos, te quedarían unos ${whole(pr.projNet)}.` : `Con ${whole(pr.projIncome)} de ingresos, te faltarían unos ${whole(-pr.projNet)}.`}</span>}
-        {!pr.hasHistory && <span class="tiny muted">Con más meses registrados, la estimación usa tu gasto de siempre.</span>}
-      </div>
+      <span class="small">Llevas <b class="tab-num">{whole(pr.spent)}</b>{pr.left > 0 ? <>; a este ritmo terminas el mes en unos <b class="tab-num">{whole(pr.projected)}</b>.</> : '.'}{pr.projIncome > 0 ? (pr.projNet >= 0 ? ` Con ${whole(pr.projIncome)} de ingresos, te quedarían unos ${whole(pr.projNet)}.` : ` Con ${whole(pr.projIncome)} de ingresos, te faltarían unos ${whole(-pr.projNet)}.`) : ''}</span>
+      {!pr.hasHistory && <span class="tiny muted">Con más meses registrados, la estimación usa tu gasto de siempre.</span>}
     </section>
   );
 }
@@ -550,3 +579,90 @@ function AccountsCard({ s, period }) {
 }
 
 export { fmtShort };
+
+
+// ---------- 1.11: deudas, préstamos, fondo de emergencia y suscripciones ----------
+
+function DebtLoadCard({ s, today, onDebts }) {
+  const d = debtLoad(s, today);
+  if (!d.n) return null;
+  const v = d.dti == null ? null : Math.round(d.dti * 100);
+  const tone = v == null ? 'mid' : v <= 20 ? 'good' : v <= 36 ? 'mid' : 'low';
+  const label = { good: 'Sano', mid: 'Con cuidado', low: 'Alto' }[tone];
+  const col = { good: 'var(--good-ink)', mid: 'var(--xp-ink)', low: 'var(--vit-ink)' }[tone];
+  return (
+    <section class="card" aria-label="Cuánto se va en deudas">
+      <div class="between-c"><h2 class="h2">Lo que se va en deudas</h2>{v != null && <span class="chip sm" style={{ color: col }}>{label}</span>}</div>
+      {v != null ? (
+        <>
+          <span class="display-num tab-num" style={{ fontSize: 34, color: col }}>{v} %</span>
+          <span class="small muted">de tus ingresos de cada mes ({whole(d.income)}) se va en pagar deudas: {whole(d.commitments)} al mes. La guía: menos del 36 %, y lo ideal por debajo del 20 %.</span>
+          <Bar value={Math.min(1, d.dti / 0.5)} size="lg" color={col} label={`Deudas: ${v} % de tus ingresos`} />
+        </>
+      ) : <span class="small muted">Pagas {whole(d.commitments)} al mes en deudas. Agrega tu sueldo a tu plan para ver qué parte de tus ingresos es.</span>}
+      <div class="between-c"><span class="small semi muted">Debes en total</span><span class="strong tab-num">{whole(d.owe)}</span></div>
+      {d.missing > 0 && <span class="tiny muted">A {plural(d.missing, 'deuda', 'deudas')} le falta el pago mensual; con él, este número sube.</span>}
+      <button type="button" class="link-btn" style={{ alignSelf: 'flex-start', minHeight: 32 }} onClick={onDebts}><Icon name="trend" size={15} />Plan para salir de deudas</button>
+    </section>
+  );
+}
+
+function LoanCostCard({ s, period }) {
+  const c = loanCosts(s, period);
+  if (!c.n) return null;
+  return (
+    <section class="card" aria-label="Lo que te cuestan los préstamos">
+      <h2 class="h2">Lo que te cuestan los préstamos</h2>
+      <span class="small muted">De {whole(c.total)} que pagaste en cuotas y abonos en este período:</span>
+      <div class="stack-xs">
+        <div class="between-c"><span class="small semi muted">A capital (debes menos)</span><span class="strong tab-num" style={{ color: 'var(--good-ink)' }}>{whole(c.principal)}</span></div>
+        <div class="between-c"><span class="small semi muted">A intereses</span><span class="strong tab-num" style={{ color: 'var(--vit-ink)' }}>{whole(c.interest)}</span></div>
+        {c.fees > 0 && <div class="between-c"><span class="small semi muted">A seguros y cargos</span><span class="strong tab-num" style={{ color: 'var(--vit-ink)' }}>{whole(c.fees)}</span></div>}
+      </div>
+      <Bar value={c.costShare} size="lg" color="var(--vit)" label={`El ${pct(c.costShare)} fue costo`} />
+      <span class="tiny muted">El {pct(c.costShare)} de lo que pagaste fue costo del préstamo. Un abono a capital baja los intereses de las cuotas que vienen.</span>
+    </section>
+  );
+}
+
+function EmergencyCard({ s, today }) {
+  const e = emergencyFund(s, today);
+  if (!e.ready) {
+    return (
+      <section class="card" aria-label="Fondo de emergencia">
+        <h2 class="h2">Fondo de emergencia</h2>
+        <span class="small muted">Con tus saldos y un par de meses de gastos registrados te digo para cuántos meses te alcanza lo que tienes ahorrado. La guía es tener de 3 a 6 meses de gastos necesarios.</span>
+      </section>
+    );
+  }
+  const m = e.months || 0;
+  const tone = m >= 3 ? 'var(--good)' : m >= 1 ? 'var(--xp)' : 'var(--vit)';
+  return (
+    <section class="card" aria-label="Fondo de emergencia">
+      <div class="between-c"><h2 class="h2">Fondo de emergencia</h2><span class="strong tab-num">{m >= 10 ? Math.round(m) : Math.round(m * 10) / 10} {Math.round(m * 10) / 10 === 1 ? 'mes' : 'meses'}</span></div>
+      <Bar value={e.pct} size="lg" color={tone} label={`Llevas el ${Math.round(e.pct * 100)} % de 3 meses`} />
+      <span class="small muted">Ahorrado: {whole(e.saved)}. Tus gastos necesarios (casa, comida, transporte, salud, servicios) son unos {whole(e.monthly)} al mes: 3 meses son {whole(e.goal3)} y 6 meses, {whole(e.goal6)}.</span>
+      {!e.hasSavings && <span class="tiny muted">Marca una cuenta como «Ahorro» para contarla aquí. Ahora cuento solo las cuentas de ahorro: con todo el efectivo te alcanzaría para {Math.round((e.monthsAll || 0) * 10) / 10} meses.</span>}
+      {e.hasSavings && m < 3 && <span class="small semi" style={{ color: 'var(--finanzas-ink)' }}>Te faltan {whole(Math.max(0, e.goal3 - e.saved))} para los 3 meses.</span>}
+    </section>
+  );
+}
+
+function SubsCard({ s, today, onCat }) {
+  const x = subscriptionStats(s, today);
+  if (!x.list.length) return null;
+  return (
+    <section class="card flush" aria-label="Suscripciones">
+      <div class="between-c" style={{ padding: '14px 0 4px' }}><h2 class="h2">Suscripciones</h2><span class="strong tab-num">{whole(x.perMonth)} al mes</span></div>
+      <span class="small muted" style={{ padding: '0 0 6px' }}>Son {whole(x.perYear)} al año. Promedio de los últimos 3 meses.</span>
+      {x.list.slice(0, 8).map((m) => (
+        <div key={m.key} class="lrow" style={{ minHeight: 48 }}>
+          <span class="grow semi clip">{m.name}</span>
+          <span class="tiny muted semi">{plural(m.n, 'cobro', 'cobros')}</span>
+          <span class="strong tab-num">{whole(m.monthly)}</span>
+        </div>
+      ))}
+      <button type="button" class="lrow" style={{ justifyContent: 'center', fontWeight: 700 }} onClick={() => onCat('suscripciones')}>Ver el detalle de la categoría</button>
+    </section>
+  );
+}

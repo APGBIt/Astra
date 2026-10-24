@@ -77,9 +77,13 @@ function forDay(s, day, today, cfg) {
       if (it.estimate) continue;
       const n = diffDays(day, it.date);
       if (n < 0) continue;
-      const lead = it.type === 'plan' ? (Number(it.p.remind) >= 0 ? Number(it.p.remind) : 3) : 3;
+      const lead = it.type === 'plan' ? (Number(it.p.remind) >= 0 ? Number(it.p.remind) : 3) : it.type === 'credit' ? it.c.remind : 3;
       if (!(n === 0 || n === 1 || n === lead)) continue;
-      if (it.type === 'card') {
+      if (it.type === 'credit') {
+        const amt = it.currency === 'USD' ? `US$${it.amount.toFixed(2)}` : rd(it.amount);
+        push('pagos', 'morning', n === 0 ? `Hoy toca la cuota de ${it.c.name}` : `La cuota de ${it.c.name} vence ${whenWord(n)}`, `${amt}${it.status === 'late' ? ' · está atrasada' : ''}. Si ya la pagaste, anótala en Astra.`, '#/finanzas?tab=deudas', `credit-${it.c.id}-${it.n}-${n}`);
+        if (n === 0) payToday.push(it.c.name);
+      } else if (it.type === 'card') {
         const owe = [it.toPay.DOP > 0 ? rd(it.toPay.DOP) : '', it.toPay.USD > 0 ? `US$${it.toPay.USD.toFixed(2)}` : ''].filter(Boolean).join(' y ');
         push('pagos', 'morning', n === 0 ? `Hoy vence tu ${accountLabel(it.a)}` : `Tu ${accountLabel(it.a)} vence ${whenWord(n)}`, `Para no pagar intereses, paga ${owe}.`, '#/finanzas?tab=plan', `card-${it.a.id}-${it.date}-${n}`);
         if (n === 0) payToday.push(accountLabel(it.a));
@@ -99,8 +103,8 @@ function forDay(s, day, today, cfg) {
       const n = diffDays(day, l.due);
       if (!(n === 0 || n === 1 || n === 3)) continue;
       const amt = l.currency === 'USD' ? `US$${leftOf(l).toFixed(2)}` : rd(leftOf(l));
-      if (l.dir === 'me') push('pagos', 'morning', n === 0 ? `Hoy ${l.who} quedó en devolverte ${amt}` : `${l.who} quedó en devolverte ${amt} ${whenWord(n)}`, 'Si ya te pagó, anota el abono en Astra.', '#/finanzas?tab=cuentas', `loan-${l.id}-${n}`);
-      else push('pagos', 'morning', n === 0 ? `Hoy vence lo que le debes a ${l.who}` : `Lo que le debes a ${l.who} vence ${whenWord(n)}`, `Faltan ${amt}.`, '#/finanzas?tab=cuentas', `loan-${l.id}-${n}`);
+      if (l.dir === 'me') push('pagos', 'morning', n === 0 ? `Hoy ${l.who} quedó en devolverte ${amt}` : `${l.who} quedó en devolverte ${amt} ${whenWord(n)}`, 'Si ya te pagó, anota el abono en Astra.', '#/finanzas?tab=deudas', `loan-${l.id}-${n}`);
+      else push('pagos', 'morning', n === 0 ? `Hoy vence lo que le debes a ${l.who}` : `Lo que le debes a ${l.who} vence ${whenWord(n)}`, `Faltan ${amt}.`, '#/finanzas?tab=deudas', `loan-${l.id}-${n}`);
     }
   }
 

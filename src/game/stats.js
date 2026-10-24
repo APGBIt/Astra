@@ -6,10 +6,12 @@ import { addDays, diffDays, monthKey, weekday, MONTHS } from '../app/dates.js';
 import { txKind, txDOP, catOf, merchantKey, accountOf, fxRate, inStats } from './logic.js';
 import {
   monthEnd, nextMonth, planOccurrences, budgetRows, budgetTotal, budgetFor, budgetCatOf, isGroupId, GROUP_PREFIX, isCard, balances,
-  moneyTotals, cardInfo, dayOf,
+  moneyTotals, cardInfo, dayOf, monthPlan,
 } from './money.js';
 import { CATEGORY_GROUPS } from './content.js';
 import { dayMoods } from './mind.js';
+import { creditMonth, creditTxIds, creditCosts } from './credits.js';
+import { debtList } from './debts.js';
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const daysIn = (mk) => Number(monthEnd(mk).slice(8));
@@ -235,6 +237,7 @@ export function dailyTotals(s, mk) {
 const fixedIds = (s) => {
   const ids = new Set();
   for (const p of s.money.plans || []) for (const v of Object.values(p.done || {})) if (v && v !== 'skip') ids.add(v);
+  for (const id of creditTxIds(s)) ids.add(id);
   return ids;
 };
 
@@ -294,6 +297,8 @@ export function monthProjection(s, today) {
     const dop = o.p.currency === 'USD' ? v * fxRate(s, today) : v;
     if (o.p.kind === 'ingreso') toGet += dop; else toPay += dop;
   }
+  // 1.11: lo que falta de cuotas de préstamos este mes.
+  if (addDays(today, 1) <= end) toPay += creditMonth(s, addDays(today, 1), end, today).due;
   const projected = spent + toPay + daily * left;
   const projIncome = income + toGet;
   const budget = budgetTotal(s, budgetRows(s, mk, today));
@@ -538,3 +543,59 @@ export function insights(s, today) {
 }
 
 export { nextMonth };
+
+
+// ---------- 1.11: deudas, fondo de emergencia y suscripciones ----------
+
+// Cuánto de lo que ganas se va en pagos de deudas cada mes: cuotas de préstamos, mínimos de tarjetas y pagos que pusiste.
+export function debtLoad(s, today) {
+  const h = healthSnapshot(s, today);
+  let income = h.avgIncome;
+  if (!(income > 0)) { try { income = monthPlanIncome(s, today); } catch (e) { income = 0; } }
+  const list = debtList(s, today).filter((x) => x.on !== false);
+  const commitments = r2(list.reduce((a, x) => a + (x.min || 0) + (x.fee || 0), 0));
+  const owe = r2(list.reduce((a, x) => a + (x.balance || 0), 0));
+  const dti = income > 0 ? commitments / income : null;
+  return { income: r2(income), commitments, owe, dti, n: list.length, missing: list.filter((x) => !(x.min > 0)).length };
+}
+function monthPlanIncome(s, today) {
+  return monthPlan(s, monthKey(today), today).income || 0;
+}
+
+// Fondo de emergencia: lo que tienes ahorrado frente a lo que necesitas para vivir 3 meses.
+export function emergencyFund(s, today) {
+  const bal = balances(s);
+  const mt = moneyTotals(s, today, bal);
+  const cur = monthKey(today);
+  const mks = [prevMonth(cur), prevMonth(prevMonth(cur)), prevMonth(prevMonth(prevMonth(cur)))];
+  const needs = mks.map((mk) => split503020(s, mk).necesidades).filter((v) => v > 0);
+  const monthly = needs.length ? needs.reduce((a, v) => a + v, 0) / needs.length : 0;
+  const saved = mt.savings;
+  return {
+    ready: mt.ready && monthly > 0, monthly: r2(monthly), saved: r2(saved), liquid: r2(mt.liquid),
+    months: monthly > 0 ? saved / monthly : null, monthsAll: monthly > 0 ? (saved + mt.liquid) / monthly : null,
+    goal3: r2(monthly * 3), goal6: r2(monthly * 6), pct: monthly > 0 ? Math.min(1, saved / (monthly * 3)) : 0, hasSavings: s.money.accounts.some((a) => a.save && !a.hidden),
+  };
+}
+
+// Suscripciones: lo que pagas cada mes en la categoría «Suscripciones y apps» (promedio de los últimos 3 meses).
+export function subscriptionStats(s, today) {
+  const from = addDays(today, -90);
+  const by = new Map();
+  for (const t of s.money.tx) {
+    if (t.cat !== 'suscripciones' || txKind(t) !== 'gasto' || t.day < from || t.day > today || !inStats(t)) continue;
+    const k = merchantKey(t.merchant) || 'otras';
+    if (!by.has(k)) by.set(k, { key: k, name: t.merchant || 'Suscripción', total: 0, n: 0, last: t.day });
+    const x = by.get(k);
+    x.total += txDOP(t); x.n += 1; if (t.day > x.last) { x.last = t.day; x.name = t.merchant || x.name; }
+  }
+  const list = [...by.values()].map((x) => ({ ...x, monthly: r2(x.total / 3) })).sort((a, b) => b.total - a.total);
+  const perMonth = r2(list.reduce((a, x) => a + x.monthly, 0));
+  return { list, perMonth, perYear: r2(perMonth * 12) };
+}
+
+// Lo que te costaron los préstamos del banco en el período: intereses, seguros y cargos, frente a lo que fue a capital.
+export function loanCosts(s, period) {
+  const c = creditCosts(s, period.from, period.to);
+  return { ...c, cost: r2(c.interest + c.fees), costShare: c.total > 0 ? (c.interest + c.fees) / c.total : 0 };
+}

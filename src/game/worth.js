@@ -2,9 +2,11 @@
 // te deben y menos lo que debes a personas, al cierre de cada mes (y hoy). Como el «Net worth» de Monarch.
 // Se calcula con tus movimientos y los saldos que pusiste: antes del saldo se descuenta lo que pasó después.
 import { monthKey } from '../app/dates.js';
-import { fxRate } from './logic.js';
+import { fxRate, toDOP } from './logic.js';
 import { txLegs, anchorOf, afterAnchor, ownsBalance, isCard, monthEnd } from './money.js';
 import { loanTotals } from './loans.js';
+import { creditBalanceAt } from './credits.js';
+import { assetTotals } from './assets.js';
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const prevMk = (mk) => { const [y, m] = mk.split('-').map(Number); return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`; };
@@ -38,7 +40,14 @@ export function worthAt(s, day) {
     if (isCard(a)) { if (dop < 0) owe += -dop; else have += dop; } else have += dop;
   }
   const lt = loanTotals(s, day);
-  return { day, have: r2(have), owe: r2(owe), lentOut: lt.me, borrowed: lt.yo, net: r2(have - owe + lt.me - lt.yo) };
+  // 1.11: préstamos del banco (lo que debes) y bienes (lo que valen).
+  let credits = 0;
+  for (const c of s.money.credits || []) credits += toDOP(creditBalanceAt(c, day), c.currency, rate);
+  const at = assetTotals(s, day);
+  return {
+    day, have: r2(have), owe: r2(owe), lentOut: lt.me, borrowed: lt.yo, credits: r2(credits), assets: at.value,
+    net: r2(have - owe + lt.me - lt.yo - credits + at.value),
+  };
 }
 
 // Desde cuándo hay datos: el primer saldo que pusiste o el primer movimiento.
@@ -47,6 +56,8 @@ export function worthStart(s) {
   for (const a of s.money.accounts) if (a.base && a.base.day && (!first || a.base.day < first)) first = a.base.day;
   for (const t of s.money.tx) if (!first || t.day < first) first = t.day;
   for (const l of s.money.loans || []) if (!first || l.day < first) first = l.day;
+  for (const c of s.money.credits || []) if (!first || c.start < first) first = c.start;
+  for (const a of s.money.assets || []) if (!first || a.since < first) first = a.since;
   return first;
 }
 

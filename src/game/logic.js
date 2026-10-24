@@ -11,6 +11,7 @@ import {
 import { norm, guessCategory, guessIncome } from './parse.js';
 import { wordOf } from './daily.js';
 import { afterTx, ensureMoneyPlus, moneyAccount, WORK_DEFAULT } from './money.js';
+import { dropCreditTx, syncCreditTx } from './credits.js';
 import { defaultMind, bestCalmStreak, distinctEmotions, goodThings, journalDays } from './mind.js';
 import { PROGRAM } from './wellness.js';
 import { defaultGrowth } from './growth.js';
@@ -1125,6 +1126,9 @@ export function defaultMoney() {
     lastBulk: null,
     // 1.10
     loans: [],
+    // 1.11: préstamos del banco y financiamientos con cuotas.
+    credits: [],
+    assets: [],
   };
 }
 
@@ -1450,7 +1454,7 @@ export function addTx(s, p, today, ev) {
   d.txXp = (d.txXp || 0) + 1;
   if (d.txXp <= 3) gainXP(s, 'finanzas', 5, today, ev);
   const abs = txDOP(tx);
-  if (tx.kind === 'gasto' && tx.cat === 'deuda') bossFeed(s, 'debtPay', abs, today, ev, { note: tx.merchant ? `Pago: ${tx.merchant}` : '' });
+  if (tx.kind === 'gasto' && tx.cat === 'deuda' && !p.noBoss) bossFeed(s, 'debtPay', abs, today, ev, { note: tx.merchant ? `Pago: ${tx.merchant}` : '' });
   if (tx.kind === 'gasto' && tx.cat === 'ahorro') bossFeed(s, 'saving', abs, today, ev, { note: tx.merchant ? `Ahorro: ${tx.merchant}` : '' });
   autoCheck(s, today, ev);
   checkAchievements(s, today, ev);
@@ -1474,6 +1478,7 @@ export function updateTx(s, id, p, { learn = true } = {}) {
   const tx = buildTx(s, merged, prev);
   s.money.tx[i] = tx;
   syncTaxChildren(s, tx);
+  syncCreditTx(s, tx);
   sortTx(s);
   if (learn && tx.merchant && tx.cat !== prev.cat && tx.kind === 'gasto' && !tx.split) learnRule(s, tx.merchant, tx.cat);
   return tx;
@@ -1483,6 +1488,7 @@ export function updateTx(s, id, p, { learn = true } = {}) {
 export function removeTx(s, id) {
   const gone = new Set([id, ...s.money.tx.filter((t) => t.taxOf === id).map((t) => t.id)]);
   s.money.tx = s.money.tx.filter((t) => !gone.has(t.id));
+  dropCreditTx(s, gone);
   // Si era el pago de algo programado, esa fecha vuelve a quedar pendiente.
   for (const p of s.money.plans || []) for (const [d, v] of Object.entries(p.done || {})) if (gone.has(v)) delete p.done[d];
 }

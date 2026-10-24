@@ -17,8 +17,9 @@ import { CATEGORY_GROUPS } from '../game/content.js';
 import { ACCOUNT_KINDS, PLAN_TEMPLATES } from '../game/content.js';
 import { toNumber } from '../game/parse.js';
 import { CatPicker } from '../ui/catpicker.jsx';
-import { LoansCard, WorthCard } from './Loans.jsx';
 import { loanTotals } from '../game/loans.js';
+import { creditKind, creditTotals } from '../game/credits.js';
+import { AssetsCard } from './Credits.jsx';
 
 const ACC_ICON = Object.fromEntries(ACCOUNT_KINDS.map((k) => [k.key, k.icon]));
 const num = (v) => toNumber(String(v || '').replace(/[^\d.,-]/g, '')) || 0;
@@ -57,12 +58,22 @@ const planIcon = (s, p) => catOf(s, p.cat).icon || (p.kind === 'ingreso' ? 'coin
 const firstBank = (s) => (s.money.accounts.find((a) => a.kind === 'cuenta') || s.money.accounts.find((a) => !isCard(a)) || {}).id || '';
 
 // Lo que abre la hoja de movimiento para pagar (o cobrar) algo.
+// Una llave y la hoja que abre cada cosa por pagar: una tarjeta, una cuota del banco o un pago fijo.
+export const dueKey = (it) => `${it.type}-${it.type === 'card' ? it.a.id : it.type === 'credit' ? `${it.c.id}-${it.n}` : it.p.id}-${it.date}${it.estimate ? '-e' : ''}`;
+export const dueSheet = (it) => (it.type === 'card' ? { kind: 'card', id: it.a.id } : it.type === 'credit' ? { kind: 'credit', id: it.c.id } : { kind: 'due', item: { plan: it.p.id, date: it.date } });
+
 export function payInitial(s, it, today) {
   if (it.type === 'card') {
     const usdOnly = !(it.toPay.DOP > 0) && it.toPay.USD > 0;
     return {
       kind: 'tx', type: 'transfer', cat: 'pago_tarjeta', currency: usdOnly ? 'USD' : 'DOP', amount: usdOnly ? it.toPay.USD : it.toPay.DOP,
       merchant: `Pago a ${accountLabel(it.a)}`, account: it.a.payFrom || firstBank(s), to: it.a.id, day: today,
+    };
+  }
+  if (it.type === 'credit') {
+    return {
+      kind: 'tx', type: 'gasto', amount: it.amount || '', currency: it.currency, cat: 'deuda', merchant: `Cuota de ${it.c.name}`, account: it.c.account || firstBank(s),
+      day: today, link: { credit: it.c.id, date: it.date, name: it.c.name },
     };
   }
   return {
@@ -77,7 +88,9 @@ export function MoneyOverview({ s, today, setSheet, setTab }) {
   const bal = balances(s);
   const t = moneyTotals(s, today, bal);
   const lt = loanTotals(s, today);
-  const net = t.net + lt.me - lt.yo;
+  const ct = creditTotals(s, today);
+  const debtsTotal = t.oweDOP + lt.yo + ct.owe;
+  const debtParts = [t.oweDOP > 0 ? `tarjetas ${money(Math.round(t.oweDOP))}` : '', ct.owe > 0 ? `préstamos ${money(Math.round(ct.owe))}` : '', lt.yo > 0 ? `personas ${money(Math.round(lt.yo))}` : ''].filter(Boolean);
   const pay = untilPayday(s, today);
   const due = dueItems(s, today, addDays(today, 14), today, { bal }).filter((it) => !it.estimate);
   const salary = PLAN_TEMPLATES.ingreso[0];
@@ -92,22 +105,17 @@ export function MoneyOverview({ s, today, setSheet, setTab }) {
           </span>
           <span class="small muted">En tus cuentas y efectivo.{t.have.USD ? ` Todo en pesos: ${money(t.haveDOP)}.` : ''}</span>
           <div class="stack-xs" style={{ marginTop: 2 }}>
-            {(t.owe.DOP > 0 || t.owe.USD > 0) && (
-              <button type="button" class="lrow" style={{ minHeight: 48 }} onClick={() => setTab('cuentas')}>
-                <span class="grow semi">Debes en tarjetas</span><Amt o={t.owe} color="var(--vit-ink)" /><Icon name="right" size={16} />
+            {debtsTotal > 0 && (
+              <button type="button" class="lrow" style={{ minHeight: 48 }} onClick={() => setTab('deudas')}>
+                <span class="stack-xs grow" style={{ gap: 0 }}><span class="semi">Debes en total</span><span class="tiny muted semi">{debtParts.join(' · ')}</span></span>
+                <span class="strong tab-num" style={{ color: 'var(--vit-ink)' }}>{money(Math.round(debtsTotal))}</span><Icon name="right" size={16} />
               </button>
             )}
-            {(lt.me > 0 || lt.yo > 0) && (
-              <button type="button" class="lrow" style={{ minHeight: 48 }} onClick={() => setTab('cuentas')}>
-                <span class="grow semi">{lt.me > 0 && lt.yo > 0 ? 'Te deben · debes a personas' : lt.me > 0 ? 'Te deben' : 'Debes a personas'}</span>
-                <span class="stack-xs" style={{ alignItems: 'flex-end', gap: 0 }}>
-                  {lt.me > 0 && <span class="strong tab-num" style={{ color: 'var(--good-ink)' }}>{money(Math.round(lt.me))}</span>}
-                  {lt.yo > 0 && <span class="strong tab-num" style={{ color: 'var(--vit-ink)' }}>−{money(Math.round(lt.yo))}</span>}
-                </span>
-                <Icon name="right" size={16} />
+            {lt.me > 0 && (
+              <button type="button" class="lrow" style={{ minHeight: 48 }} onClick={() => setTab('deudas')}>
+                <span class="grow semi">Te deben</span><span class="strong tab-num" style={{ color: 'var(--good-ink)' }}>{money(Math.round(lt.me))}</span><Icon name="right" size={16} />
               </button>
             )}
-            <div class="lrow" style={{ minHeight: 48 }}><span class="grow semi">Neto</span><span class="strong tab-num" style={{ color: net < 0 ? 'var(--vit-ink)' : 'var(--ink)' }}>{money(Math.round(net))}</span></div>
             {t.credit && (t.credit.DOP > 0 || t.credit.USD > 0) && (
               <button type="button" class="lrow" style={{ minHeight: 48 }} onClick={() => setTab('cuentas')}>
                 <span class="stack-xs grow" style={{ gap: 0 }}><span class="semi">Crédito disponible</span><span class="tiny muted semi">En tus tarjetas: no es dinero tuyo</span></span><Amt o={t.credit} /><Icon name="right" size={16} />
@@ -142,7 +150,7 @@ export function MoneyOverview({ s, today, setSheet, setTab }) {
             {(s.money.plans || []).length || s.money.accounts.some((a) => isCard(a) && a.cut) ? 'Nada en los próximos 14 días.' : 'Agrega tus pagos fijos (alquiler, luz, colegio…) y la fecha de corte de tus tarjetas para verlos aquí antes de que venzan.'}
           </p>
         )}
-        {due.slice(0, 6).map((it) => <DueRow key={`${it.type}-${it.type === 'card' ? it.a.id : it.p.id}-${it.date}`} s={s} it={it} today={today} onPay={() => setSheet(payInitial(s, it, today))} onOpen={() => setSheet(it.type === 'card' ? { kind: 'card', id: it.a.id } : { kind: 'due', item: { plan: it.p.id, date: it.date } })} />)}
+        {due.slice(0, 6).map((it) => <DueRow key={dueKey(it)} s={s} it={it} today={today} onPay={() => setSheet(payInitial(s, it, today))} onOpen={() => setSheet(dueSheet(it))} />)}
         {due.length > 6 && <button type="button" class="lrow" style={{ justifyContent: 'center', fontWeight: 700 }} onClick={() => setTab('plan')}>Ver {due.length - 6} más</button>}
         {!(s.money.plans || []).length && <button type="button" class="lrow" style={{ justifyContent: 'center', fontWeight: 700, color: 'var(--ink)' }} onClick={() => setSheet({ kind: 'plan', tpl: null, planKind: 'gasto' })}><Icon name="plus" size={18} />Agregar un pago fijo</button>}
       </section>
@@ -219,9 +227,10 @@ function PaydayCard({ s, pay, today }) {
 export function DueRow({ s, it, today, onPay, onOpen }) {
   const late = it.status === 'late';
   const card = it.type === 'card';
-  const name = card ? `Tarjeta ${accountLabel(it.a)}` : it.p.name;
-  const icon = card ? 'card' : planIcon(s, it.p);
-  const amount = card ? both(it.toPay) : `${it.p.variable ? '≈ ' : ''}${cur(it.amount, it.currency)}`;
+  const cr = it.type === 'credit';
+  const name = card ? `Tarjeta ${accountLabel(it.a)}` : cr ? `Cuota de ${it.c.name}` : it.p.name;
+  const icon = card ? 'card' : cr ? creditKind(it.c.kind).icon : planIcon(s, it.p);
+  const amount = card ? both(it.toPay) : `${!cr && it.p.variable ? '≈ ' : ''}${cur(it.amount, it.currency)}`;
   const inc = it.kind === 'ingreso';
   const when = late ? `Venció ${whenText(it.date, today).toLowerCase()}` : it.date === today ? (inc ? 'Hoy' : 'Vence hoy') : whenText(it.date, today);
   return (
@@ -230,7 +239,7 @@ export function DueRow({ s, it, today, onPay, onOpen }) {
         <span class="tile sm" style={{ background: inc ? 'var(--good-soft)' : late ? 'var(--vit-soft)' : 'var(--finanzas-soft)', color: inc ? 'var(--good-ink)' : late ? 'var(--vit-ink)' : 'var(--finanzas-ink)' }}><Icon name={icon} size={18} /></span>
         <span class="stack-xs grow" style={{ minWidth: 0 }}>
           <span class="strong clamp2" style={{ lineHeight: 1.25 }}>{name}</span>
-          <span class="tiny semi" style={{ color: late ? 'var(--vit-ink)' : 'var(--muted)' }}>{when}{it.estimate ? ' · estimado' : ''}{card && it.info && it.info.min && (it.info.min.DOP || it.info.min.USD) ? ` · mínimo ${both(it.info.min)}` : ''}</span>
+          <span class="tiny semi" style={{ color: late ? 'var(--vit-ink)' : 'var(--muted)' }}>{when}{cr ? ` · cuota ${it.n}` : ''}{it.estimate ? ' · estimado' : ''}{card && it.info && it.info.min && (it.info.min.DOP || it.info.min.USD) ? ` · mínimo ${both(it.info.min)}` : ''}</span>
         </span>
         {card ? <Amt o={it.toPay} /> : <span class="strong tab-num" style={{ color: inc ? 'var(--good-ink)' : 'var(--ink)', whiteSpace: 'nowrap' }}>{inc ? '+' : ''}{amount}</span>}
       </button>
@@ -244,28 +253,11 @@ export function DueRow({ s, it, today, onPay, onOpen }) {
 export function AccountsTab({ s, today, setSheet }) {
   const bal = balances(s);
   const t = moneyTotals(s, today, bal);
-  const lt = loanTotals(s, today);
-  const net = t.net + lt.me - lt.yo;
   const cards = s.money.accounts.filter((a) => isCard(a) && !a.hidden);
   const others = s.money.accounts.filter((a) => !isCard(a) && !a.hidden);
   return (
     <>
-      <section class="card flush" aria-label="Resumen de cuentas">
-        <div class="lrow" style={{ minHeight: 52 }}><span class="grow semi muted">Tienes</span><Amt o={t.have} /></div>
-        <div class="lrow" style={{ minHeight: 52 }}><span class="grow semi muted">Debes en tarjetas</span><Amt o={t.owe} color={t.oweDOP > 0 ? 'var(--vit-ink)' : undefined} /></div>
-        {lt.me > 0 && <div class="lrow" style={{ minHeight: 52 }}><span class="grow semi muted">Te deben</span><span class="strong tab-num" style={{ color: 'var(--good-ink)' }}>{money(Math.round(lt.me))}</span></div>}
-        {lt.yo > 0 && <div class="lrow" style={{ minHeight: 52 }}><span class="grow semi muted">Debes a personas</span><span class="strong tab-num" style={{ color: 'var(--vit-ink)' }}>{money(Math.round(lt.yo))}</span></div>}
-        <div class="lrow" style={{ minHeight: 52 }}><span class="grow semi muted">Neto</span><span class="strong tab-num" style={{ color: net < 0 ? 'var(--vit-ink)' : 'var(--good-ink)', fontSize: 19 }}>{money(Math.round(net))}</span></div>
-      </section>
-      <WorthCard s={s} today={today} />
       {!t.ready && <div class="note tone-xp"><Icon name="info" size={18} /><span>Toca cada cuenta y pon su saldo de hoy (y en cada tarjeta, lo que debes). Así los saldos cuadran con tu banco.</span></div>}
-
-      <section class="card flush" aria-label="Tarjetas de crédito">
-        <div style={{ padding: '14px 0 4px' }}><h2 class="h2">Tarjetas de crédito</h2></div>
-        {!cards.length && <p class="small muted" style={{ padding: '2px 0 12px' }}>Agrega tu tarjeta con su fecha de corte y de pago: te digo cuánto pagar y cuándo, en pesos y en dólares.</p>}
-        {cards.map((a) => <CardRow key={a.id} s={s} a={a} today={today} bal={bal} onOpen={() => setSheet({ kind: 'card', id: a.id })} />)}
-        {t.oweDOP > 0 && <button type="button" class="lrow" style={{ justifyContent: 'center', fontWeight: 700, color: 'var(--ink)' }} onClick={() => setSheet({ kind: 'debts' })}><Icon name="trend" size={18} />Plan para salir de deudas</button>}
-      </section>
 
       <section class="card flush" aria-label="Cuentas y efectivo">
         <div style={{ padding: '14px 0 4px' }}><h2 class="h2">Cuentas y efectivo</h2></div>
@@ -285,12 +277,13 @@ export function AccountsTab({ s, today, setSheet }) {
         })}
       </section>
       <button type="button" class="btn ghost block" onClick={() => setSheet({ kind: 'account', id: null })}><Icon name="plus" size={18} />Agregar cuenta o tarjeta</button>
-      <LoansCard s={s} today={today} setSheet={setSheet} />
+      {cards.length > 0 && <p class="small muted" style={{ textAlign: 'center' }}>Tus {plural(cards.length, 'tarjeta', 'tarjetas')} están en la pestaña Deudas.</p>}
+      <AssetsCard s={s} today={today} setSheet={setSheet} />
     </>
   );
 }
 
-function CardRow({ s, a, today, bal, onOpen }) {
+export function CardRow({ s, a, today, bal, onOpen }) {
   const ci = cardInfo(s, a, today, bal);
   const pill = ci.status === 'late' ? ['tone-vit', `Vencida: paga ${both(ci.toPay)}`]
     : ci.status === 'due' ? [ci.daysToDue <= 3 ? 'tone-xp' : '', `Paga ${both(ci.toPay)} antes del ${fmtShort(ci.cycle.due)}`]
@@ -640,8 +633,6 @@ export function PlanTab({ s, today, setSheet }) {
         </div>
         <WeekBlock s={s} today={today} />
       </section>
-      <DebtCard s={s} today={today} onOpen={() => setSheet({ kind: 'debts' })} />
-
       <section class="card flush" aria-label="Próximos días">
         <div class="between-c" style={{ padding: '14px 0 6px', gap: 8 }}>
           <h2 class="h2">Lo que viene</h2>
@@ -659,7 +650,7 @@ export function PlanTab({ s, today, setSheet }) {
         {byDay.map((d) => (
           <div key={d.day} class="txday">
             <div class="between-c dayhead"><span class="eyebrow" style={{ fontSize: 11.5 }}>{d.day === today ? 'Hoy' : dayShort(d.day)}</span>{fc.ready && <span class="tiny strong tab-num" style={{ color: d.bal < 0 ? 'var(--vit-ink)' : 'var(--muted)', whiteSpace: 'nowrap' }}>Quedaría {money(Math.round(d.bal))}</span>}</div>
-            {d.list.map((it) => <DueRow key={`${it.type}-${it.type === 'card' ? it.a.id : it.p.id}-${it.date}-${it.estimate ? 'e' : ''}`} s={s} it={it} today={today} onPay={() => setSheet(payInitial(s, it, today))} onOpen={() => setSheet(it.type === 'card' ? { kind: 'card', id: it.a.id } : { kind: 'due', item: { plan: it.p.id, date: it.date } })} />)}
+            {d.list.map((it) => <DueRow key={dueKey(it)} s={s} it={it} today={today} onPay={() => setSheet(payInitial(s, it, today))} onOpen={() => setSheet(dueSheet(it))} />)}
           </div>
         ))}
         {fc.items.some((it) => it.type === 'plan' && it.viaCard) && <p class="tiny muted" style={{ padding: '4px 0 12px' }}>Los pagos que haces con tarjeta de crédito salen de tus cuentas cuando pagas la tarjeta.</p>}
@@ -725,7 +716,7 @@ function WeekBlock({ s, today }) {
 }
 
 // Salir de deudas: cuándo terminas con tu plan (o una invitación a hacerlo si debes en tus tarjetas).
-function DebtCard({ s, today, onOpen }) {
+export function DebtCard({ s, today, onOpen }) {
   const list = debtList(s, today);
   const on = list.filter((x) => x.on !== false);
   if (!on.length) return null;

@@ -4,6 +4,8 @@
 import { monthKey } from '../app/dates.js';
 import { accountLabel, fxRate, uid } from './logic.js';
 import { balances, cardInfo, isCard, nextMonth } from './money.js';
+import { openCredits, creditLedger, creditKind, CREDIT_FREQS } from './credits.js';
+import { toDOP } from './logic.js';
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const pos = (n) => Math.max(0, r2(n));
@@ -28,7 +30,19 @@ export function debtList(s, today) {
       min: x && x.min > 0 ? x.min : minStmt, on: x ? x.on !== false : true, saved: !!x, minStmt, usd: ci.owed.USD > 0,
     });
   }
-  for (const x of d.items) if (x.kind !== 'card') out.push({ ...x, saved: true });
+  // 1.11: tus préstamos con cuotas entran con su saldo, su tasa y lo que pagas al mes (sin el seguro, que no baja la deuda).
+  const toggles = new Map(d.items.filter((x) => x.kind === 'credit').map((x) => [x.account, x]));
+  for (const c of openCredits(s)) {
+    const f = CREDIT_FREQS.find((q) => q.key === c.freq) || CREDIT_FREQS[0];
+    const x = toggles.get(c.id);
+    out.push({
+      id: x ? x.id : `credit-${c.id}`, kind: 'credit', credit: c.id, account: c.id, name: c.name, icon: creditKind(c.kind).icon,
+      balance: r2(toDOP(creditLedger(c).balance, c.currency, rate)), apr: c.apr, min: r2(toDOP(c.payment * f.perMonth, c.currency, rate)),
+      on: x ? x.on !== false : true, saved: !!x, usd: c.currency === 'USD',
+      fee: r2(toDOP((c.fee || 0) * f.perMonth, c.currency, rate)),
+    });
+  }
+  for (const x of d.items) if (x.kind !== 'card' && x.kind !== 'credit') out.push({ ...x, saved: true });
   return out;
 }
 
@@ -101,6 +115,12 @@ export function saveDebt(s, p) {
     let x = items.find((i) => i.kind === 'card' && i.account === p.account);
     if (!x) { x = { id: `d${uid()}`, kind: 'card', account: p.account, name: '', balance: 0, apr: 0, min: 0, on: true }; items.push(x); }
     x.apr = apr; x.min = min;
+    if (p.on !== undefined) x.on = !!p.on;
+    return x;
+  }
+  if (p.kind === 'credit') {
+    let x = items.find((i) => i.kind === 'credit' && i.account === p.credit);
+    if (!x) { x = { id: `d${uid()}`, kind: 'credit', account: p.credit, name: '', balance: 0, apr: 0, min: 0, on: true }; items.push(x); }
     if (p.on !== undefined) x.on = !!p.on;
     return x;
   }

@@ -451,6 +451,8 @@ function describe(e) {
     case 'targetDone': return { big: true, icon: 'target', color: 'var(--xp)', title: '¡Meta cumplida!', text: `Llegaste a «${e.name}». Ganas ${e.xp} XP y 30 de oro.` };
     case 'dreamDone': return { big: true, icon: 'star', color: 'var(--xp)', title: '¡Lo lograste!', text: `«${e.name}» ya es parte de tu historia. Ganas ${e.xp} XP y 40 de oro.` };
     case 'cardPaid': return { icon: 'card', text: `Pagaste todo el estado de ${e.name} a tiempo · +15 XP` };
+    case 'creditPaid': return e.extra ? { icon: 'bank', text: `Abonaste a capital de «${e.name}» · +15 XP` } : { icon: 'bank', text: `Cuota de «${e.name}» pagada a tiempo · +10 XP` };
+    case 'creditDone': return { big: true, icon: 'trophy', color: 'var(--xp)', title: '¡Terminaste de pagar!', text: `«${e.name}» ya no es una deuda. Ganas 100 XP y 50 de oro.` };
     case 'planLinked': return { icon: 'calendar', text: `«${e.name}» quedó como ${e.kind === 'ingreso' ? 'recibido' : 'pagado'}` };
     default: return null;
   }
