@@ -12,7 +12,7 @@ import { ACCOUNT_KINDS } from '../game/content.js';
 import {
   CREDIT_KINDS, CREDIT_FREQS, creditKind, creditOf, creditInfo, creditTotals, creditProject, creditWhatIf, creditPlanMatches,
   suggestPayment, dueDateOf, dueCount, scheduledBalance, addCredit, updateCredit, removeCredit, payCredit, removeCreditPay,
-  syncCredit, removeSync, closeCredit, reopenCredit,
+  syncCredit, removeSync, closeCredit, reopenCredit, creditCandidates, linkCreditTxs, recordDown,
 } from '../game/credits.js';
 import { ASSET_KINDS, assetKind, assetOf, assetInfo, assetTotals, addAsset, updateAsset, removeAsset } from '../game/assets.js';
 
@@ -154,6 +154,12 @@ function CreditForm({ s, c, sim, today, onClose, onDone }) {
   const [prepay, setPrepay] = useState(c && c.prepay ? String(c.prepay) : '');
   const [reduce, setReduce] = useState(c ? c.reduce : 'plazo');
   const [note, setNote] = useState(c ? c.note : '');
+  const [price, setPrice] = useState(c && c.price ? String(c.price) : '');
+  const [down, setDown] = useState(c && c.down ? String(c.down) : '');
+  const [upfront, setUpfront] = useState(c && c.upfront ? String(c.upfront) : '');
+  const [recDown, setRecDown] = useState(true);
+  const [recUp, setRecUp] = useState(false);
+  const [recAsset, setRecAsset] = useState(true);
   const [mode, setMode] = useState(c ? 'edit' : sim ? 'sim' : 'new'); // new: lo acabo de recibir · old: ya lo vengo pagando · sim: solo calcular
   const [paidN, setPaidN] = useState('');
   const [bal, setBal] = useState('');
@@ -166,6 +172,9 @@ function CreditForm({ s, c, sim, today, onClose, onDone }) {
   const proj = d.principal > 0 && d.term > 0 ? creditProject({ ...d, closed: null }) : null;
   const ok = d.principal > 0 && d.term >= 1 && d.payment > 0;
   const nameOk = name.trim().length >= 2;
+  const priceN = num(price);
+  const downN = num(down);
+  const onBuy = (np, nd) => { if (np > nd && nd >= 0 && (np > 0)) setPrincipal(String(Math.round((np - nd) * 100) / 100)); };
   const toDate = (v, fallback) => v || fallback;
   const onFreq = (k) => { setFreq(k); if (!c) setFirst(dueDateOf({ freq: k, first: start }, 2)); };
   const onStart = (v) => { const x = v || today; setStart(x); if (!c) setFirst(dueDateOf({ freq, first: x }, 2)); };
@@ -175,7 +184,7 @@ function CreditForm({ s, c, sim, today, onClose, onDone }) {
 
   const save = () => {
     if (!saveOk) return;
-    const p = { name, kind, lender, currency, principal: d.principal, apr: d.apr, term: d.term, freq, start: toDate(start, today), first: toDate(first, today), fee: d.fee, payment: num(payment), remind, prepay: num(prepay), reduce, note };
+    const p = { name, kind, lender, currency, principal: d.principal, apr: d.apr, term: d.term, freq, start: toDate(start, today), first: toDate(first, today), fee: d.fee, payment: num(payment), remind, prepay: num(prepay), reduce, note, price: priceN, down: downN, upfront: num(upfront) };
     if (c) {
       act((st) => updateCredit(st, c.id, p));
       toast('Préstamo actualizado', 'check');
@@ -183,7 +192,11 @@ function CreditForm({ s, c, sim, today, onClose, onDone }) {
       return;
     }
     const made = act((st, t, ev) => {
-      const k = addCredit(st, { ...p, received: mode === 'new' && recv ? account : '' }, t, ev);
+      const k = addCredit(st, {
+        ...p, received: mode === 'new' && recv ? account : '', downAccount: mode === 'new' && recDown && downN > 0 ? account : '',
+        upfrontAccount: mode === 'new' && recUp && num(upfront) > 0 ? account : '', asset: recAsset && priceN > 0 && mode !== 'sim',
+        assetKind: kind === 'vehiculo' ? 'vehiculo' : kind === 'hipoteca' ? 'casa' : kind === 'negocio' ? 'negocio' : 'otro', assetName: name,
+      }, t, ev);
       if (k && mode === 'old') syncCredit(st, k.id, num(bal) > 0 ? num(bal) : guessBal, t, t, { paid: oldN });
       return k;
     });
@@ -213,6 +226,28 @@ function CreditForm({ s, c, sim, today, onClose, onDone }) {
         </>
       )}
       <CurrencyIn id="cprin" label={mode === 'old' ? 'Monto original del préstamo' : 'Monto que te prestan'} currency={currency} setCurrency={setCurrency} value={principal} setValue={setPrincipal} autoFocus={mode === 'sim'} />
+      <details class="panel" open={!!(priceN || downN)}>
+        <summary class="semi" style={{ cursor: 'pointer', minHeight: 40 }}>¿Es para comprar algo? Precio e inicial</summary>
+        <div class="stack-sm" style={{ paddingTop: 10 }}>
+          <div class="grid2">
+            <div class="field"><label for="cprice">Precio de lo que compras</label><input id="cprice" class="input" inputMode="decimal" value={price} placeholder="Ej. 1,200,000" onInput={(e) => { setPrice(e.currentTarget.value); onBuy(num(e.currentTarget.value), downN); }} /></div>
+            <div class="field"><label for="cdown">Inicial que diste</label><input id="cdown" class="input" inputMode="decimal" value={down} placeholder="Ej. 300,000" onInput={(e) => { setDown(e.currentTarget.value); onBuy(priceN, num(e.currentTarget.value)); }} /></div>
+          </div>
+          {priceN > 0 && priceN > downN && <span class="tiny muted">Financias {cur(priceN - downN, currency)} ({Math.round(((priceN - downN) / priceN) * 100)} % del precio). Puse ese monto arriba; puedes cambiarlo.</span>}
+          {mode === 'new' && downN > 0 && s.money.accounts.some((a) => !isCard(a) && !a.hidden) && (
+            <label class="between-c" style={{ cursor: 'pointer', gap: 12 }}>
+              <span class="stack-xs"><span class="semi">Anotar el inicial como gasto</span><span class="small muted">Sale de la cuenta que elegiste arriba. No cuenta en tus gastos del mes. Si ya lo anotaste, déjalo apagado: después lo vinculas.</span></span>
+              <Switch checked={recDown} onChange={setRecDown} label="Anotar el inicial como gasto" />
+            </label>
+          )}
+          {mode !== 'sim' && priceN > 0 && (
+            <label class="between-c" style={{ cursor: 'pointer', gap: 12 }}>
+              <span class="stack-xs"><span class="semi">Guardar lo que compraste como un bien</span><span class="small muted">Suma a tu patrimonio por el precio y baja con lo que debes.</span></span>
+              <Switch checked={recAsset} onChange={setRecAsset} label="Guardar como bien" />
+            </label>
+          )}
+        </div>
+      </details>
       <div class="grid2">
         <div class="field"><label for="capr">Interés anual (%)</label><input id="capr" class="input" inputMode="decimal" value={apr} onInput={(e) => setApr(e.currentTarget.value)} placeholder="Ej. 18" /></div>
         <div class="field"><label for="cterm">Número de cuotas</label><input id="cterm" class="input" inputMode="numeric" value={term} onInput={(e) => setTerm(e.currentTarget.value)} /></div>
@@ -271,6 +306,10 @@ function CreditForm({ s, c, sim, today, onClose, onDone }) {
             <summary class="semi" style={{ cursor: 'pointer', minHeight: 40 }}>Más opciones</summary>
             <div class="stack-sm" style={{ paddingTop: 10 }}>
               <div class="field"><label for="cpay">Cuota exacta del banco (sin seguro)</label><input id="cpay" class="input" inputMode="decimal" value={payment} onInput={(e) => setPayment(e.currentTarget.value)} placeholder={d.payment ? String(d.payment) : 'La calculo yo'} /><span class="tiny muted">Si tu banco redondea distinto, pon la cuota que te dieron.</span></div>
+              <div class="field"><label for="cupfront">Gastos de apertura (comisión, legal, tasación)</label><input id="cupfront" class="input" inputMode="decimal" value={upfront} onInput={(e) => setUpfront(e.currentTarget.value)} placeholder="0" /><span class="tiny muted">Lo que pagaste una sola vez al sacar el préstamo. Cuenta en el costo total.</span></div>
+              {mode === 'new' && num(upfront) > 0 && (
+                <label class="between-c" style={{ cursor: 'pointer', gap: 12 }}><span class="semi">Anotarlo como gasto</span><Switch checked={recUp} onChange={setRecUp} label="Anotar los gastos de apertura" /></label>
+              )}
               <div class="field"><label for="cprepay">Cargo por pagar antes de tiempo (%)</label><input id="cprepay" class="input" inputMode="decimal" value={prepay} onInput={(e) => setPrepay(e.currentTarget.value)} placeholder="0" /></div>
               <div class="stack-sm"><span class="label">Cuando abonas de más, ¿qué baja?</span>
                 <div class="chips"><TChip sm on={reduce === 'plazo'} onClick={() => setReduce('plazo')}>Termino antes</TChip><TChip sm on={reduce === 'cuota'} onClick={() => setReduce('cuota')}>Baja la cuota</TChip></div>
@@ -347,6 +386,15 @@ function CreditDetail({ s, c, today, onClose, onEdit, onOpenTx, onPlan }) {
   };
   const w = panel === 'sim' && (num(extra) > 0 || num(lump) > 0) ? creditWhatIf(c, { extra: num(extra), lump: num(lump) }) : null;
   const rows = i.ledger.rows;
+  const cands = c.closed ? [] : creditCandidates(s, c.id, today);
+  const [skip, setSkip] = useState({});
+  const picked = cands.filter((x) => !skip[x.tx.id]);
+  const link = () => {
+    const res = act((st, t, e) => linkCreditTxs(st, c.id, picked.map((x) => ({ tx: x.tx.id, kind: x.kind })), t, e));
+    const bits = [res.cuotas && plural(res.cuotas, 'cuota', 'cuotas'), res.abonos && plural(res.abonos, 'abono', 'abonos'), res.down && 'el inicial'].filter(Boolean);
+    toast(bits.length ? `Vinculé ${bits.join(', ')}` : 'No pude vincular esos gastos', bits.length ? 'check' : 'info');
+  };
+  const buy = i.buy;
 
   return (
     <Sheet onClose={onClose} label={`Préstamo: ${c.name}`}>
@@ -361,6 +409,36 @@ function CreditDetail({ s, c, today, onClose, onEdit, onOpenTx, onPlan }) {
         {i.open && i.ok === false && <div class="note tone-vit" role="alert"><Icon name="info" size={18} /><span>Con esta cuota el saldo no baja. Revisa la cuota o el interés.</span></div>}
       </section>
 
+      {cands.length > 0 && (
+        <section class="panel stack-sm" aria-label="Gastos que parecen de este préstamo">
+          <span class="semi">Encontré {plural(cands.length, 'gasto', 'gastos')} que {cands.length === 1 ? 'parece' : 'parecen'} de este préstamo</span>
+          <span class="small muted">Ya los habías anotado. Si los vinculas, el préstamo los cuenta como pagados y no se duplican. Quita los que no sean.</span>
+          {cands.map((x) => (
+            <label key={x.tx.id} class="lrow" style={{ minHeight: 52, cursor: 'pointer' }}>
+              <input type="checkbox" checked={!skip[x.tx.id]} onChange={() => setSkip({ ...skip, [x.tx.id]: !skip[x.tx.id] })} aria-label={`Vincular ${x.tx.merchant}`} />
+              <span class="stack-xs grow" style={{ minWidth: 0, gap: 0 }}><span class="semi clip">{x.tx.merchant}</span><span class="tiny muted semi">{fmtShort(x.day)} · {x.kind === 'inicial' ? 'Inicial' : x.kind === 'abono' ? 'Abono a capital' : 'Cuota'}</span></span>
+              <span class="strong tab-num">{ccur(c, x.amount)}</span>
+            </label>
+          ))}
+          <button type="button" class="btn sm" style={{ alignSelf: 'flex-start' }} disabled={!picked.length} onClick={link}><Icon name="check" size={17} />Vincular {picked.length}</button>
+        </section>
+      )}
+      {buy && (buy.price > 0 || buy.down > 0 || buy.upfront > 0) && (
+        <section class="card flush" aria-label="Lo que costó en total">
+          {buy.price > 0 && <div class="lrow" style={{ minHeight: 48 }}><span class="grow semi muted">Precio de lo que compraste</span><span class="strong tab-num">{ccur(c, buy.price)}</span></div>}
+          {buy.down > 0 && (
+            <div class="lrow" style={{ minHeight: 48 }}><span class="stack-xs grow" style={{ gap: 0 }}><span class="semi muted">Inicial</span><span class="tiny muted">{c.downTx ? 'Vinculado a un gasto tuyo' : 'No está anotado como gasto'}</span></span><span class="strong tab-num">{ccur(c, buy.down)}</span></div>
+          )}
+          {buy.down > 0 && !c.downTx && !c.closed && s.money.accounts.some((a) => !isCard(a) && !a.hidden) && (
+            <div class="stack-sm" style={{ padding: '4px 0 12px' }}>
+              <AccountChips s={s} value={account} onChange={setAccount} label="¿De qué cuenta salió el inicial?" />
+              <button type="button" class="link-btn" style={{ alignSelf: 'flex-start', minHeight: 36 }} onClick={() => { act((st, t, e) => recordDown(st, c.id, account, t, e)); toast('Anoté el inicial como gasto (no cuenta en el mes)', 'check'); }}>Anotar el inicial como gasto</button>
+            </div>
+          )}
+          {buy.upfront > 0 && <div class="lrow" style={{ minHeight: 48 }}><span class="grow semi muted">Gastos de apertura</span><span class="strong tab-num">{ccur(c, buy.upfront)}</span></div>}
+          <div class="lrow" style={{ minHeight: 48 }}><span class="stack-xs grow" style={{ gap: 0 }}><span class="semi muted">Costo total de comprarlo así</span><span class="tiny muted">Inicial + todas las cuotas + cargos{buy.price > 0 && buy.extra > 0 ? ` · ${ccur(c, buy.extra)} más que el precio` : ''}</span></span><span class="strong tab-num">{ccur(c, buy.total)}</span></div>
+        </section>
+      )}
       {i.open && (
         <section class="card flush" aria-label="Lo que falta">
           <div class="lrow" style={{ minHeight: 48 }}><span class="grow semi muted">Termina</span><span class="strong">{endText(i.end)}</span></div>

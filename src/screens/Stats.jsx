@@ -1,5 +1,6 @@
 // Análisis (1.7): cómo entra y sale tu dinero, el ritmo del mes, categorías frente a tu promedio,
 // comercios, calendario, días de la semana y cuentas. Colores validados para daltonismo en claro y oscuro.
+import { adjustTotals } from '../game/reconcile.js';
 import { useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
 import { TChip, money, plural } from '../ui/kit.jsx';
@@ -45,6 +46,7 @@ export function Analysis({ s, today, onCat, setSheet = () => {} }) {
   const single = period.mks.length === 1;
   const cfMks = period.mks.length >= 3 ? period.mks : (() => { const m = [monthKey(today)]; while (m.length < 6) m.unshift(prevMonth(m[0])); return m; })();
   const any = s.money.tx.some((t) => t.day >= period.from && t.day <= period.to);
+  const adj = adjustTotals(s, period.from, period.to);
   const ch = (d, good) => (d == null || Math.abs(d) < 0.01 ? null : <span class="row" style={{ gap: 2, color: (d > 0) === good ? 'var(--good-ink)' : 'var(--vit-ink)' }}><Icon name={d > 0 ? 'arrowup' : 'arrowdown'} size={12} />{pct(Math.abs(d))}</span>);
   return (
     <>
@@ -65,6 +67,13 @@ export function Analysis({ s, today, onCat, setSheet = () => {} }) {
         {wi.ready && tot.spent > 0 && <span class="small semi row hrs" style={{ color: 'var(--finanzas-ink)' }}><Icon name="clock" size={14} />Lo que gastaste son {fmtWork(workHours(tot.spent, wi), wi)} de tu trabajo.</span>}
       </section>
 
+      {adj.n > 0 && (adj.out > 0 || adj.in > 0) && (
+        <section class="note tone-xp" aria-label="Movimientos sin explicar">
+          <Icon name="search" size={18} />
+          <span class="stack-xs"><span class="semi">Hay {adj.out > 0 ? `${whole(adj.out)} de gastos sin anotar` : ''}{adj.out > 0 && adj.in > 0 ? ' y ' : ''}{adj.in > 0 ? `${whole(adj.in)} de ingresos sin anotar` : ''}</span>
+            <span class="small">Salen de cuadrar tus cuentas con el banco. Entra a Movimientos, ábrelos y ponles su categoría para que el análisis sea real.</span></span>
+        </section>
+      )}
       <div class="seg fin-tabs" role="tablist" aria-label="Qué quieres ver">
         {VIEWS.map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={view === k ? 'true' : 'false'} onClick={() => setView(k)}>{l}</button>)}
       </div>

@@ -11,6 +11,7 @@ import { addDays, diffDays } from '../app/dates.js';
 import {
   uid, addTx, gainXP, addGold, bossFeed, fxRate, toDOP, accountOf, txOrig, txCur, txDOP, txUSD, txKind,
 } from './logic.js';
+import { addAsset } from './assets.js';
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isDay = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d);
@@ -94,6 +95,11 @@ export function ensureCredits(s) {
     c.account = c.account && accountOf(s, c.account) ? c.account : '';
     c.remind = Math.round(between(c.remind, 0, 14, 3));
     c.prepay = between(c.prepay, 0, 20, 0);
+    c.price = pos(c.price);
+    c.down = pos(c.down);
+    c.upfront = pos(c.upfront);
+    if (c.downTx && !ids.has(c.downTx)) c.downTx = null;
+    if (!c.downTx) c.downTx = null;
     c.reduce = c.reduce === 'cuota' ? 'cuota' : 'plazo';
     c.note = txt(c.note, 200);
     if (!isDay(c.closed)) c.closed = null;
@@ -230,7 +236,16 @@ export function creditInfo(c, today) {
     payoff: { balance, accrued, fee: prepayFee, total: r2(balance + accrued + prepayFee) },
     ledger: led, proj,
     perMonth: r2((c.payment + c.fee) * freqOf(c).perMonth),
+    buy: creditBuy(c, sum('amount'), proj.total),
   };
+}
+
+// Precio, inicial y costo total de lo que compraste con el préstamo.
+function creditBuy(c, paid, left) {
+  const price = c.price > 0 ? c.price : c.down > 0 ? r2(c.principal + c.down) : 0;
+  const down = c.down > 0 ? c.down : price > c.principal ? r2(price - c.principal) : 0;
+  const total = r2(down + c.upfront + paid + (Number.isFinite(left) ? left : 0));
+  return { price, down, upfront: c.upfront, financed: c.principal, pctFinanced: price > 0 ? Math.min(1, c.principal / price) : 1, total, extra: price > 0 ? r2(Math.max(0, total - price)) : 0 };
 }
 
 // Lo que debes de todos tus préstamos, en pesos, y lo que pagas al mes.
@@ -315,7 +330,7 @@ export function creditMonth(s, from, to, today) {
 // Los movimientos que ya son cuotas de un préstamo (no se cuentan dos veces como «gasto del día a día»).
 export function creditTxIds(s) {
   const ids = new Set();
-  for (const c of (s.money && s.money.credits) || []) for (const p of c.pays) if (p.tx) ids.add(p.tx);
+  for (const c of (s.money && s.money.credits) || []) { for (const p of c.pays) if (p.tx) ids.add(p.tx); if (c.downTx) ids.add(c.downTx); }
   return ids;
 }
 
@@ -345,6 +360,9 @@ function clean(p, base = {}) {
   if (p.account !== undefined) out.account = p.account || '';
   if (p.remind !== undefined) out.remind = Math.round(between(p.remind, 0, 14, 3));
   if (p.prepay !== undefined) out.prepay = between(p.prepay, 0, 20, 0);
+  if (p.price !== undefined) out.price = pos(p.price);
+  if (p.down !== undefined) out.down = pos(p.down);
+  if (p.upfront !== undefined) out.upfront = pos(p.upfront);
   if (p.reduce !== undefined) out.reduce = p.reduce === 'cuota' ? 'cuota' : 'plazo';
   if (p.note !== undefined) out.note = txt(p.note, 200);
   return out;
@@ -352,20 +370,104 @@ function clean(p, base = {}) {
 
 // Nuevo préstamo. Con `received` (una cuenta) también anota el dinero que entró (no cuenta como ingreso).
 export function addCredit(s, p, today, ev = []) {
-  const principal = pos(p.principal);
+  // Con el precio y el inicial, lo financiado es la diferencia (comprar un carro de 1,200,000 con 300,000 de inicial).
+  let principal = pos(p.principal);
+  if (!(principal > 0) && pos(p.price) > pos(p.down)) principal = r2(pos(p.price) - pos(p.down));
   if (!(principal > 0)) return null;
   const start = isDay(p.start) ? p.start : today;
   const first = isDay(p.first) ? p.first : dueDateOf({ freq: CREDIT_FREQS.some((f) => f.key === p.freq) ? p.freq : 'mes', first: start }, 2);
   const c = clean({ ...p, first, start }, {
     id: uid(), name: 'Préstamo', kind: 'personal', lender: '', principal, currency: 'DOP', apr: 0, term: 12, freq: 'mes', start, first, fee: 0, payment: 0,
-    account: '', remind: 3, prepay: 0, reduce: 'plazo', note: '', pays: [], syncs: [], closed: null, created: Date.now(),
+    account: '', remind: 3, prepay: 0, reduce: 'plazo', note: '', pays: [], syncs: [], closed: null, created: Date.now(), price: 0, down: 0, upfront: 0, downTx: null,
   });
   c.payment = pos(p.payment) || suggestPayment(c);
   if (p.received && accountOf(s, p.received)) {
     addTx(s, { type: 'ingreso', cat: 'prestamo_recibido', merchant: `Préstamo: ${c.name}`, amount: c.principal, currency: c.currency, account: p.received, day: c.start, noStats: true, note: c.lender ? `Desembolso de ${c.lender}` : '' }, today, ev);
   }
   s.money.credits.unshift(c);
+  // El inicial: un gasto que ya anotaste, o uno nuevo (no cuenta en los gastos del mes: compraste algo que te queda).
+  if (c.down > 0 && p.downTx && setCreditDown(s, c.id, p.downTx)) { /* vinculado */ }
+  else if (c.down > 0 && p.downAccount && accountOf(s, p.downAccount)) {
+    const tx = addTx(s, { type: 'gasto', cat: 'deuda', merchant: `Inicial de ${c.name}`, amount: c.down, currency: c.currency, account: p.downAccount, day: c.start, noStats: true, noBoss: true, link: { skip: true }, note: c.lender || '' }, today, ev);
+    if (tx) c.downTx = tx.id;
+  }
+  if (c.upfront > 0 && p.upfrontAccount && accountOf(s, p.upfrontAccount)) {
+    addTx(s, { type: 'gasto', cat: 'deuda', merchant: `Gastos de apertura: ${c.name}`, amount: c.upfront, currency: c.currency, account: p.upfrontAccount, day: c.start, noBoss: true, link: { skip: true }, note: 'Comisión, legal, tasación' }, today, ev);
+  }
+  // Lo que compraste con el préstamo, para el patrimonio (vale el precio; el préstamo es lo que debes por él).
+  if (p.asset && (c.price > 0 || c.down > 0)) {
+    addAsset(s, { name: txt(p.assetName, 50) || c.name, kind: p.assetKind, currency: c.currency, value: c.price || r2(c.principal + c.down), since: c.start, credit: c.id }, today);
+  }
   return c;
+}
+
+// El gasto que ya anotaste y fue el inicial (enganche) del préstamo.
+export function setCreditDown(s, id, txId) {
+  const c = creditOf(s, id);
+  const tx = (s.money.tx || []).find((t) => t.id === txId);
+  if (!c || !tx || txKind(tx) !== 'gasto' || creditForTx(s, tx.id) || creditTxIds(s).has(tx.id)) return null;
+  c.downTx = tx.id;
+  if (!(c.down > 0)) c.down = r2(inCreditCur(s, c, tx));
+  return c;
+}
+
+// Anota el inicial como gasto (no cuenta en los gastos del mes) si todavía no está anotado.
+export function recordDown(s, id, account, today, ev = []) {
+  const c = creditOf(s, id);
+  if (!c || !(c.down > 0) || c.downTx || !accountOf(s, account)) return null;
+  const tx = addTx(s, { type: 'gasto', cat: 'deuda', merchant: `Inicial de ${c.name}`, amount: c.down, currency: c.currency, account, day: c.start <= today ? c.start : today, noStats: true, noBoss: true, link: { skip: true }, note: c.lender || '' }, today, ev);
+  if (tx) c.downTx = tx.id;
+  return tx;
+}
+
+const norm = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+
+// Gastos que ya anotaste y parecen ser de este préstamo: cuotas, abonos grandes o el inicial. Se muestran para que
+// la persona confirme; nada se vincula solo. (Los pagos con fecha anterior no cambian el saldo si hay un cuadre posterior.)
+export function creditCandidates(s, id, today) {
+  const c = creditOf(s, id);
+  if (!c) return [];
+  const linked = creditTxIds(s);
+  for (const x of s.money.credits) if (x.downTx) linked.add(x.downTx);
+  const want = c.payment + c.fee;
+  const name = norm(c.name);
+  const lender = norm(c.lender);
+  const out = [];
+  for (const t of s.money.tx || []) {
+    if (txKind(t) !== 'gasto' || t.adjust || t.to || t.taxOf || linked.has(t.id) || t.day > today || t.day < addDays(c.start, -20)) continue;
+    const text = norm(`${t.merchant} ${t.note || ''}`);
+    const byName = (name.length > 3 && text.includes(name)) || (lender.length > 3 && text.includes(lender));
+    const isDeuda = t.cat === 'deuda';
+    if (!byName && !isDeuda) continue;
+    const got = r2(inCreditCur(s, c, t));
+    if (!(got > 0) || !(want > 0)) continue;
+    const gapPay = Math.abs(got - want) / want;
+    const gapDown = c.down > 0 ? Math.abs(got - c.down) / c.down : 9;
+    const near = Math.abs(diffDays(c.start, t.day)) <= 20;
+    let kind = '';
+    if (c.down > 0 && !c.downTx && gapDown <= 0.03 && near && (byName || isDeuda)) kind = 'inicial';
+    else if (gapPay <= 0.12 && (byName || gapPay <= 0.05)) kind = 'cuota';
+    else if (byName && got > want * 1.5 && !near) kind = 'abono';
+    if (!kind) continue;
+    out.push({ tx: t, kind, amount: got, day: t.day, sure: byName });
+  }
+  return out.sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
+}
+
+// Vincula los gastos que la persona confirmó: [{ tx, kind }] con kind 'cuota' | 'abono' | 'inicial'.
+export function linkCreditTxs(s, id, items, today, ev = []) {
+  const res = { cuotas: 0, abonos: 0, down: false };
+  const list = [...items].sort((a, b) => {
+    const ta = (s.money.tx.find((t) => t.id === a.tx) || {}).day || '';
+    const tb = (s.money.tx.find((t) => t.id === b.tx) || {}).day || '';
+    return ta < tb ? -1 : ta > tb ? 1 : 0;
+  });
+  for (const it of list) {
+    if (it.kind === 'inicial') { if (setCreditDown(s, id, it.tx)) res.down = true; continue; }
+    const kind = it.kind === 'abono' ? 'abono' : 'cuota';
+    if (payCredit(s, id, { tx: it.tx, kind }, today, ev)) res[kind === 'abono' ? 'abonos' : 'cuotas'] += 1;
+  }
+  return res;
 }
 
 export function updateCredit(s, id, p) {
@@ -542,6 +644,7 @@ export function dropCreditTx(s, txIds) {
   const gone = txIds instanceof Set ? txIds : new Set(txIds);
   for (const c of (s.money && s.money.credits) || []) {
     const n = c.pays.length;
+    if (c.downTx && gone.has(c.downTx)) c.downTx = null;
     c.pays = c.pays.filter((p) => !(p.tx && gone.has(p.tx)));
     if (c.pays.length !== n && c.closed && !c.manual && creditLedger(c).balance > EPS) c.closed = null;
   }

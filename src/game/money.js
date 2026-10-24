@@ -67,8 +67,10 @@ export function txLegs(s, t) {
     const v = c === txCur(t) ? txOrig(t) : c === 'DOP' ? txDOP(t) : txUSD(s, t);
     out.push([a.id, c, sign * v]);
   };
-  if (k === 'gasto') leg(t.account, -1);
-  else if (k === 'ingreso') leg(t.account, 1);
+  if (k === 'gasto') {
+    leg(t.account, -1);
+    if (t.to && t.to !== t.account) leg(t.to, 1); // 1.12: un gasto con destino mueve el dinero a otra cuenta tuya
+  } else if (k === 'ingreso') leg(t.account, 1);
   else {
     leg(t.account, -1);
     if (t.to && t.to !== t.account) leg(t.to, 1);
@@ -84,7 +86,7 @@ export function anchorOf(a, c) {
   return (b.by && b.by[c]) || b;
 }
 export function afterAnchor(b, t) {
-  if (!b || !isDay(b.day)) return true;
+  if (!b || !isDay(b.day) || t.late) return true;
   if (t.day !== b.day) return t.day > b.day;
   if (t.time && b.time) return t.time > b.time;
   return (Number(t.created) || 0) > (Number(b.at) || 0);
@@ -254,7 +256,7 @@ export function cardInfo(s, a, today, bal = null) {
       if (id !== a.id) continue;
       after[c] += v;
       if (v < 0) info.since[c] += -v;
-      else if (txKind(t) === 'transfer') info.paid[c] += v;
+      else if (txKind(t) === 'transfer' || t.to === a.id) info.paid[c] += v;
       else info.since[c] -= v; // devolución
     }
   }
@@ -839,10 +841,10 @@ export function afterTx(s, tx, today, ev = [], link = null) {
     // Un pago de deuda que se parece a la cuota de un préstamo se anota ahí; si no, se busca entre los pagos fijos.
     if (!autoLinkCredit(s, tx, today, ev)) autoLinkPlan(s, tx, today, ev);
   }
-  if (k === 'transfer' && tx.to) {
+  if ((k === 'transfer' || k === 'gasto') && tx.to) {
     const a = accountOf(s, tx.to);
     if (isCard(a)) {
-      bossFeed(s, 'debtPay', txDOP(tx), today, ev, { note: `Pago a ${a.name}` });
+      if (k === 'transfer') bossFeed(s, 'debtPay', txDOP(tx), today, ev, { note: `Pago a ${a.name}` });
       const ci = cardInfo(s, a, today);
       if (ci.status === 'paid' && ci.cycle && ci.cycle.due && tx.day <= ci.cycle.due && !(a.paidCuts && a.paidCuts[ci.cycle.last])) {
         if (!a.paidCuts) a.paidCuts = {};

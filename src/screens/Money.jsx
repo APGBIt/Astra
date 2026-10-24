@@ -20,6 +20,8 @@ import { CatPicker } from '../ui/catpicker.jsx';
 import { loanTotals } from '../game/loans.js';
 import { creditKind, creditTotals } from '../game/credits.js';
 import { AssetsCard } from './Credits.jsx';
+import { ReconcilePanel, BalanceWhy } from './Reconcile.jsx';
+import { reconcileAvailable } from '../game/reconcile.js';
 
 const ACC_ICON = Object.fromEntries(ACCOUNT_KINDS.map((k) => [k.key, k.icon]));
 const num = (v) => toNumber(String(v || '').replace(/[^\d.,-]/g, '')) || 0;
@@ -406,7 +408,7 @@ function OwedForm({ a, owed, onDone }) {
         <div class="field"><label for="ow-d">En pesos</label><div class="numrow"><span class="unit">RD$</span><input id="ow-d" class="input" inputMode="decimal" value={dop} placeholder="0" onInput={(e) => setDop(e.currentTarget.value)} ref={focusOnMount} /></div></div>
         <div class="field"><label for="ow-u">En dólares</label><div class="numrow"><span class="unit">US$</span><input id="ow-u" class="input" inputMode="decimal" value={us} placeholder="0" onInput={(e) => setUs(e.currentTarget.value)} /></div></div>
       </div>
-      <button type="button" class="btn sm" onClick={() => { act((st, t) => setAccountBalance(st, a.id, { DOP: num(dop), USD: num(us) }, t)); toast('Listo: desde hoy lo calculo con tus movimientos', 'check'); onDone(); }}><Icon name="check" size={17} />Guardar</button>
+      {(dop.trim() !== '' || us.trim() !== '') && <ReconcilePanel s={s} a={a} amounts={{ ...(dop.trim() !== '' ? { DOP: num(dop) } : {}), ...(us.trim() !== '' ? { USD: num(us) } : {}) }} onDone={onDone} label="Guardar lo que debo" />}
     </div>
   );
 }
@@ -422,8 +424,8 @@ function AvailForm({ a, ci, onDone }) {
       const now = new Date();
       const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
       const out = [];
-      if (has(v.DOP)) out.push(setAvailable(st, a.id, { currency: 'DOP', amount: num(v.DOP), day: t, time, limit: num(v.limD) || null, source: 'Lo que dice tu banco' }, t));
-      if (has(v.USD)) out.push(setAvailable(st, a.id, { currency: 'USD', amount: num(v.USD), day: t, time, limit: num(v.limU) || null, source: 'Lo que dice tu banco' }, t));
+      if (has(v.DOP)) out.push(reconcileAvailable(st, a.id, { currency: 'DOP', amount: num(v.DOP), day: t, time, limit: num(v.limD) || null, source: 'Lo que dice tu banco' }, t, Date.now(), {}, setAvailable));
+      if (has(v.USD)) out.push(reconcileAvailable(st, a.id, { currency: 'USD', amount: num(v.USD), day: t, time, limit: num(v.limU) || null, source: 'Lo que dice tu banco' }, t, Date.now(), {}, setAvailable));
       return out;
     });
     toast(res.includes('card') ? 'Listo: calculé lo que debes con tu límite' : 'Disponible guardado', 'check');
@@ -552,7 +554,7 @@ export function AccountForm({ s, acc, onDone, kind0 = 'tarjeta', withBalance = f
 }
 
 // Una cuenta de banco o efectivo: saldo, ajustarlo y editarla. Sin id: cuenta nueva.
-export function AccountSheet({ s, id, onClose, onMovements }) {
+export function AccountSheet({ s, id, onClose, onMovements, onOpenTx = null }) {
   const today = s.energy.day;
   const a = id ? accountOf(s, id) : null;
   const [edit, setEdit] = useState(!a);
@@ -570,11 +572,6 @@ export function AccountSheet({ s, id, onClose, onMovements }) {
   const parent = a.kind === 'debito' && !ownsBalance(s, a) ? accountOf(s, a.of) : null;
   const c = accountCur(a);
   const v = (bal[a.id] || {})[c] || 0;
-  const saveBal = () => {
-    act((st, t) => setAccountBalance(st, a.id, { [c]: num(val) }, t));
-    setVal('');
-    toast('Saldo guardado: desde aquí lo calculo con tus movimientos', 'check');
-  };
   return (
     <Sheet onClose={onClose} label={accountLabel(a)}>
       <SheetHead title={accountLabel(a)} onClose={onClose} />
@@ -589,9 +586,10 @@ export function AccountSheet({ s, id, onClose, onMovements }) {
             <label for="bal">{a.base ? 'Corregir el saldo de hoy' : 'Saldo de hoy'}</label>
             <div class="numrow"><span class="unit">{c === 'USD' ? 'US$' : 'RD$'}</span><input id="bal" class="input" inputMode="decimal" value={val} placeholder={String(v)} onInput={(e) => setVal(e.currentTarget.value)} /></div>
           </div>
-          <button type="button" class="btn sm" style={{ alignSelf: 'flex-start' }} disabled={val.trim() === ''} onClick={saveBal}><Icon name="check" size={17} />Guardar saldo</button>
+          {val.trim() !== '' && <ReconcilePanel s={s} a={a} amounts={{ [c]: num(val) }} onDone={() => setVal('')} />}
         </section>
       )}
+      {!parent && <BalanceWhy s={s} a={a} onOpenTx={onOpenTx} />}
       <button type="button" class="btn soft block" onClick={() => onMovements(a.id)}><Icon name="list" size={18} />Ver sus movimientos</button>
       {!edit && <button type="button" class="link-btn" style={{ alignSelf: 'center' }} onClick={() => setEdit(true)}><Icon name="gear" size={16} />Editar la cuenta</button>}
       {edit && <AccountForm s={s} acc={a} onDone={(rid) => { setEdit(false); if (rid === null) onClose(); }} />}

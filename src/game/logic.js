@@ -1391,7 +1391,8 @@ export function removeAccount(s, id) {
 // Datos que solo tienen algunos movimientos (1.9): impuesto ligado a una transferencia (`taxOf`, `taxKind`,
 // `taxAuto`), parte de un movimiento dividido (`split`) y «no contar en el análisis» (`noStats`).
 // Se conservan al corregir el movimiento y solo se guardan si tienen valor.
-const TX_EXTRA = ['taxOf', 'taxKind', 'taxAuto', 'split', 'noStats'];
+// `adjust`: ajuste de saldo (la diferencia con el banco). `late`: cuenta en el saldo aunque sea de antes del saldo que pusiste.
+const TX_EXTRA = ['taxOf', 'taxKind', 'taxAuto', 'split', 'noStats', 'adjust', 'late'];
 
 function buildTx(s, p, prev = null) {
   const kind = TX_KINDS.includes(p.type) ? p.type : prev ? prev.kind : 'gasto';
@@ -1403,7 +1404,8 @@ function buildTx(s, p, prev = null) {
   const valid = s.money.categories.some((c) => c.id === p.cat && c.type === kind);
   const cat = valid ? p.cat : kind === 'gasto' ? guessTxCat(s, { merchant: p.merchant, text: p.note, type: 'gasto' }) : FALLBACK_CAT[kind];
   const account = p.account && accountOf(s, p.account) ? p.account : '';
-  const to = kind === 'transfer' && p.to && accountOf(s, p.to) && p.to !== account ? p.to : '';
+  // 1.12: un gasto también puede llevar cuenta de destino (el dinero llega a otra cuenta tuya: un ahorro, un pago a tu tarjeta).
+  const to = (kind === 'transfer' || kind === 'gasto') && p.to && accountOf(s, p.to) && p.to !== account ? p.to : '';
   const extra = {};
   for (const k of TX_EXTRA) {
     const v = p[k] !== undefined ? p[k] : prev ? prev[k] : undefined;
@@ -1448,6 +1450,7 @@ export function addTx(s, p, today, ev) {
   // El impuesto a la transferencia y la comisión del banco, aparte (1.9).
   if (p.tax || Number(p.fee) > 0) setTaxRecords(s, tx.id, { tax: !!p.tax, fee: Number(p.fee) || 0 });
   sortTx(s);
+  if (tx.adjust) return tx; // un ajuste de saldo no es una compra: sin ligas, XP ni jefes
   afterTx(s, tx, today, ev, p.link || null);
   if (tx.kind === 'transfer') return tx;
   const d = getDay(s, today);

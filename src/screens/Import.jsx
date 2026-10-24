@@ -9,6 +9,7 @@ import { parseBankAlerts, norm, toNumber } from '../game/parse.js';
 import { readXlsx, readHtmlTable, sniff } from '../app/xlsx.js';
 import { readCSV, readBook, statementItems, formatKey, last4FromName, bankOf, parseNum } from '../game/statement.js';
 import { setAvailable, isCard, accountCur } from '../game/money.js';
+import { reconcileAvailable } from '../game/reconcile.js';
 import { CatPicker } from '../ui/catpicker.jsx';
 import { ACCOUNT_KINDS } from '../game/content.js';
 
@@ -255,7 +256,7 @@ export function Import({ query }) {
         const a = accountOf(st, id);
         if (!a) continue;
         if (!snap.some((x) => x.id === a.id)) snap.push({ id: a.id, base: a.base ? JSON.parse(JSON.stringify(a.base)) : null, bankAvail: a.bankAvail ? JSON.parse(JSON.stringify(a.bankAvail)) : null, limit: a.limit ? { ...a.limit } : undefined });
-        if (setAvailable(st, id, { currency: b.currency, amount: b.amount, day: b.day || t, time: b.time || '', limit: b.limit, source: b.source || pack.label }, t)) applied += 1;
+        if (reconcileAvailable(st, id, { currency: b.currency, amount: b.amount, day: b.day || t, time: b.time || '', limit: b.limit, source: b.source || pack.label }, t, Date.now(), { batch: r.batch }, setAvailable)) applied += 1;
       }
       if (pack.format && pack.format.key) {
         if (!st.money.importFormats) st.money.importFormats = {};

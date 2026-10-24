@@ -1,6 +1,6 @@
 {
   "name": "astra",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "description": "Astra: tu vida en modo juego de rol. Vitalidad, energía, caminos, misiones y jefes para crecer en seis áreas de la vida.",
   "scripts": {
     "build": "node build.mjs",

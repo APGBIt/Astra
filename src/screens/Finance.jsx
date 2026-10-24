@@ -28,6 +28,7 @@ import { LoanSheet } from './Loans.jsx';
 import { CreditSheet, AssetSheet } from './Credits.jsx';
 import { DebtsTab } from './Debts.jsx';
 import { openCredits, creditForTx, payCredit } from '../game/credits.js';
+import { insideBalance } from '../game/reconcile.js';
 import { takePendingTx } from '../app/handoff.js';
 import { ocrSupported, readText, ocrErrorText } from '../app/ocr.js';
 import { photoURL } from '../app/photos.js';
@@ -142,7 +143,7 @@ export function Finance({ query }) {
       {sheet && sheet.kind === 'more' && <MoreSheet s={s} per={per} today={today} onPick={(k) => setSheet({ kind: k })} onClose={close} />}
       {sheet && sheet.kind === 'cats' && <CatsSheet s={s} onClose={close} onMove={(id) => setSheet({ kind: 'movecat', id })} onDetail={(id) => setSheet({ kind: 'catdetail', id })} />}
       {sheet && sheet.kind === 'card' && <CardSheet s={s} id={sheet.id} onClose={close} onPay={pay} onMovements={showMovements} onDebts={() => setSheet({ kind: 'debts' })} />}
-      {sheet && sheet.kind === 'account' && <AccountSheet s={s} id={sheet.id} onClose={close} onMovements={showMovements} />}
+      {sheet && sheet.kind === 'account' && <AccountSheet s={s} id={sheet.id} onClose={close} onMovements={showMovements} onOpenTx={(t) => setSheet({ kind: 'tx', tx: t })} />}
       {sheet && sheet.kind === 'plan' && <PlanSheet key={sheet.id || (sheet.tpl ? sheet.tpl.name : sheet.planKind || 'nuevo')} s={s} id={sheet.id} tpl={sheet.tpl} planKind={sheet.planKind} future={sheet.future} onClose={close} />}
       {sheet && sheet.kind === 'due' && <DueSheet s={s} item={sheet.item} onClose={close} onPay={pay} onEdit={() => setSheet({ kind: 'plan', id: sheet.item.plan })} />}
       {sheet && sheet.kind === 'fund' && <FundSheet s={s} id={sheet.id} onClose={close} />}
@@ -196,6 +197,8 @@ export function TxSheet({ s, initial, tx, onClose, onSplit = null, onOpenTx = nu
   const [merchant, setMerchant] = useState(tx ? tx.merchant : initial.merchant || '');
   const [account, setAccount] = useState(tx ? tx.account : initial.account && accountOf(s, initial.account) ? initial.account : lastAcc);
   const [to, setTo] = useState(tx ? tx.to || '' : initial.to || '');
+  const [showTo, setShowTo] = useState(!!(tx && tx.to && txKind(tx) === 'gasto'));
+  const [late, setLate] = useState(tx ? !!tx.late : false);
   const link = !tx && initial.link ? initial.link : null;
   const [tag, setTag] = useState(tx ? tx.tag || '' : initial.tag || '');
   const [note, setNote] = useState(tx ? tx.note || '' : initial.note || '');
@@ -277,10 +280,12 @@ export function TxSheet({ s, initial, tx, onClose, onSplit = null, onOpenTx = nu
     if (currency === 'USD' && day !== today) rateForDay(day).then((r) => { if (r && !touched.current) setRate(r); });
   }, [day, currency]);
 
+  // 1.12: un movimiento de antes del saldo que pusiste ya está dentro de ese saldo y no lo mueve (a menos que lo descuentes igual).
+  const insideInfo = n > 0 && account ? insideBalance(s, { kind: type, day, time: tx ? tx.time || '' : '', account, to: type === 'transfer' || type === 'gasto' ? to : '', currency, orig: n, amount: type === 'ingreso' ? dop : -dop, rate, created: tx ? tx.created : Date.now() + 1 }) : null;
   const converted = currency === 'USD' ? money(dop) : usd(toUSD(n, rate));
   const save = async () => {
     if (!n) return;
-    const p = { type, amount: n, currency, rate, cat: effCat, merchant, day, account, to: type === 'transfer' ? to : '', tag, note, photos };
+    const p = { type, amount: n, currency, rate, cat: effCat, merchant, day, account, to: type === 'transfer' || type === 'gasto' ? to : '', tag, note, photos, late: late && !!insideInfo };
     const feeN = sug.can && showFee ? num(fee) : 0;
     const res = act((st, t, ev) => {
       if (editing) {
@@ -399,6 +404,16 @@ export function TxSheet({ s, initial, tx, onClose, onSplit = null, onOpenTx = nu
         </div>
         {newAcc && <AccountForm s={s} acc={null} kind0="cuenta" onDone={(id) => { setNewAcc(false); if (id) setAccount(id); }} />}
       </div>
+      {type === 'gasto' && account && (showTo || to ? (
+        <div class="stack-sm">
+          <span class="label">El dinero llega a</span>
+          <div class="chips" role="group" aria-label="Cuenta tuya a donde llega el dinero">
+            <TChip sm on={!to} onClick={() => { setTo(''); setShowTo(false); }}>Ninguna: se gastó</TChip>
+            {s.money.accounts.filter((a) => a.id !== account && !a.hidden).map((a) => <TChip key={a.id} sm icon={ACC_ICON[a.kind] || 'card'} on={to === a.id} onClick={() => setTo(a.id)}>{accountLabel(a)}</TChip>)}
+          </div>
+          {to && <span class="small muted">Cuenta como gasto de «{catName(s, effCat)}» y a la vez le suma el dinero a {accountLabel(accountOf(s, to))}. {accountOf(s, to) && accountOf(s, to).kind === 'tarjeta' ? 'Baja lo que debes en esa tarjeta.' : accountOf(s, to) && accountOf(s, to).save ? 'Es un ahorro: entra en tu 50/30/20.' : 'Si luego gastas de esa cuenta, anótalo solo si no es esto mismo.'}</span>}
+        </div>
+      ) : <button type="button" class="link-btn" style={{ alignSelf: 'flex-start', minHeight: 32 }} onClick={() => setShowTo(true)}><Icon name="swap" size={15} />El dinero llega a otra de mis cuentas (ahorro, tarjeta…)</button>)}
       {type === 'transfer' && (
         <div class="stack-sm">
           <span class="label">{effCat === 'pago_tarjeta' ? 'A qué tarjeta' : 'Hacia'}</span>
@@ -406,6 +421,8 @@ export function TxSheet({ s, initial, tx, onClose, onSplit = null, onOpenTx = nu
             <TChip sm on={!to} onClick={() => setTo('')}>Sin indicar</TChip>
             {s.money.accounts.filter((a) => a.id !== account && (effCat !== 'pago_tarjeta' || isCard(a))).map((a) => <TChip key={a.id} sm icon={ACC_ICON[a.kind] || 'card'} on={to === a.id} onClick={() => setTo(a.id)}>{accountLabel(a)}</TChip>)}
           </div>
+          <button type="button" class="link-btn" style={{ alignSelf: 'flex-start', minHeight: 32 }} onClick={() => { setType('gasto'); setCat(null); setShowTo(!!to); }}><Icon name="tag" size={15} />{to ? 'Es el pago de algo: ponle categoría' : 'Es un pago a otra persona o cuenta: anótalo como gasto'}</button>
+          <span class="tiny muted">Un traspaso solo mueve tu dinero y no cuenta como gasto. Si es el pago de una categoría (alquiler, ahorro, deuda…), anótalo como gasto con su categoría: el saldo se mueve igual.</span>
         </div>
       )}
       {sug.can && effCat !== 'retiro' && (looseTax ? (
@@ -424,6 +441,15 @@ export function TxSheet({ s, initial, tx, onClose, onSplit = null, onOpenTx = nu
           ) : <button type="button" class="link-btn" style={{ alignSelf: 'flex-start', minHeight: 30, fontSize: 13.5 }} onClick={() => setShowFee(true)}><Icon name="plus" size={14} />Comisión del banco</button>}
         </section>
       ))}
+      {insideInfo && (
+        <section class="panel stack-sm" aria-label="Antes del saldo">
+          <span class="small"><Icon name="info" size={15} /> Es de antes del saldo que pusiste en {accountLabel(insideInfo.account)} ({fmtShort(insideInfo.day)}{insideInfo.time ? `, ${insideInfo.time}` : ''}): ya está dentro de ese saldo, así que {late ? 'lo descuento igual' : 'no lo mueve'}.</span>
+          <label class="between-c" style={{ cursor: 'pointer', gap: 12 }}>
+            <span class="small semi">Descontarlo ahora (el banco aún no lo cobró)</span>
+            <Switch checked={late} onChange={setLate} label="Descontarlo del saldo igual" />
+          </label>
+        </section>
+      )}
       {link && type !== 'transfer' && <div class="note tone-good"><Icon name="calendar" size={18} /><span>{link.credit ? `Se anota como una cuota pagada de «${link.name}».` : `Se marca «${link.name}» del ${fmtDay(link.date, { weekdayName: false })} como ${type === 'ingreso' ? 'recibido' : 'pagado'}.`}</span></div>}
       {lk && (
         <div class="note tone-good"><Icon name="coins" size={18} /><span class="stack-xs">{lk.pay ? `Es un abono de tu préstamo con ${lk.loan.who}.` : lk.loan.dir === 'me' ? `Es un préstamo a ${lk.loan.who}: ${lk.loan.closed ? 'ya está saldado' : `te debe ${cur(leftOf(lk.loan), lk.loan.currency)}`}.` : `Es un préstamo de ${lk.loan.who}: ${lk.loan.closed ? 'ya está saldado' : `le debes ${cur(leftOf(lk.loan), lk.loan.currency)}`}.`}{onLoan && <button type="button" class="link-btn" style={{ minHeight: 30, alignSelf: 'flex-start', color: 'inherit' }} onClick={() => onLoan(lk.loan.id)}>Ver el préstamo<Icon name="right" size={14} /></button>}</span></div>

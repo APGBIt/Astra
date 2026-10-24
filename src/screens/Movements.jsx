@@ -57,11 +57,11 @@ export function TxRow({ s, t, onOpen, day = null, wi = null, selecting = false, 
   const c = catOf(s, t.cat);
   const k = txKind(t);
   const a = accountOf(s, t.account);
-  const to = k === 'transfer' ? accountOf(s, t.to) : null;
+  const to = k === 'transfer' || (k === 'gasto' && t.to) ? accountOf(s, t.to) : null;
   const where = to ? `${a ? `${accountLabel(a)} → ` : '→ '}${accountLabel(to)}` : a && accountLabel(a);
   const tone = k === 'ingreso' ? ['var(--good-soft)', 'var(--good-ink)'] : k === 'transfer' ? ['var(--soft)', 'var(--muted)'] : ['var(--finanzas-soft)', 'var(--finanzas-ink)'];
   const hrs = wi && wi.ready && wi.show && k === 'gasto' && !t.noStats ? fmtWork(workHours(txDOP(t), wi), wi) : '';
-  const marks = [t.split ? `parte ${t.split.i + 1} de ${t.split.n}` : '', t.noStats ? 'no cuenta' : ''].filter(Boolean);
+  const marks = [t.split ? `parte ${t.split.i + 1} de ${t.split.n}` : '', t.noStats ? 'no cuenta' : '', t.adjust ? 'ajuste de saldo' : ''].filter(Boolean);
   return (
     <button type="button" class={`lrow txrow${selected ? ' sel' : ''}`} onClick={onOpen} aria-pressed={selecting ? (selected ? 'true' : 'false') : undefined}
       aria-label={`${selecting ? (selected ? 'Seleccionado: ' : 'Seleccionar: ') : ''}${t.merchant || c.name}, ${signed(t)}, ${c.name}${hrs ? `, ${hrs} de trabajo` : ''}`}>
@@ -69,7 +69,7 @@ export function TxRow({ s, t, onOpen, day = null, wi = null, selecting = false, 
       <span class="tile sm" style={{ background: tone[0], color: tone[1] }}><Icon name={c.icon || 'tag'} size={18} /></span>
       <span class="stack-xs grow" style={{ minWidth: 0 }}>
         <span class="strong clip">{t.merchant || c.name}</span>
-        <span class="tiny muted semi clamp2">{[day, t.time, to ? null : c.name, where, t.tag, ...marks].filter(Boolean).join(' · ')}</span>
+        <span class="tiny muted semi clamp2">{[day, t.time, to && k === 'transfer' ? null : c.name, where, t.tag, ...marks].filter(Boolean).join(' · ')}</span>
       </span>
       <span class="stack-xs" style={{ alignItems: 'flex-end', flexShrink: 0, gap: 1 }}>
         <span class="strong tab-num" style={{ color: k === 'ingreso' ? 'var(--good-ink)' : k === 'transfer' ? 'var(--muted)' : 'var(--ink)', textDecoration: t.noStats ? 'line-through' : undefined }}>{signed(t)}</span>
