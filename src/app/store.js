@@ -5,6 +5,7 @@ import { ensureMind } from '../game/mind.js';
 import { ensureGrowth, claimQuit } from '../game/growth.js';
 import { ensureNotify } from '../game/reminders.js';
 import { ensureHealthPlus } from '../game/health.js';
+import { ensureShop } from '../game/shop.js';
 import { dayKey } from './dates.js';
 
 const KEY = 'astra.v1';
@@ -45,6 +46,8 @@ export function migrate(s) {
   ensureNotify(m);
   // 1.10: medicinas y suplementos, actividad con intensidad.
   ensureHealthPlus(m);
+  // 1.13: listas de compras, despensa, compras hechas y deseos.
+  ensureShop(m);
   m.v = 4;
   if (!Array.isArray(m.profile.classKeys)) m.profile.classKeys = [];
   if (!Array.isArray(m.streak.freezeDays)) m.streak.freezeDays = [];

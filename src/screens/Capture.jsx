@@ -12,10 +12,13 @@ import {
 } from '../game/logic.js';
 import { cardForText } from '../game/money.js';
 import { logCalmSession, addJournal } from '../game/mind.js';
+import { shopFromCapture } from '../game/shop.js';
+import { qtyText } from '../game/shoplex.js';
 import { aiProvider, aiJSON, capturePrompt, aiErrorText } from '../ai/ai.js';
 
 const SHORTCUTS = [
   { href: '/pendientes/nuevo', icon: 'list', label: 'Pendiente', area: null },
+  { href: '/compras', icon: 'cart', label: 'Lista de compras', area: 'finanzas' },
   { href: '/recibo', icon: 'camera', label: 'Escanear recibo', area: 'finanzas' },
   { href: '/finanzas?alerta=1', icon: 'paste', label: 'Pegar alerta del banco', area: 'finanzas' },
   { href: '/animo', icon: 'face', label: 'Ánimo', area: 'emocional' },
@@ -38,6 +41,7 @@ export function describeItem(s, it) {
     case 'pages': return { icon: 'book', area: 'crecimiento', title: `Leíste ${it.value} páginas`, sub: 'Se suma a tu libro actual' };
     case 'contact': return { icon: 'people', area: 'relaciones', title: `Contacto con ${it.name}`, sub: it.personId ? 'De tu lista' : 'Se agrega a tu lista' };
     case 'mood': return { icon: 'face', area: 'emocional', title: `Ánimo · ${it.word || MOOD_QUADS[it.quad].label}`, sub: MOOD_QUADS[it.quad].desc };
+    case 'shop': return { icon: 'cart', area: 'finanzas', title: `${it.out ? 'Se acabó' : 'A la lista de compras'} · ${it.items.map((x) => `${qtyText(x.qty, x.unit) ? `${qtyText(x.qty, x.unit)} ` : ''}${x.name.toLowerCase()}`).join(', ')}`, sub: it.out ? 'Se marca agotado en tu despensa y entra a la lista' : 'Lista de compras' };
     case 'mission': return { icon: 'check', area: s.missions.find((m) => m.id === it.missionId)?.area || 'crecimiento', title: `Completa «${it.title}»`, sub: 'Misión de hoy' };
     case 'focus': return { icon: 'timer', area: 'laborales', title: `Enfoque · ${it.minutes} minutos`, sub: 'Sesión de trabajo' };
     case 'calm': return { icon: 'face', area: 'emocional', title: `Calma · ${it.minutes} minutos`, sub: 'Respiración o meditación' };
@@ -82,6 +86,7 @@ export function applyItems(st, items, today, ev) {
       case 'focus': finishFocus(st, { minutes: it.minutes, label: 'Registrado' }, today, ev); break;
       case 'calm': logCalmSession(st, { kind: 'registro', title: 'Calma registrada', minutes: it.minutes }, today, ev); break;
       case 'todo': addTodo(st, { title: it.title, cat: it.cat, due: it.due, important: it.important, repeat: it.repeat }, today); break;
+      case 'shop': shopFromCapture(st, it, today); break;
       default:
         addJournal(st, { kind: 'nota', text: String(it.text || '').slice(0, 500) }, today, ev);
     }

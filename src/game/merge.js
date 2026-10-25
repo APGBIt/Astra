@@ -140,6 +140,10 @@ export function tidyMerged(s, { noBase = false } = {}) {
     s.people = dedupeBy(s.people, (p) => n(p.name));
     s.todoLists = dedupeBy(s.todoLists, (l) => n(l.name));
     s.chores = dedupeBy(s.chores, (c) => n(c.title));
+    if (s.shop) {
+      s.shop.lists = dedupeBy(s.shop.lists, (l) => n(l.name));
+      s.shop.pantry = dedupeBy(s.shop.pantry, (p) => p.key);
+    }
     s.campaigns = dedupeBy(s.campaigns, (c) => n(c.title));
     if (s.money && Array.isArray(s.money.accounts)) s.money.accounts = dedupeBy(s.money.accounts, (a) => json([n(a.name), a.last4 || '']));
     for (const sec of (s.record && s.record.sections) || []) {
@@ -155,6 +159,11 @@ export function tidyMerged(s, { noBase = false } = {}) {
   if (typeof s.gold === 'number') s.gold = Math.max(0, s.gold);
   if (s.streak && typeof s.streak.freezes === 'number') s.streak.freezes = Math.max(0, Math.min(3, s.streak.freezes));
   if (s.energy) s.energy.used = Math.max(0, s.energy.used || 0);
+  // Compras: lo que se juntó de dos equipos no repite el mismo producto pendiente en la misma lista.
+  if (s.shop && Array.isArray(s.shop.items)) {
+    const seenK = new Set();
+    s.shop.items = s.shop.items.filter((i) => { if (!i || i.done) return true; const k = json([i.list, i.key]); if (seenK.has(k)) return false; seenK.add(k); return true; });
+  }
   for (const c of s.chores || []) if (Array.isArray(c.log)) c.log = [...new Set(c.log)].sort().reverse().slice(0, 120);
   // Dos equipos pueden crear «la siguiente vez» del mismo pendiente: se deja uno.
   if (Array.isArray(s.todos)) {

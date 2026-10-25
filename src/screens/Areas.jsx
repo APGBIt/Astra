@@ -5,6 +5,7 @@ import { AreaTodos } from './Todos.jsx';
 import { RecordCard } from './Record.jsx';
 import { GoalsSheet } from './Goals.jsx';
 import { HogarCard } from './Hogar.jsx';
+import { ShopCard } from './Compras.jsx';
 import { WinsCard } from './Wins.jsx';
 import { SleepSheet, SleepWeek, SleepInsights } from './Sleep.jsx';
 import { HealthHighlights, WellbeingCard, WheelCard, ValuesCard } from './Reflect.jsx';
@@ -52,6 +53,7 @@ export function Areas() {
         </div>
         <MindCard s={s} />
         <HogarCard />
+        <ShopCard />
         <WinsCard />
         <RecordCard />
       </main>

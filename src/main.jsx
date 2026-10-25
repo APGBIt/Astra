@@ -23,6 +23,7 @@ import { Journal } from './screens/Journal.jsx';
 import { Character, Inn, Shop, Chronicle, Recovery } from './screens/Character.jsx';
 import { Settings } from './screens/Settings.jsx';
 import { Hogar } from './screens/Hogar.jsx';
+import { Compras } from './screens/Compras.jsx';
 import { Wins } from './screens/Wins.jsx';
 import { Growth } from './screens/Growth.jsx';
 import { WordScreen } from './screens/Word.jsx';
@@ -89,6 +90,7 @@ function Screen({ route }) {
     case 'recuperacion': return <Recovery />;
     case 'ajustes': return <Settings />;
     case 'hogar': return <Hogar query={q} />;
+    case 'compras': return <Compras query={q} />;
     case 'logros': return <Wins query={q} />;
     case 'metas': return <Growth query={q} />;
     case 'palabra': return <WordScreen />;

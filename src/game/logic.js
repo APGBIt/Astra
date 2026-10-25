@@ -16,6 +16,7 @@ import { defaultMind, bestCalmStreak, distinctEmotions, goodThings, journalDays 
 import { PROGRAM } from './wellness.js';
 import { defaultGrowth } from './growth.js';
 import { defaultNotify } from './reminders.js';
+import { defaultShop, wishesDropped } from './shop.js';
 
 export const ENERGY_CAP = 10;
 export const STEPS_GOAL = DEFAULT_GOALS.steps;
@@ -99,6 +100,7 @@ export function defaultState(today = dayKey()) {
     record: buildRecord(),
     mind: defaultMind(),
     growth: defaultGrowth(),
+    shop: defaultShop(),
   };
 }
 
@@ -2757,6 +2759,8 @@ export const ACHIEVEMENTS = [
   { id: 'calma300', icon: 'clock', title: 'Trescientos minutos', desc: 'Suma 300 minutos de calma.', test: (s) => !!s.mind && s.mind.calm.reduce((a, x) => a + x.minutes, 0) >= 300 },
   { id: 'programa7', icon: 'map', title: 'Primeros siete días', desc: 'Completa «Siete días para empezar».', test: (s) => !!s.mind && Object.keys((s.mind.program || {})[PROGRAM.id] || {}).length >= PROGRAM.days.length },
   { id: 'emociones25', icon: 'face', title: 'Vocabulario emocional', desc: 'Nombra 25 emociones distintas.', test: (s) => distinctEmotions(s) >= 25 },
+  { id: 'compras10', icon: 'cart', title: 'Compra con lista', desc: 'Termina 10 compras con tu lista.', test: (s) => (s.stats.trips || 0) >= 10 },
+  { id: 'pensalo3', icon: 'piggy', title: 'Lo pensaste dos veces', desc: 'Deja ir 3 deseos después de esperar.', test: (s) => !!s.shop && wishesDropped(s) >= 3 },
   { id: 'diario10', icon: 'book', title: 'Diario vivo', desc: 'Escribe en tu diario 10 días distintos.', test: (s) => journalDays(s) >= 10 },
   { id: 'gratitud21', icon: 'heart', title: 'Ojos agradecidos', desc: 'Anota 21 cosas buenas.', test: (s) => goodThings(s) >= 21 },
   { id: 'rueda', icon: 'target', title: 'Mapa de tu vida', desc: 'Completa tu primera rueda de la vida.', test: (s) => !!s.mind && s.mind.wheel.length >= 1 },

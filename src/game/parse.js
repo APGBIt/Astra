@@ -1,5 +1,6 @@
 // Astra · entender texto en español sin conexión: frases del día, misiones nuevas y alertas del banco.
 import { AREA_WORDS, CATEGORY_WORDS, INCOME_WORDS, MOOD_QUADS } from './content.js';
+import { parseShopPhrase } from './shoplex.js';
 
 export function norm(t) {
   return String(t || '')
@@ -159,7 +160,19 @@ export function matchMission(text, missions) {
 // ctx: { people:[{id,name}], missions:[pendientes de hoy] }
 export function parseCapture(text, ctx = {}) {
   const items = [];
-  const raw = String(text || '').trim();
+  let raw = String(text || '').trim();
+  if (!raw) return items;
+  // Compras (1.13): «falta arroz, pan y leche», «se acabó el café», «agrega pollo a la lista». Se lee la frase entera
+  // antes de partirla, para que una lista con comas no se convierta en varias cosas.
+  const rest = [];
+  for (const line of raw.split(/[\n.;]+/)) {
+    const l = line.trim();
+    if (!l) continue;
+    const sp = parseShopPhrase(l);
+    if (sp) items.push({ kind: 'shop', out: sp.out, items: sp.items.map((i) => ({ name: i.name, qty: i.qty, unit: i.unit, key: i.key, aisle: i.aisle, note: i.note })), text: l });
+    else rest.push(l);
+  }
+  raw = rest.join('. ');
   if (!raw) return items;
   const clauses = raw.split(/(?:[.;\n]|,\s+(?=[a-záéíóúñ])|\s+y\s+(?=(?:me |le |la |lo |[a-záéíóúñ]+(?:é|í|ó)(?:[\s,.]|$))))/i).map((c) => c.trim()).filter(Boolean);
   const today = ctx.today || localToday();

@@ -11,6 +11,7 @@ import {
   TODO_BUCKETS, todoBucket, sortTodos, pendingTodos, todosIn, todosDue, todoReward, addTodoList, updateTodoList, removeTodoList,
   addMission, TODO_REPEATS, repeatLabel, nextRepeat, postponeTodo, overdueToToday, freqLabel, skipChore,
 } from '../game/logic.js';
+import { isBuyTodo, todoToShop } from '../game/shop.js';
 import { fmtShort, addDays, diffDays, weekday, DAYS } from '../app/dates.js';
 
 // Preferencias de vista (solo en este navegador).
@@ -419,6 +420,7 @@ export function TodoSheet({ id, query }) {
             }}><Icon name="skip" size={18} />Saltar esta vez</button>
           )) : (
             <div class="row" style={{ justifyContent: 'space-between' }}>
+              {!t.done && isBuyTodo(t.title) ? <button type="button" class="btn sm soft" onClick={() => { const r = act((st, d) => todoToShop(st, t.id, d)); if (r) { toast('Pasó a tu lista de compras', 'cart'); close(); } }}><Icon name="cart" size={18} />A la lista</button> : null}
               {!t.done ? <button type="button" class="btn sm soft" onClick={toMission}><Icon name="sword" size={18} />Hacerla misión</button> : <span />}
               <button type="button" class="btn sm soft" style={{ color: 'var(--vit-ink)' }} onClick={async () => { if (await ask('¿Borrar este pendiente?', { ok: 'Borrar', danger: true })) { act((st) => removeTodo(st, t.id)); toast('Pendiente borrado', 'trash'); close(); } }}><Icon name="trash" size={18} />Borrar</button>
             </div>

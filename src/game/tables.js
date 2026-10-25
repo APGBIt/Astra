@@ -13,6 +13,8 @@ import { loanInfo } from './loans.js';
 import { creditInfo, creditKind, creditLedger, CREDIT_FREQS } from './credits.js';
 import { assetInfo, assetKind } from './assets.js';
 import { dosesFor, medAdherence } from './health.js';
+import { shopOf, priceOf, wishInfo } from './shop.js';
+import { aisleOf, qtyText } from './shoplex.js';
 import {
   accountLabel, catName, catOf, choreStatus, freqLabel, repeatLabel, todoCategory, txCur, txDOP, txKind, txOrig, txRate,
 } from './logic.js';
@@ -167,6 +169,23 @@ export function buildTables(s, today) {
         ...((s.mind && s.mind.checks) || []).map((c) => [c.day, 'Bienestar OMS-5', c.score, c.items.join(' · ')]),
         ...((s.mind && s.mind.wheel) || []).map((w) => [w.day, 'Rueda de la vida', Math.round((WHEEL.reduce((a, x) => a + (w.scores[x.id] || 0), 0) / WHEEL.length) * 10) / 10, WHEEL.map((x) => `${x.label} ${w.scores[x.id]}`).join(', ')]),
       ].sort((a, b) => (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0)),
+    ),
+    // 1.13: lo que hay que comprar, la despensa, las compras hechas y los deseos.
+    Compras: table(
+      ['Lista', 'Producto', 'Cantidad', 'Pasillo', 'Precio por unidad', 'Estimado', 'Nota', 'Agregado', 'Cómo'],
+      s.shop ? shopOf(s).items.filter((i) => !i.done).map((i) => [(shopOf(s).lists.find((l) => l.id === i.list) || {}).name || '', i.name, qtyText(i.qty, i.unit), aisleOf(i.aisle).name, round2(priceOf(s, i)), round2(priceOf(s, i) * (i.qty || 1)), i.note || '', i.added || '', { manual: 'A mano', voz: 'Registro rápido', foto: 'Foto', despensa: 'Despensa', habito: 'Hábito', pendiente: 'Pendiente', receta: 'Receta' }[i.by] || '']) : [],
+    ),
+    Despensa: table(
+      ['Producto', 'Pasillo', 'Cantidad', 'Estado', 'Básico', 'Se vence', 'Visto'],
+      s.shop ? shopOf(s).pantry.map((p) => [p.name, aisleOf(p.aisle).name, qtyText(p.qty, p.unit), { ok: 'Hay', low: 'Queda poco', out: 'Se acabó' }[p.level] || '', p.basic ? 'Sí' : '', p.best || '', p.seen || '']) : [],
+    ),
+    'Compras hechas': table(
+      ['Fecha', 'Tienda', 'Productos', 'Estimado RD$', 'Pagado RD$', 'Lo que compraste'],
+      s.shop ? shopOf(s).trips.map((t) => [t.day, t.store, t.n, round2(t.est), round2(t.total), t.items.map((i) => `${qtyText(i.qty, i.unit) ? `${qtyText(i.qty, i.unit)} ` : ''}${i.name}`).join(', ')]) : [],
+    ),
+    Deseos: table(
+      ['Deseo', 'Precio', 'Moneda', 'En RD$', 'Desde', 'Decidir desde', 'Estado', 'Nota'],
+      s.shop ? shopOf(s).wishes.map((w) => [w.name, round2(w.price), w.cur === 'USD' ? 'US$' : 'RD$', round2(wishInfo(s, w, today).dop), w.added, w.until, { wait: 'Esperando', bought: 'Comprado', dropped: 'Lo dejé ir' }[w.state] || '', w.note || '']) : [],
     ),
     // Metas con progreso y lo que quieres lograr. Lo que quieres dejar de hacer no va a las tablas: es solo tuyo.
     Metas: table(

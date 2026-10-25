@@ -2,6 +2,20 @@
 
 Tu vida en modo juego de rol. App web instalable (y futura APK) para crecer en seis áreas de la vida con barras de vitalidad y energía, caminos, misiones y jefes.
 
+## Novedades de la versión 1.13 (Compras: listas, despensa con foto y deseos)
+
+Ideas tomadas de Listonic (varias listas, anaquel por pasillo, presupuesto), Bring! (compartir la lista, inspiración), AnyList (orden por pasillos, recetas a la lista), Grocy (inventario, fechas de vencimiento, productos básicos) y los escáneres de despensa con IA (foto de la nevera → qué hay y qué falta).
+
+- **Listas de compras** (`#/compras`): varias listas (Supermercado, Farmacia, Ferretería…), agregar escribiendo, dictando o con foto. Entiende «leche, 2 lb de pollo y pan», «1 docena de huevos», «media libra de queso». Agrupa por pasillo, suma cantidades si el producto ya estaba, calcula el total con los precios que ya pagaste y lo compara con tu presupuesto del súper. Compartir por WhatsApp o copiar.
+- **Foto de la nevera o la despensa**: identifica lo que hay (con cantidad aproximada, si queda poco y la fecha de vencimiento si se lee) y propone **lo que podría faltar**: lo que se ve casi vacío, lo que compras seguido, tus básicos y las ideas de la IA. Tú eliges qué entra a la lista. Hasta 6 fotos por revisión.
+- **Foto de una lista escrita, receta, folleto o producto**: la pasa a la lista; si el producto tiene código de barras lo busca en Open Food Facts (solo se envía el número). Sin IA, el lector de texto del teléfono lee lo impreso.
+- **Despensa**: Hay / Queda poco / Se acabó con un toque (y lo agrega a la lista), productos básicos, fechas de vencimiento y «Revisión rápida» uno por uno.
+- **«Ya te toca»**: aprende cada cuánto compras cada cosa y te lo sugiere cuando toca.
+- **Terminé la compra**: guarda el gasto de supermercado en Finanzas, aprende precios (también desde la foto del recibo), pasa lo comprado a la despensa y da XP de Fortuna por ir con lista (más si no pasas de lo calculado).
+- **Deseos**: lo no urgente espera 7–60 días; muestra cuánto cuesta en horas de trabajo y lo que te ahorras al soltarlo.
+- **Registro rápido y Pendientes**: «falta arroz», «se acabó el café», «agrega X a la lista»; un pendiente «Comprar …» tiene el botón «A la lista».
+- Aviso del día de compras y de lo que se vence pronto; tarjeta en Áreas y aviso en Hoy; las tablas Compras, Despensa, Compras hechas y Deseos se guardan en Drive. Logros nuevos: compras y «piénsalo».
+
 ## Novedades de la versión 1.10 (lector de recibos sin IA, préstamos con personas, patrimonio, medicinas, actividad y cartas para días difíciles)
 
 Ideas tomadas de Monarch (patrimonio mes a mes), Apple Salud (medicamentos con horario, tomada u omitida), Google Fit y la OMS (los minutos intensos cuentan doble; fuerza 2 días por semana), MindShift (tarjetas para afrontar), Bearable y How We Feel (patrones del ánimo), y de estudios sobre gastos y emociones (Cryder, Lerner y colegas, 2008; Rick y colegas, Universidad de Míchigan, 2014) y sobre la regularidad del sueño (Windred y colegas, *Sleep* 2023).

@@ -6,6 +6,7 @@ import { dueItems } from './money.js';
 import { quitDays, QUIT_MILESTONES } from './growth.js';
 import { openLoans, leftOf } from './loans.js';
 import { dosesFor } from './health.js';
+import { shopSummary, shopOf } from './shop.js';
 
 export const NOTIFY_KINDS = [
   { key: 'resumen', label: 'Resumen de la mañana', help: 'Misiones, pendientes y pagos del día.', time: 'morning' },
@@ -16,12 +17,13 @@ export const NOTIFY_KINDS = [
   { key: 'metas', label: 'Metas con progreso', help: 'El domingo, si una meta lleva una semana sin avance.', time: 'evening' },
   { key: 'animo', label: 'Cómo te sientes', help: 'Un check-in de ánimo a media tarde.', time: 'afternoon' },
   { key: 'medicinas', label: 'Medicinas y suplementos', help: 'A la hora de cada toma que pusiste en Salud.', time: 'exact' },
+  { key: 'compras', label: 'Compras y despensa', help: 'Tu día de compras y lo que se vence pronto en la despensa.', time: 'morning' },
 ];
 
 export function defaultNotify() {
   return {
     on: false,
-    kinds: { resumen: true, pagos: true, misiones: true, posada: true, dejar: true, metas: true, animo: false, medicinas: true },
+    kinds: { resumen: true, pagos: true, misiones: true, posada: true, dejar: true, metas: true, animo: false, medicinas: true, compras: true },
     morning: '08:00', afternoon: '17:30', evening: '20:30', quietFrom: '22:00', quietTo: '07:00',
   };
 }
@@ -125,6 +127,16 @@ function forDay(s, day, today, cfg) {
     if (payToday.length) parts.push(`vence ${payToday.slice(0, 2).join(' y ')}`);
     const top = todos.find((t) => t.important) || todos[0];
     if (parts.length) push('resumen', 'morning', `Buenos días${name ? `, ${name}` : ''}`, `Hoy: ${parts.join(' · ')}.${top ? ` Primero: ${top.title}.` : ''}`, '#/');
+  }
+
+  // Compras (1.13): el día de compras que elegiste y lo que se vence en la despensa.
+  if (k.compras && s.shop) {
+    const sum = shopSummary(s, day);
+    if (shopOf(s).cfg.day != null && sum.shopDay && sum.pending > 0) {
+      push('compras', 'morning', 'Hoy es tu día de compras', `${sum.pending} ${sum.pending === 1 ? 'cosa' : 'cosas'} en tu lista${sum.est > 0 ? ` · aprox. ${rd(sum.est)}` : ''}.${sum.low ? ` Además: ${sum.lowList.slice(0, 2).map((p) => p.name.toLowerCase()).join(' y ')} se acaba${sum.low > 1 ? 'n' : ''}.` : ''}`, '#/compras', 'shop-day');
+    }
+    const exp = (s.shop.pantry || []).filter((p) => p.best && p.level !== 'out' && diffDays(day, p.best) >= 0 && diffDays(day, p.best) <= 2);
+    if (exp.length) push('compras', 'morning', `Se vence pronto: ${exp.slice(0, 2).map((p) => p.name.toLowerCase()).join(' y ')}${exp.length > 2 ? ` y ${exp.length - 2} más` : ''}`, 'Úsalo hoy o mañana para no botarlo.', '#/compras?ver=despensa', 'shop-exp');
   }
 
   if (k.dejar && s.growth) {

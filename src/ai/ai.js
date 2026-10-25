@@ -243,3 +243,90 @@ Tipos posibles:
 - {"kind":"note","text":"texto"}
 Devuelve JSON: {"items": [ ... ]}`;
 }
+
+// ---------- Compras (1.13): foto de la nevera o despensa, de una lista escrita, de un producto y código de barras ----------
+
+const UNIT_IDS = 'u|lb|kg|g|oz|l|ml|gal|doc|paq|funda|lata|caja|bot|frasco|atado|mano|rollo|sobre|saco|bandeja|cabeza';
+
+// Modo «despensa»: qué hay en la foto (y qué podría faltar). Modo «lista»: lo que está escrito o es el producto de la foto.
+export function shopScanPrompt(mode, known = []) {
+  if (mode === 'lista') {
+    return `La imagen es una lista de compras (escrita a mano o impresa), los ingredientes de una receta, una nota, un folleto de ofertas o un producto con su etiqueta. Extrae los artículos que hay que comprar.
+Reglas:
+- No inventes nada. Si algo no se lee con seguridad, no lo incluyas y anótalo en "dudas".
+- "nombre" en español dominicano común y corto («pollo», «salsa de tomate», «habichuelas rojas»), sin cantidades dentro del nombre.
+- "cantidad": número o null. "unidad": una de ${UNIT_IDS} o null.
+- En una receta, incluye solo los ingredientes, no los pasos. Si es la foto de un solo producto, devuelve ese producto.
+- Máximo 60 artículos.
+Devuelve JSON: {"titulo": "texto o null", "articulos": [{"nombre": "texto", "cantidad": número o null, "unidad": "id o null", "nota": "texto o null"}], "dudas": ["texto"]}`;
+  }
+  return `Eres un asistente de cocina y compras en República Dominicana. La imagen muestra el interior de una nevera, una despensa, una alacena, un gabinete o un estante de la cocina.
+1. Identifica los productos que SE VEN con claridad. No inventes lo que no se ve. Si hay varios iguales, cuéntalos.
+2. "nombre": en español dominicano común y corto («leche», «huevos», «salsa de tomate»). Marca solo si se lee y ayuda.
+3. "cantidad": número aproximado de unidades o paquetes visibles, o null. "unidad": una de ${UNIT_IDS} o null.
+4. "nivel": "ok" si hay bastante; "poco" si se ve casi vacío o es el último; 
+5. "vence": fecha AAAA-MM-DD solo si se lee en el empaque; si no, null.
+6. "ideas": hasta 8 productos que probablemente FALTAN para una casa dominicana típica o que combinan con lo que se ve (por ejemplo: se ve pasta y tomate, falta queso rallado). Cada idea con un "motivo" corto. No repitas lo que ya se ve.${known.length ? `\nLo que esta persona compra seguido (úsalo para las ideas): ${known.slice(0, 40).join(', ')}.` : ''}
+Devuelve JSON: {"productos": [{"nombre": "texto", "cantidad": número o null, "unidad": "id o null", "nivel": "ok o poco", "vence": "AAAA-MM-DD o null"}], "ideas": [{"nombre": "texto", "motivo": "texto"}], "dudas": ["texto"]}
+Máximo 60 productos.`;
+}
+
+const okDay = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d : null);
+const okUnit = (u) => (UNIT_IDS.split('|').includes(String(u || '')) ? u : null);
+export function checkShopScan(r, mode) {
+  const o = r && typeof r === 'object' ? r : {};
+  const doubts = Array.isArray(o.dudas) ? o.dudas.map((x) => String(x).slice(0, 80)).slice(0, 6) : [];
+  if (mode === 'lista') {
+    const list = Array.isArray(o.articulos) ? o.articulos : [];
+    return {
+      mode,
+      title: o.titulo ? String(o.titulo).slice(0, 60) : '',
+      items: list.map((a) => ({ name: String(a.nombre || '').trim().slice(0, 60), qty: Number(a.cantidad) > 0 ? Number(a.cantidad) : null, unit: okUnit(a.unidad), note: a.nota ? String(a.nota).slice(0, 80) : '' })).filter((a) => a.name).slice(0, 60),
+      doubts,
+    };
+  }
+  const prods = Array.isArray(o.productos) ? o.productos : [];
+  const ideas = Array.isArray(o.ideas) ? o.ideas : [];
+  return {
+    mode: 'despensa',
+    seen: prods.map((p) => ({ name: String(p.nombre || '').trim().slice(0, 60), qty: Number(p.cantidad) > 0 ? Number(p.cantidad) : null, unit: okUnit(p.unidad), level: p.nivel === 'poco' ? 'low' : 'ok', best: okDay(p.vence) })).filter((p) => p.name).slice(0, 60),
+    ideas: ideas.map((i) => ({ name: String(i.nombre || '').trim().slice(0, 60), why: String(i.motivo || '').slice(0, 90) })).filter((i) => i.name).slice(0, 10),
+    doubts,
+  };
+}
+
+// Código de barras en una foto (EAN, UPC). Solo funciona si el navegador sabe leerlos.
+export async function readBarcode(bitmap) {
+  try {
+    if (!('BarcodeDetector' in window)) return null;
+    const det = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
+    const codes = await det.detect(bitmap);
+    return codes && codes.length ? String(codes[0].rawValue) : null;
+  } catch {
+    return null;
+  }
+}
+export const canReadBarcode = () => typeof window !== 'undefined' && 'BarcodeDetector' in window;
+
+// Nombre de un producto por su código (Open Food Facts, gratis y sin cuenta). Solo se envía el número del código.
+export async function lookupBarcode(code, signal) {
+  if (!/^\d{6,14}$/.test(String(code))) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 6000);
+  if (signal) signal.addEventListener('abort', () => ctl.abort());
+  try {
+    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json?fields=product_name,product_name_es,generic_name_es,brands,quantity`, { signal: ctl.signal });
+    if (!res.ok) return null;
+    const d = await res.json();
+    const p = d && d.product;
+    if (!p) return null;
+    const name = String(p.product_name_es || p.generic_name_es || p.product_name || '').trim();
+    if (!name) return null;
+    const brand = String(p.brands || '').split(',')[0].trim();
+    return `${name}${brand && !name.toLowerCase().includes(brand.toLowerCase()) ? ` ${brand}` : ''}`.slice(0, 60);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}

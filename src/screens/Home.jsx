@@ -1,6 +1,7 @@
+import { shopSummary } from '../game/shop.js';
 import { useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
-import { Nav, Segs, Bar, Bolts, Avatar, AreaDot, Sheet, SheetHead, TChip, toast, useHour, areaColor, areaSoft, money, cur } from '../ui/kit.jsx';
+import { Nav, Segs, Bar, Bolts, Avatar, AreaDot, Sheet, SheetHead, TChip, toast, useHour, areaColor, areaSoft, money, cur, plural } from '../ui/kit.jsx';
 import { TodoRow } from './Todos.jsx';
 import { RecordAlertsNote, openAlerts } from './Record.jsx';
 import { SleepForm, SleepSheet } from './Sleep.jsx';
@@ -267,9 +268,27 @@ function homePrompts(s, today, hour, en, pending, onPay) {
   if (s.mind && reviewDue(s, today, hour)) out.push({ key: 'review', el: <ReviewPrompt /> });
   else if (s.mind && hour >= 17 && wellbeingInfo(s, today).due && (s.profile.created || today) <= addDays(today, -6)) out.push({ key: 'who5', el: <Who5Prompt s={s} today={today} /> });
   if (openAlerts(s, today).length) out.push({ key: 'record', el: <RecordAlertsNote /> });
+  const shop = shopSummary(s, today);
+  if (shop.shopDay || shop.expiring || shop.low >= 3) out.push({ key: 'shop', el: <ShopPrompt sum={shop} /> });
   const person = duePeople(s, today)[0];
   if (person) out.push({ key: 'person', el: <PersonPrompt p={person.p} /> });
   return out;
+}
+
+function ShopPrompt({ sum }) {
+  const bits = [];
+  if (sum.shopDay) bits.push(sum.pending ? `${plural(sum.pending, 'producto', 'productos')} en tu lista` : 'Hoy es tu día de compras');
+  if (sum.low) bits.push(`${plural(sum.low, 'producto', 'productos')} por acabarse`);
+  if (sum.expiring) bits.push(`${plural(sum.expiring, 'se vence pronto', 'se vencen pronto')}`);
+  return (
+    <a href="#/compras" class="card" style={{ textDecoration: 'none', color: 'var(--ink)' }} aria-label="Compras">
+      <div class="row">
+        <span class="tile" style={{ background: 'var(--finanzas-soft)', color: 'var(--finanzas)' }}><Icon name="cart" /></span>
+        <div class="stack-xs grow"><span class="strong">Compras</span><span class="small muted">{bits.join(' · ')}</span></div>
+        <Icon name="right" size={18} />
+      </div>
+    </a>
+  );
 }
 
 function PromptSlot({ prompts }) {
