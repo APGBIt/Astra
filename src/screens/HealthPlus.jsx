@@ -6,6 +6,7 @@ import { act } from '../app/store.js';
 import { fmtShort, DAYS_SHORT } from '../app/dates.js';
 import { EXERCISE_TYPES } from '../game/content.js';
 import { fmtHours, fmtClock, timeToMin } from '../game/logic.js';
+import { nutrientOf, suggestTimes, SLOT } from '../game/nutrients.js';
 import {
   activityWeek, INTENSITIES, typeOf, dosesFor, logDose, medsToday, medAdherence, addMed, updateMed, archiveMed, restoreMed, removeMed,
   MED_KINDS, healthWeeks, TREND_METRICS, trendOf,
@@ -163,16 +164,19 @@ export function MedsSheet({ s, today, onClose, onEdit }) {
   );
 }
 
-export function MedSheet({ s, id, onClose }) {
+export function MedSheet({ s, id, onClose, preset = null }) {
   const today = s.energy.day;
   const m = id ? (s.meds || []).find((x) => x.id === id) : null;
-  const [name, setName] = useState(m ? m.name : '');
-  const [dose, setDose] = useState(m ? m.dose : '');
-  const [kind, setKind] = useState(m ? m.kind : 'medicina');
-  const [times, setTimes] = useState(m ? [...m.times] : ['08:00']);
+  const p0 = preset || {};
+  const [name, setName] = useState(m ? m.name : p0.name || '');
+  const [dose, setDose] = useState(m ? m.dose : p0.dose || '');
+  const [kind, setKind] = useState(m ? m.kind : p0.kind || 'medicina');
+  const [times, setTimes] = useState(m ? [...m.times] : p0.times ? [...p0.times] : ['08:00']);
   const [days, setDays] = useState(m && m.days ? [...m.days] : null);
   const [end, setEnd] = useState(m && m.end && !m.archived ? m.end : '');
-  const [note, setNote] = useState(m ? m.note : '');
+  const [note, setNote] = useState(m ? m.note : p0.note || '');
+  const nut = nutrientOf(name);
+  const sug = nut ? suggestTimes(s, nut)[0] : null;
   const ok = name.trim().length > 1 && times.length > 0 && (!days || days.length > 0);
   const save = () => {
     const p = { name, dose, kind, times, days, end: end || null, note };
@@ -187,6 +191,18 @@ export function MedSheet({ s, id, onClose }) {
       <SheetHead title={m ? m.name : 'Agregar'} onClose={onClose} />
       <div class="seg" role="tablist" aria-label="Tipo">{MED_KINDS.map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={kind === k ? 'true' : 'false'} onClick={() => setKind(k)}>{l}</button>)}</div>
       <div class="field"><label for="mdn">Nombre</label><input id="mdn" class="input" value={name} maxLength={50} onInput={(e) => setName(e.currentTarget.value)} placeholder={kind === 'medicina' ? 'Ej. Losartán' : 'Ej. Vitamina D'} autoFocus={!m} /></div>
+      {nut && (
+        <div class="note tone-good" style={{ alignItems: 'flex-start' }}>
+          <Icon name="info" size={18} />
+          <span class="stack-xs grow">
+            <span><b>{nut.name}:</b> mejor {SLOT[nut.slot].label.toLowerCase()} ({fmtClock(sug)}). {nut.with}</span>
+            <span class="row wrap" style={{ gap: 12 }}>
+              {!(times.length === 1 && times[0] === sug) && <button type="button" class="link-btn" style={{ minHeight: 32, color: 'inherit' }} onClick={() => { setTimes([sug]); if (kind === 'medicina' && !m) setKind('suplemento'); }}>Usar {fmtClock(sug)}</button>}
+              <a class="link-btn" style={{ minHeight: 32, color: 'inherit' }} href={`#/nutrientes?n=${nut.key}`}>Ver la guía</a>
+            </span>
+          </span>
+        </div>
+      )}
       <div class="field"><label for="mdd">Dosis (opcional)</label><input id="mdd" class="input" value={dose} maxLength={40} onInput={(e) => setDose(e.currentTarget.value)} placeholder="Ej. 50 mg, 1 tableta" /></div>
       <div class="stack-sm">
         <span class="label">¿A qué hora?</span>

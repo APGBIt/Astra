@@ -6,6 +6,7 @@ import { ensureGrowth, claimQuit } from '../game/growth.js';
 import { ensureNotify } from '../game/reminders.js';
 import { ensureHealthPlus } from '../game/health.js';
 import { ensureShop } from '../game/shop.js';
+import { ensureFood } from '../game/food.js';
 import { dayKey } from './dates.js';
 
 const KEY = 'astra.v1';
@@ -48,6 +49,8 @@ export function migrate(s) {
   ensureHealthPlus(m);
   // 1.13: listas de compras, despensa, compras hechas y deseos.
   ensureShop(m);
+  // 1.14: «Tu plato» (comidas con el método del plato).
+  ensureFood(m);
   m.v = 4;
   if (!Array.isArray(m.profile.classKeys)) m.profile.classKeys = [];
   if (!Array.isArray(m.streak.freezeDays)) m.streak.freezeDays = [];

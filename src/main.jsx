@@ -17,6 +17,7 @@ import { Import } from './screens/Import.jsx';
 import { refreshRate } from './app/fx.js';
 import { Path, Boss } from './screens/Path.jsx';
 import { Areas, Health, People, Learn, Focus } from './screens/Areas.jsx';
+import { Nutrients } from './screens/Nutrition.jsx';
 import { Mood } from './screens/Emotions.jsx';
 import { Calm } from './screens/Calm.jsx';
 import { Journal } from './screens/Journal.jsx';
@@ -76,7 +77,8 @@ function Screen({ route }) {
     case 'meta': return <NewGoal query={q} />;
     case 'jefe': return <Boss id={b} />;
     case 'areas': return <Areas />;
-    case 'area': return <Health />;
+    case 'area': return <Health query={q} />;
+    case 'nutrientes': return <Nutrients query={q} />;
     case 'animo': return <Mood />;
     case 'calma': return <Calm query={q} />;
     case 'diario': return <Journal query={q} />;

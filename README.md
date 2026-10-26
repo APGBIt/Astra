@@ -2,6 +2,14 @@
 
 Tu vida en modo juego de rol. App web instalable (y futura APK) para crecer en seis áreas de la vida con barras de vitalidad y energía, caminos, misiones y jefes.
 
+## Novedades de la versión 1.14 (Salud: vitaminas y minerales, tu plato y plan de movimiento)
+
+- **Guía de vitaminas y minerales** (`#/nutrientes`): 18 fichas (vitaminas A, B12, complejo B, ácido fólico, C, D, E, K; calcio, hierro, magnesio, zinc, potasio, yodo, selenio; omega-3, multivitamínico y fibra) con para qué sirve, cuánto al día, límite superior, cuándo y con qué tomarlo, de qué separarlo, por cuánto tiempo, quién podría necesitarlo y cuidado con medicinas. Cantidades de las tablas de los NIH.
+- **Tu plan del día**: tus suplementos y medicinas en orden de hora; avisa choques (hierro y calcio, fibra con todo), medicinas que piden separarse (levotiroxina, antibióticos, alendronato, levodopa…) o cuidado (warfarina, metformina, omeprazol, estatinas, diuréticos, orlistat), dosis por encima del límite y tomas de calcio de más de 500 mg. Propone horas sin choques y las aplica con un toque. Las horas salen de «Mis horarios» (desayuno, almuerzo, cena y dormir).
+- **Tu plato**: cada comida con el método del plato (vegetales o frutas, proteína, integral o víveres, bebida sin azúcar) y, sin culpa, fritos, embutidos y azúcar; resumen de 7 días con consejo. XP de Vigor.
+- **Plan de movimiento**: días de fuerza, cardio y movilidad; rutinas guiadas sin equipo (fuerza 20 y 10 min, caminata con intervalos, movilidad y pausa activa) con temporizador, voz y campana. Aviso en Hoy y notificaciones («Plan de movimiento» y «Pausas activas»).
+- Datos en la versión 4: `health[día].food`, `health[día].breaks`, `profile.meals`, `profile.exPlan`. Insignias nuevas: `plato21` y `fuerza8`.
+
 ## Novedades de la versión 1.13 (Compras: listas, despensa con foto y deseos)
 
 Ideas tomadas de Listonic (varias listas, anaquel por pasillo, presupuesto), Bring! (compartir la lista, inspiración), AnyList (orden por pasillos, recetas a la lista), Grocy (inventario, fechas de vencimiento, productos básicos) y los escáneres de despensa con IA (foto de la nevera → qué hay y qué falta).

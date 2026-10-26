@@ -7,6 +7,7 @@ import { quitDays, QUIT_MILESTONES } from './growth.js';
 import { openLoans, leftOf } from './loans.js';
 import { dosesFor } from './health.js';
 import { shopSummary, shopOf } from './shop.js';
+import { exPlan, planDone, PLAN_KIND, ROUTINE, routineMinutes } from './routines.js';
 
 export const NOTIFY_KINDS = [
   { key: 'resumen', label: 'Resumen de la mañana', help: 'Misiones, pendientes y pagos del día.', time: 'morning' },
@@ -18,12 +19,14 @@ export const NOTIFY_KINDS = [
   { key: 'animo', label: 'Cómo te sientes', help: 'Un check-in de ánimo a media tarde.', time: 'afternoon' },
   { key: 'medicinas', label: 'Medicinas y suplementos', help: 'A la hora de cada toma que pusiste en Salud.', time: 'exact' },
   { key: 'compras', label: 'Compras y despensa', help: 'Tu día de compras y lo que se vence pronto en la despensa.', time: 'morning' },
+  { key: 'ejercicio', label: 'Plan de movimiento', help: 'En la tarde, el día que te toca fuerza, cardio o movilidad y aún no lo haces.', time: 'afternoon' },
+  { key: 'pausas', label: 'Pausas activas', help: 'De lunes a viernes a las 10:30 y a las 3:30 p. m.: 5 minutos para moverte.', time: 'exact' },
 ];
 
 export function defaultNotify() {
   return {
     on: false,
-    kinds: { resumen: true, pagos: true, misiones: true, posada: true, dejar: true, metas: true, animo: false, medicinas: true, compras: true },
+    kinds: { resumen: true, pagos: true, misiones: true, posada: true, dejar: true, metas: true, animo: false, medicinas: true, compras: true, ejercicio: true, pausas: false },
     morning: '08:00', afternoon: '17:30', evening: '20:30', quietFrom: '22:00', quietTo: '07:00',
   };
 }
@@ -155,6 +158,19 @@ function forDay(s, day, today, cfg) {
     }
     if (k.animo && !(s.moods || []).some((m) => m.day === day)) push('animo', 'afternoon', '¿Cómo te sientes ahora?', 'Un check-in de 20 segundos: ponle nombre a lo que sientes.', '#/animo');
     if (k.posada && !(s.inn && s.inn[day])) push('posada', 'evening', 'Cierra tu día en la posada', 'Cómo te fue, tres cosas buenas y tu intención de mañana.', '#/posada');
+  }
+
+  // Movimiento (1.14): el día del plan, en la tarde, si no está hecho. Pausas activas entre semana.
+  const wd = new Date(atOf(day, '12:00')).getDay();
+  if (k.ejercicio) {
+    const kind = exPlan(s)[wd];
+    if (kind && !planDone(s, day, kind)) {
+      const r = ROUTINE[PLAN_KIND[kind].routine];
+      push('ejercicio', 'afternoon', `Hoy toca: ${PLAN_KIND[kind].label.toLowerCase()}`, `${r.title}, ${routineMinutes(r)} minutos guiados y sin equipo.`, `#/area/salud?rutina=${r.id}`, `move-${kind}`);
+    }
+  }
+  if (k.pausas && wd >= 1 && wd <= 5) {
+    for (const t of ['10:30', '15:30']) out.push({ id: `${day}:pausa-${t}`, kind: 'pausas', day, at: atOf(day, t), title: 'Pausa activa', body: 'Párate y muévete 5 minutos: estírate, camina y descansa la vista.', url: '#/area/salud?rutina=pausa', tag: `astra-pausa-${t}` });
   }
 
   if (k.metas && s.growth && new Date(atOf(day, '12:00')).getDay() === 0) {

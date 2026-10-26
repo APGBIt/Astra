@@ -2766,6 +2766,13 @@ export const ACHIEVEMENTS = [
   { id: 'rueda', icon: 'target', title: 'Mapa de tu vida', desc: 'Completa tu primera rueda de la vida.', test: (s) => !!s.mind && s.mind.wheel.length >= 1 },
   { id: 'libre30', icon: 'flag', title: 'Treinta días libre', desc: 'Pasa 30 días seguidos sin algo que quieres dejar.', test: (s) => !!s.growth && s.growth.quit.some((q) => Object.values(q.claimed || {}).some((a) => Array.isArray(a) && a.includes(30))) },
   { id: 'meta1', icon: 'target', title: 'Meta cumplida', desc: 'Llega al 100 % de una meta con progreso.', test: (s) => !!s.growth && s.growth.targets.some((t) => t.done) },
+  // 1.14: comida y movimiento.
+  { id: 'plato21', icon: 'utensils', title: 'Plato completo', desc: 'Anota 21 platos con vegetales, proteína e integral.', test: (s) => {
+    let n = 0;
+    for (const h of Object.values(s.health || {})) if (h && h.food) for (const m of Object.values(h.food)) if (m && m.veg && m.prot && m.integ) n += 1;
+    return n >= 21;
+  } },
+  { id: 'fuerza8', icon: 'dumbbell', title: 'Cuerpo fuerte', desc: 'Trabaja fuerza 8 días.', test: (s) => Object.values(s.health || {}).filter((h) => h && (h.strength || (h.exTypes || {}).gimnasio > 0 || (h.exTypes || {}).fuerza > 0)).length >= 8 },
   { id: 'sueno1', icon: 'star', title: 'De la lista a la vida', desc: 'Logra algo de tu lista de cosas por lograr.', test: (s) => !!s.growth && s.growth.dreams.some((d) => d.done) },
 ];
 

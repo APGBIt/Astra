@@ -28,7 +28,7 @@ export function same(a, b) {
 const COUNTERS = [
   /^xp$/, /^gold$/, /^vit$/, /^attrs\.[^.]+$/, /^stats\.[^.]+$/, /^energy\.(used|bonus)$/, /^streak\.freezes$/,
   /^days\.[^.]+\.(?!vitEnd$)[^.]+$/, /^days\.[^.]+\.(xpBy|slips|potions)\.[^.]+$/,
-  /^health\.[^.]+\.(water|exercise|veg|exVig)$/, /^health\.[^.]+\.exTypes\.[^.]+$/,
+  /^health\.[^.]+\.(water|exercise|veg|exVig|breaks)$/, /^health\.[^.]+\.exTypes\.[^.]+$/,
   /^bosses\[\]\.progress$/, /^books\[\]\.read$/,
 ];
 const MAXES = [/^streak\.(count|best|lastDay)$/, /^processed$/, /^v$/, /^health\.[^.]+\.steps$/, /^chores\[\]\.base$/, /^people\[\]\.last$/, /^settings\.lastBackup$/];

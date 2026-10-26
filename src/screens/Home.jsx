@@ -26,6 +26,7 @@ import {
 } from '../game/logic.js';
 import { dosesFor, logDose } from '../game/health.js';
 import { DoseRow } from './HealthPlus.jsx';
+import { planWeek, PLAN_KIND, ROUTINE, routineMinutes } from '../game/routines.js';
 
 // Hoy: lo esencial en una sola pantalla. Un aviso a la vez, registro rápido sin salir de aquí
 // y una sola lista con todo lo del día (misiones, pendientes y tareas del hogar), para hacerlo ahí mismo.
@@ -272,7 +273,24 @@ function homePrompts(s, today, hour, en, pending, onPay) {
   if (shop.shopDay || shop.expiring || shop.low >= 3) out.push({ key: 'shop', el: <ShopPrompt sum={shop} /> });
   const person = duePeople(s, today)[0];
   if (person) out.push({ key: 'person', el: <PersonPrompt p={person.p} /> });
+  // 1.14: el día del plan de movimiento, desde el mediodía, si aún no se cumple.
+  const wk = planWeek(s, today);
+  if (hour >= 12 && wk.todayKind && !wk.todayDone) out.push({ key: 'move', el: <MovePrompt kind={wk.todayKind} /> });
   return out;
+}
+
+function MovePrompt({ kind }) {
+  const k = PLAN_KIND[kind];
+  const r = ROUTINE[k.routine];
+  return (
+    <a href={`#/area/salud?rutina=${r.id}`} class="card" style={{ textDecoration: 'none', color: 'var(--ink)' }} aria-label={`Hoy toca ${k.label}`}>
+      <div class="row">
+        <span class="tile" style={{ background: 'var(--salud-soft)', color: 'var(--salud)' }}><Icon name={r.icon} /></span>
+        <div class="stack-xs grow"><span class="strong">Hoy toca: {k.label.toLowerCase()}</span><span class="small muted">{r.title} · {routineMinutes(r)} min, guiada y sin equipo.</span></div>
+        <Icon name="play" size={18} />
+      </div>
+    </a>
+  );
 }
 
 function ShopPrompt({ sum }) {

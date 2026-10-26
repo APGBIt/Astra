@@ -24,6 +24,10 @@ import {
 } from '../game/logic.js';
 import { MissionRow } from './Home.jsx';
 import { ActivityCard, ExerciseSheet, MedsCard, MedsSheet, MedSheet, TrendsCard } from './HealthPlus.jsx';
+import { SuppPlanCard } from './Nutrition.jsx';
+import { PlateCard } from './Plate.jsx';
+import { TrainingCard, RoutinePlayer } from './Training.jsx';
+import { ROUTINE } from '../game/routines.js';
 
 // ---------- Mapa de áreas ----------
 
@@ -131,11 +135,12 @@ function Talents({ area }) {
 
 // ---------- Salud ----------
 
-export function Health() {
+export function Health({ query = null }) {
   const s = useApp();
   const today = s.energy.day;
   const h = s.health[today] || {};
   const [sheet, setSheet] = useState(null);
+  const [play, setPlay] = useState(() => (query && ROUTINE[query.get('rutina')] ? query.get('rutina') : null));
   const [sleepDay, setSleepDay] = useState(today);
   const goal = dailyGoal(s, 'sleep');
   const g = { steps: dailyGoal(s, 'steps'), water: dailyGoal(s, 'water'), exercise: dailyGoal(s, 'exercise'), veg: dailyGoal(s, 'veg'), calm: dailyGoal(s, 'calm') };
@@ -171,6 +176,8 @@ export function Health() {
           ))}
         </div>
         <MedsCard s={s} today={today} onAdd={() => setSheet({ kind: 'med', id: null })} onList={() => setSheet('meds')} />
+        <SuppPlanCard s={s} onEdit={(id) => setSheet({ kind: 'med', id })} />
+        <PlateCard s={s} today={today} />
         <HealthHighlights s={s} today={today} />
         <section class="card" aria-label="Tu sueño">
           <div class="between-c"><h2 class="h2">Tu sueño</h2><span class="small muted">meta {fmtHours(goal)}</span></div>
@@ -180,6 +187,7 @@ export function Health() {
           <a href="#/posada" class="link-btn" style={{ alignSelf: 'flex-start' }}><Icon name="moon" size={16} />Rutina para dormir en la posada</a>
         </section>
         <ActivityCard s={s} today={today} onLog={() => setSheet('exercise')} />
+        <TrainingCard s={s} today={today} onPlay={setPlay} />
         <TrendsCard s={s} today={today} />
         <WellbeingCard s={s} today={today} />
         <span class="small muted">Frutas y verduras: la OMS recomienda al menos 400 g al día, unas 5 porciones. Una porción es una fruta mediana o media taza de vegetales.</span>
@@ -195,6 +203,7 @@ export function Health() {
       {sheet === 'meds' && <MedsSheet s={s} today={today} onClose={() => setSheet(null)} onEdit={(id) => setSheet({ kind: 'med', id })} />}
       {sheet && sheet.kind === 'med' && <MedSheet key={sheet.id || 'nueva'} s={s} id={sheet.id} onClose={() => setSheet(null)} />}
       {sheet === 'sleep' && <SleepSheet s={s} day={sleepDay} today={today} onClose={() => setSheet(null)} />}
+      {play && <RoutinePlayer key={play} id={play} onClose={() => setPlay(null)} />}
     </>
   );
 }

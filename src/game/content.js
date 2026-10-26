@@ -333,6 +333,7 @@ export const EXERCISE_TYPES = [
   { key: 'deporte', label: 'Deporte', icon: 'trophy', intensity: 'intensa' },
   { key: 'baile', label: 'Baile', icon: 'sparkle', intensity: 'moderada' },
   { key: 'yoga', label: 'Yoga o estiramiento', icon: 'heart', intensity: 'moderada' },
+  { key: 'fuerza', label: 'Fuerza en casa', icon: 'dumbbell', intensity: 'moderada', strength: true },
   { key: 'otro', label: 'Otro', icon: 'plus', intensity: 'moderada' },
 ];
 // La OMS recomienda al menos 150 minutos de actividad moderada a la semana para adultos.

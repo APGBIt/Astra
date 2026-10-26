@@ -13,6 +13,8 @@ import { loanInfo } from './loans.js';
 import { creditInfo, creditKind, creditLedger, CREDIT_FREQS } from './credits.js';
 import { assetInfo, assetKind } from './assets.js';
 import { dosesFor, medAdherence } from './health.js';
+import { plateFull } from './food.js';
+import { nutrientOf } from './nutrients.js';
 import { shopOf, priceOf, wishInfo } from './shop.js';
 import { aisleOf, qtyText } from './shoplex.js';
 import {
@@ -133,20 +135,21 @@ export function buildTables(s, today) {
     ),
     // 1.10: minutos intensos, día de fuerza y medicinas tomadas.
     Salud: table(
-      ['Fecha', 'Sueño (horas)', 'Me acosté', 'Me levanté', 'Calidad', 'Pasos', 'Agua (vasos)', 'Ejercicio (min)', 'Tipo de ejercicio', 'Frutas y verduras', 'Minutos intensos', 'Fuerza', 'Medicinas tomadas'],
+      ['Fecha', 'Sueño (horas)', 'Me acosté', 'Me levanté', 'Calidad', 'Pasos', 'Agua (vasos)', 'Ejercicio (min)', 'Tipo de ejercicio', 'Frutas y verduras', 'Minutos intensos', 'Fuerza', 'Medicinas tomadas', 'Comidas anotadas', 'Platos completos', 'Pausas activas'],
       days.map((d) => {
         const h = s.health[d] || {};
         const types = Object.entries(h.exTypes || {}).map(([k, v]) => `${label(EXERCISE_TYPES, k)} ${v}`).join(', ');
         const doses = s.meds && s.meds.length ? dosesFor(s, d) : [];
         return [d, h.sleep ?? '', h.bed || '', h.wake || '', h.quality ? label(SLEEP_QUALITY, h.quality, 'v') : '', h.steps ?? '', h.water ?? '', h.exercise ?? '', types, h.veg ?? '',
-          h.exVig || '', h.strength || (h.exTypes || {}).gimnasio > 0 ? 'Sí' : '', doses.length ? `${doses.filter((x) => x.status === 'si').length} de ${doses.length}` : ''];
+          h.exVig || '', h.strength || (h.exTypes || {}).gimnasio > 0 ? 'Sí' : '', doses.length ? `${doses.filter((x) => x.status === 'si').length} de ${doses.length}` : '',
+          h.food ? Object.keys(h.food).length : '', h.food ? Object.values(h.food).filter(plateFull).length : '', h.breaks || ''];
       }),
     ),
     Medicinas: table(
-      ['Nombre', 'Dosis', 'Tipo', 'Horas', 'Días', 'Desde', 'Hasta', 'Tomadas en 30 días', 'Nota'],
+      ['Nombre', 'Dosis', 'Tipo', 'Nutriente', 'Horas', 'Días', 'Desde', 'Hasta', 'Tomadas en 30 días', 'Nota'],
       (s.meds || []).map((m) => {
         const a = medAdherence(s, m, today);
-        return [m.name, m.dose, m.kind === 'suplemento' ? 'Suplemento' : 'Medicina', m.times.join(', '), m.days ? m.days.map((x) => ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'][x]).join(', ') : 'Todos', m.start, m.archived || m.end || '', a.pct != null ? `${Math.round(a.pct * 100)} %` : '', m.note];
+        return [m.name, m.dose, m.kind === 'suplemento' ? 'Suplemento' : 'Medicina', (nutrientOf(m.name) || {}).name || '', m.times.join(', '), m.days ? m.days.map((x) => ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'][x]).join(', ') : 'Todos', m.start, m.archived || m.end || '', a.pct != null ? `${Math.round(a.pct * 100)} %` : '', m.note];
       }),
     ),
     Logros: table(

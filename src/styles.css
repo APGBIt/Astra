@@ -611,3 +611,11 @@ details > summary::-webkit-details-marker { display: none; }
 .txrow.sel .tile { background: var(--surface) !important; }
 /* En pantallas muy angostas el botón del recibo queda solo con su ícono. */
 @media (max-width: 374px) { .fin-head .fin-head-l { display: none; } .fin-head .btn.sm { padding: 0 13px; } }
+
+/* 1.14: rutinas guiadas */
+.workout-player { background: radial-gradient(120% 80% at 50% 38%, #123029 0%, #141519 62%); }
+.wp-timer { position: relative; width: 260px; height: 260px; display: flex; align-items: center; justify-content: center; }
+.wp-timer svg { position: absolute; inset: 0; }
+.wp-time { font-family: var(--font-display); font-size: 54px; font-weight: 800; color: #F2F2EF; }
+.wp-orb { background: radial-gradient(circle at 40% 35%, #A8F0D9 0%, #5FD3B0 55%, #2E8F75 100%); }
+@media (max-width: 360px) { .wp-timer, .wp-timer svg { width: 220px; height: 220px; } }
