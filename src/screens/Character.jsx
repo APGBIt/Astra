@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
-import { Nav, TopBar, Segs, Bar, Avatar, TChip, Sheet, SheetHead, NumberChips, toast, areaColor, areaSoft, plural, ask } from '../ui/kit.jsx';
+import { Nav, TopBar, Segs, Bar, Avatar, TChip, Sheet, SheetHead, NumberChips, toast, areaColor, areaSoft, plural, ask, num } from '../ui/kit.jsx';
+import { PathSummary } from './Home.jsx';
 import { RecordCard } from './Record.jsx';
 import { RoutineChecklist } from './Sleep.jsx';
 import { WeeklyReviewCard } from './Reflect.jsx';
@@ -23,6 +24,9 @@ export function backupDue(s, today) {
   if (!last) return diffDays(s.profile.created || today, today) >= 3;
   return diffDays(last, today) > 14;
 }
+
+// Misiones activas: sin archivar y sin las de una vez que ya cumpliste (igual que en «Tus misiones»).
+export const liveMissions = (s) => s.missions.filter((m) => !m.archived && !(m.kind === 'once' && m.doneOn && m.doneOn < s.energy.day));
 
 // ---------- Personaje: estado de rol ----------
 
@@ -55,6 +59,8 @@ export function Character() {
             {s.titles.length > 0 && <span class="small muted semi">«{s.titles[s.titles.length - 1]}»</span>}
           </div>
         </section>
+
+        <PathSummary s={s} card />
 
         {backupDue(s, today) && (
           <a class="note tone-ene" href="#/ajustes" style={{ textDecoration: 'none' }}>
@@ -148,11 +154,11 @@ export function Character() {
         </section>
 
         <div class="grid2">
-          <a href="#/tienda" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)' }}><span class="row"><Icon name="bag" /><span class="strong grow">Tienda</span></span><span class="small muted">{s.gold} de oro</span></a>
+          <a href="#/tienda" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)' }}><span class="row"><Icon name="bag" /><span class="strong grow">Tienda</span></span><span class="small muted">{num(s.gold)} de oro</span></a>
           <a href="#/posada" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)' }}><span class="row"><Icon name="moon" /><span class="strong grow">Posada</span></span><span class="small muted">{s.inn[today] ? 'Hoy cerrado' : 'Cierra el día'}</span></a>
           <a href="#/cronica" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)' }}><span class="row"><Icon name="chart" /><span class="strong grow">Crónica</span></span><span class="small muted">{Object.keys(s.achievements).length} insignias</span></a>
-          <a href="#/misiones" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)' }}><span class="row"><Icon name="sword" /><span class="strong grow">Misiones</span></span><span class="small muted">{s.missions.filter((m) => !m.archived).length} activas</span></a>
-          <a href="#/ajustes" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)', gridColumn: '1 / -1' }}><span class="row"><Icon name="gear" /><span class="strong grow">Ajustes</span><span class="small muted">Metas diarias, IA, copia de seguridad y tema</span></span></a>
+          <a href="#/misiones" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)' }}><span class="row"><Icon name="sword" /><span class="strong grow">Misiones</span></span><span class="small muted">{plural(liveMissions(s).length, 'activa', 'activas')}</span></a>
+          <a href="#/ajustes" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)', gridColumn: '1 / -1' }}><span class="row"><Icon name="gear" /><span class="strong grow">Ajustes</span><Icon name="right" size={18} /></span><span class="small muted">Metas diarias, notificaciones, IA, copia de seguridad y tema</span></a>
         </div>
       </main>
       <Nav active="personaje" />
@@ -264,23 +270,28 @@ export function Inn() {
 export function Shop() {
   const s = useApp();
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState('');
   const [cost, setCost] = useState(100);
   return (
     <main class="screen no-nav">
-      <TopBar backTo="/" title="Tienda" />
+      <TopBar backTo="/" title="Tienda" heading />
       <section class="card" style={{ flexDirection: 'row', alignItems: 'center', gap: 14, background: 'var(--xp-soft)', borderColor: 'transparent' }} aria-label="Tu oro">
         <span class="tile lg" style={{ background: 'var(--surface)', color: 'var(--xp-ink)' }}><Icon name="coin" size={28} /></span>
-        <span class="stack-xs"><span class="eyebrow" style={{ color: 'var(--xp-ink)' }}>Tu oro</span><span class="display-num" style={{ fontSize: 34 }}>{s.gold}</span></span>
+        <span class="stack-xs"><span class="eyebrow" style={{ color: 'var(--xp-ink)' }}>Tu oro</span><span class="display-num" style={{ fontSize: 34 }}>{num(s.gold)}</span></span>
       </section>
       <section class="card flush" aria-label="Tus recompensas">
-        <div class="stack-xs" style={{ padding: '14px 0 6px' }}><h2 class="h2">Tus recompensas</h2><span class="small muted">Premios de la vida real que eliges y te ganas.</span></div>
+        <div class="between-c" style={{ padding: '14px 0 6px', alignItems: 'flex-start' }}>
+          <div class="stack-xs"><h2 class="h2">Tus recompensas</h2><span class="small muted">Premios de la vida real que eliges y te ganas.</span></div>
+          {s.rewards.length > 0 && <button type="button" class="link-btn" aria-pressed={editing ? 'true' : 'false'} onClick={() => setEditing(!editing)}>{editing ? 'Listo' : 'Editar'}</button>}
+        </div>
         {s.rewards.map((r) => (
           <div class="lrow" key={r.id}>
             <span class="tile sm" style={{ background: 'var(--xp-soft)', color: 'var(--xp-ink)' }}><Icon name="gift" size={18} /></span>
             <span class="grow strong">{r.title}</span>
-            <button type="button" class="btn sm" disabled={s.gold < r.cost} onClick={async () => { if (await ask(`¿Canjear «${r.title}» por ${r.cost} de oro?`, { ok: 'Canjear' }) && act((st, t) => redeemReward(st, r.id, t))) toast(`¡Disfruta: ${r.title}!`, 'gift'); }}><Icon name="coin" size={16} />{r.cost}</button>
-            <button type="button" class="icon-btn plain" aria-label={`Quitar ${r.title}`} onClick={() => act((st) => { st.rewards = st.rewards.filter((x) => x.id !== r.id); })}><Icon name="close" size={18} /></button>
+            {editing
+              ? <button type="button" class="btn sm ghost" style={{ color: 'var(--vit-ink)' }} aria-label={`Quitar ${r.title}`} onClick={async () => { if (await ask(`¿Quitar «${r.title}» de tus recompensas?`, { ok: 'Quitar', danger: true })) act((st) => { st.rewards = st.rewards.filter((x) => x.id !== r.id); }); }}><Icon name="trash" size={16} />Quitar</button>
+              : <button type="button" class="btn sm" disabled={s.gold < r.cost} onClick={async () => { if (await ask(`¿Canjear «${r.title}» por ${num(r.cost)} de oro?`, { ok: 'Canjear' }) && act((st, t) => redeemReward(st, r.id, t))) toast(`¡Disfruta: ${r.title}!`, 'gift'); }}><Icon name="coin" size={16} />{num(r.cost)}</button>}
           </div>
         ))}
         <button type="button" class="lrow" style={{ justifyContent: 'center', fontWeight: 700, minHeight: 52 }} onClick={() => setAdding(true)}><Icon name="plus" size={18} />Añadir recompensa</button>

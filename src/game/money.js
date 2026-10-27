@@ -512,6 +512,9 @@ export function recurringSuggestions(s, today, { months = 4, max = 4 } = {}) {
   // Lo que ya pagaste como parte de tu plan (1.10): Altice ligado a «Internet y cable» no se vuelve a sugerir.
   const linked = new Set();
   for (const p of plans) for (const v of Object.values(p.done || {})) if (v && v !== 'skip') linked.add(v);
+  // 1.15: las cuotas de un préstamo del banco y lo que prestas o te prestan ya tienen su lugar (Deudas): no son «pagos fijos».
+  for (const id of creditTxIds(s)) linked.add(id);
+  for (const l of (s.money && s.money.loans) || []) { if (l.tx) linked.add(l.tx); for (const p of l.pays || []) if (p.tx) linked.add(p.tx); }
   // Un pago de tu plan con otro nombre, pero de la misma categoría y con monto y día parecidos.
   const samePlan = (kind, cat, avg, day) => plans.some((p) => {
     if (p.kind !== kind || p.cat !== cat || !p.freq || p.freq.type !== 'month') return false;

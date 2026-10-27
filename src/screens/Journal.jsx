@@ -66,7 +66,7 @@ export function Journal({ query }) {
           {kind === 'pregunta' && (
             <div class="stack-xs">
               <span class="h2" style={{ fontSize: 19, lineHeight: 1.3 }}>{prompt}</span>
-              <button type="button" class="link-btn" style={{ alignSelf: 'flex-start', minHeight: 30 }} onClick={() => setOffset(offset + 1)}><Icon name="repeat" size={15} />Otra pregunta</button>
+              <button type="button" class="link-btn" style={{ alignSelf: 'flex-start', minHeight: 40 }} onClick={() => setOffset(offset + 1)}><Icon name="repeat" size={15} />Otra pregunta</button>
             </div>
           )}
           {kind === 'gratitud' ? (

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Icon } from './icons.jsx';
-import { back } from '../app/router.js';
+import { back, go, parseHash } from '../app/router.js';
 import { AREA } from '../game/content.js';
 import { onEvents, useApp } from '../app/store.js';
 import { todosDue } from '../game/logic.js';
+import { dueItems } from '../game/money.js';
+import { initialsOf } from '../app/text.js';
 import { vibrate } from '../app/env.js';
 import { toNumber } from '../game/parse.js';
 import { addDays, diffDays, weekday, DAYS, fmtShort, parseDay } from '../app/dates.js';
@@ -30,6 +32,9 @@ export function usd(n, { sign = false, decimals } = {}) {
   return v < 0 ? `−${s}` : s;
 }
 
+// Totales y resúmenes: en pesos enteros (los centavos quedan para cada movimiento y los saldos de tus cuentas).
+export const moneyR = (n, opts = {}) => money(Math.round(Number(n) || 0), { ...opts, decimals: 0 });
+
 // Monto en su moneda: RD$ o US$.
 export const cur = (n, currency, opts) => (currency === 'USD' ? usd(n, opts) : money(n, opts));
 
@@ -41,6 +46,8 @@ export function num(n) {
 }
 
 export const plural = (n, one, many) => `${num(n)} ${n === 1 ? one : many}`;
+
+export { joinY } from '../app/text.js';
 
 // «¿Cuántas páginas?» / «¿Cuántos días?»: concuerda con la unidad.
 export function cuantos(unit) {
@@ -59,25 +66,49 @@ export function focusOnMount(el) {
 
 // ---------- Estructura ----------
 
-export function TopBar({ title, backTo = '/', close = false, right = null, onBack }) {
+// `heading`: el título es el encabezado principal de la pantalla (cuando no tiene otro).
+export function TopBar({ title, backTo = '/', close = false, right = null, onBack, heading = false }) {
   return (
     <header class="topbar">
       <button type="button" class="icon-btn" aria-label={close ? 'Cerrar' : 'Volver'} onClick={onBack || (() => back(backTo))}>
         <Icon name={close ? 'close' : 'left'} />
       </button>
-      {title ? <span class="t">{title}</span> : <span class="grow" />}
+      {title ? (heading ? <h1 class="t">{title}</h1> : <span class="t">{title}</span>) : <span class="grow" />}
       <span style={{ minWidth: 44, display: 'flex', justifyContent: 'flex-end' }}>{right}</span>
     </header>
   );
 }
 
-// La barra de abajo. El botón flotante cambia según la pantalla (misión nueva, pendiente nuevo o movimiento).
-export function Nav({ active, fab = { href: '/mision/nueva', label: 'Nueva misión' } }) {
+// Registrar encima de la pantalla en la que estás (la dirección lleva «registrar=1»: «atrás» la cierra).
+export function openRegistrar() {
+  const r = parseHash();
+  const q = new URLSearchParams(r.query);
+  q.set('registrar', '1');
+  go(`${r.path}?${q.toString()}`);
+}
+
+// Pagos vencidos o que vencen hoy (para el número de la pestaña Finanzas). Se calcula una vez por estado.
+const dueMemo = new WeakMap();
+export function moneyDueCount(s) {
+  if (dueMemo.has(s)) return dueMemo.get(s);
+  const today = s.energy.day;
+  let n = 0;
+  try {
+    n = dueItems(s, today, today, today).filter((it) => !it.estimate && it.kind !== 'ingreso' && (it.status === 'late' || it.status === 'today')).length;
+  } catch { n = 0; }
+  dueMemo.set(s, n);
+  return n;
+}
+
+// La barra de abajo. El botón flotante registra algo nuevo; algunas pantallas lo cambian por lo suyo
+// (pendiente nuevo, movimiento, rutina, logro…).
+export function Nav({ active, fab = { registrar: true, label: 'Registrar' } }) {
   const s = useApp();
   const badge = todosDue(s, s.energy.day).length;
-  const Tab = ({ to, id, icon, text, count }) => (
+  const payBadge = moneyDueCount(s);
+  const Tab = ({ to, id, icon, text, count, countLabel }) => (
     <a href={`#${to}`} aria-current={active === id ? 'page' : undefined}>
-      <span class="pill"><Icon name={icon} />{count > 0 && <span class="badge" aria-label={`${count} para hoy`}>{count > 9 ? '9+' : count}</span>}</span>
+      <span class="pill"><Icon name={icon} />{count > 0 && <span class="badge" aria-label={countLabel(count)}>{count > 9 ? '9+' : count}</span>}</span>
       {text}
     </a>
   );
@@ -85,15 +116,101 @@ export function Nav({ active, fab = { href: '/mision/nueva', label: 'Nueva misi�
     <>
       <nav class="nav" aria-label="Navegación principal">
         <Tab to="/" id="hoy" icon="home" text="Hoy" />
-        <Tab to="/pendientes" id="pendientes" icon="list" text="Pendientes" count={badge} />
-        <Tab to="/camino" id="camino" icon="map" text="Camino" />
+        <Tab to="/pendientes" id="pendientes" icon="list" text="Pendientes" count={badge} countLabel={(n) => `${n} para hoy`} />
+        <Tab to="/finanzas" id="finanzas" icon="wallet" text="Finanzas" count={payBadge} countLabel={(n) => (n === 1 ? '1 pago vencido o para hoy' : `${n} pagos vencidos o para hoy`)} />
         <Tab to="/areas" id="areas" icon="grid" text="Áreas" />
         <Tab to="/personaje" id="personaje" icon="user" text="Personaje" />
       </nav>
-      {fab && (fab.onClick
-        ? <button type="button" class="fab" aria-label={fab.label} onClick={fab.onClick}><Icon name="plus" size={28} stroke={2.4} /></button>
-        : <a class="fab" href={`#${fab.href}`} aria-label={fab.label}><Icon name="plus" size={28} stroke={2.4} /></a>)}
+      {fab && (fab.registrar
+        ? <button type="button" class="fab" aria-label={fab.label || 'Registrar'} onClick={openRegistrar}><Icon name="plus" size={28} stroke={2.4} /></button>
+        : fab.onClick
+          ? <button type="button" class="fab" aria-label={fab.label} onClick={fab.onClick}><Icon name="plus" size={28} stroke={2.4} /></button>
+          : <a class="fab" href={`#${fab.href}`} aria-label={fab.label}><Icon name="plus" size={28} stroke={2.4} /></a>)}
     </>
+  );
+}
+
+// Pestañas que se desplazan de lado cuando no caben: la elegida queda siempre a la vista y un desvanecido
+// en el borde avisa que hay más. `sticky`: se quedan arriba al bajar por la pantalla.
+export function ScrollTabs({ tabs, value, onChange, label, sticky = false, mini = false }) {
+  const ref = useRef(null);
+  const [edge, setEdge] = useState({ l: false, r: false });
+  const measure = () => {
+    const el = ref.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    const next = { l: el.scrollLeft > 4, r: el.scrollLeft < max - 4 };
+    setEdge((e) => (e.l === next.l && e.r === next.r ? e : next));
+  };
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const btn = el.querySelector('[aria-selected="true"]');
+    if (btn && el.scrollWidth > el.clientWidth) {
+      const left = btn.offsetLeft - (el.clientWidth - btn.offsetWidth) / 2;
+      el.scrollLeft = Math.max(0, Math.min(left, el.scrollWidth - el.clientWidth));
+    }
+    measure();
+  }, [value]);
+  useEffect(() => {
+    window.addEventListener('resize', measure);
+    const id = setTimeout(measure, 300); // las letras tardan un poco en cargar y cambian el ancho
+    return () => { window.removeEventListener('resize', measure); clearTimeout(id); };
+  }, []);
+  const strip = (
+    <div class={`seg-wrap${mini ? ' mini' : ''}`}>
+      <div class="seg-scroll" ref={ref} role="tablist" aria-label={label} onScroll={measure}>
+        {tabs.map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={value === k ? 'true' : 'false'} onClick={() => onChange(k)}>{l}</button>)}
+      </div>
+      {edge.l && <span class="seg-fade l" aria-hidden="true"><Icon name="left" size={14} stroke={2.4} /></span>}
+      {edge.r && <span class="seg-fade r" aria-hidden="true"><Icon name="right" size={14} stroke={2.4} /></span>}
+    </div>
+  );
+  return sticky ? <div class="sticky-bar">{strip}</div> : strip;
+}
+
+// Índice de una pantalla larga: chips fijos arriba que llevan a cada sección y marcan por dónde vas.
+// Cada sección es un elemento con su `id` (ver la clase `.sec`).
+export function SectionNav({ items, label = 'Secciones de esta pantalla' }) {
+  const [cur, setCur] = useState(items[0] ? items[0][0] : null);
+  const ref = useRef(null);
+  const ids = items.map((x) => x[0]).join();
+  useEffect(() => {
+    let raf = 0;
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        let c = items[0] ? items[0][0] : null;
+        for (const [id] of items) {
+          const el = document.getElementById(id);
+          if (el && el.getBoundingClientRect().top <= 96) c = id;
+        }
+        // Al final de la pantalla, la última sección.
+        if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4 && items.length) c = items[items.length - 1][0];
+        setCur(c);
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => { window.removeEventListener('scroll', onScroll); cancelAnimationFrame(raf); };
+  }, [ids]);
+  useEffect(() => {
+    const el = ref.current;
+    const b = el && el.querySelector('[aria-current="true"]');
+    if (b) el.scrollLeft = Math.max(0, b.offsetLeft - 20);
+  }, [cur]);
+  const goTo = (id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    setCur(id);
+  };
+  return (
+    <nav class="sticky-bar section-nav" aria-label={label}>
+      <div class="chips scroll" ref={ref}>
+        {items.map(([id, l]) => <button key={id} type="button" class="tchip sm" aria-current={cur === id ? 'true' : undefined} onClick={() => goTo(id)}>{l}</button>)}
+      </div>
+    </nav>
   );
 }
 
@@ -180,12 +297,7 @@ const COOKIE = (() => {
   return `M${pts.join(' L')} Z`;
 })();
 
-export function initialsOf(name) {
-  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return 'A';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
-}
+export { initialsOf };
 
 export function Avatar({ name, size = 48, label = 'Tu avatar' }) {
   const t = initialsOf(name);

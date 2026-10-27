@@ -498,7 +498,7 @@ export function wheelInfo(s) {
   const prev = list[1] || null;
   if (!last) return { list, last, prev, low: [], avg: null };
   const min = Math.min(...WHEEL.map((a) => last.scores[a.id]));
-  return { list, last, prev, low: WHEEL.filter((a) => last.scores[a.id] === min).map((a) => a.id), avg: avg(WHEEL.map((a) => last.scores[a.id])) };
+  return { list, last, prev, low: WHEEL.filter((a) => last.scores[a.id] === min).map((a) => a.id), lowScore: min, avg: avg(WHEEL.map((a) => last.scores[a.id])) };
 }
 
 // ---------- Valores ----------

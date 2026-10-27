@@ -320,6 +320,24 @@ export function projectionNote(pr) {
   return `Con lo programado que falta, te faltarían ${rdw(already)} aunque no gastes nada más${atPace}. Mira si algún pago se puede mover.`;
 }
 
+// De dónde sale lo que falta para el plan del mes (1.15), con los mismos números que el Resumen y el Análisis:
+// «Ya gastaste RD$24,110 más de lo que entra este mes y toca apartar RD$10,500 para pagos futuros».
+// `mp` es el resultado de monthPlan().
+export function planShortText(mp) {
+  const spent = (mp.fixedPaid || 0) + (mp.variable || 0);
+  const over = Math.round(spent - (mp.income || 0));
+  const unpaid = Math.round(Math.max(0, (mp.fixed || 0) - (mp.fixedPaid || 0)));
+  const funds = Math.round(mp.funds || 0);
+  const parts = [];
+  if (over > 0) parts.push(`ya gastaste ${rdw(over)} más de lo que entra este mes`);
+  else if (over < 0) parts.push(`de lo que entra te quedan ${rdw(-over)}`);
+  if (unpaid > 0) parts.push(`faltan ${rdw(unpaid)} de pagos fijos`);
+  if (funds > 0) parts.push(`toca apartar ${rdw(funds)} para pagos futuros`);
+  if (!parts.length) return '';
+  const txt = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} y ${parts[parts.length - 1]}`;
+  return `${txt.charAt(0).toUpperCase()}${txt.slice(1)}.`;
+}
+
 // Proyección de cada presupuesto: a este ritmo, ¿en cuánto terminas?
 export function budgetPace(row, today) {
   const mk = monthKey(today);

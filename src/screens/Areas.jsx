@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
-import { Nav, TopBar, Bar, Ring, TChip, Stepper, Sheet, SheetHead, Bolts, NumberChips, toast, areaColor, areaSoft, areaInk, plural, ask, num } from '../ui/kit.jsx';
+import { Nav, TopBar, Bar, Ring, TChip, Stepper, Sheet, SheetHead, Bolts, NumberChips, SectionNav, toast, areaColor, areaSoft, areaInk, plural, ask, num } from '../ui/kit.jsx';
 import { AreaTodos } from './Todos.jsx';
 import { RecordCard } from './Record.jsx';
 import { GoalsSheet } from './Goals.jsx';
@@ -22,7 +22,7 @@ import {
   addPerson, updatePerson, removePerson, contactPerson, personStatus, duePeople,
   upcomingBirthdays, waLink, addBook, logPages, addCard, dueCards, reviewCard, logPractice, finishFocus, closeWorkday, bossHP,
 } from '../game/logic.js';
-import { MissionRow } from './Home.jsx';
+import { MissionRow, PathSummary } from './Home.jsx';
 import { ActivityCard, ExerciseSheet, MedsCard, MedsSheet, MedSheet, TrendsCard } from './HealthPlus.jsx';
 import { SuppPlanCard } from './Nutrition.jsx';
 import { PlateCard } from './Plate.jsx';
@@ -37,6 +37,7 @@ export function Areas() {
     <>
       <main class="screen">
         <div class="stack-xs"><h1 class="h1">Áreas</h1><p class="lead">Seis atributos. Cada uno crece con lo que haces en su área.</p></div>
+        <PathSummary s={s} card />
         <div class="stack">
           {AREAS.map((a) => {
             const lv = attrLevel(s.attrs[a.key] || 0);
@@ -135,6 +136,9 @@ function Talents({ area }) {
 
 // ---------- Salud ----------
 
+// 1.15: un índice arriba para saltar entre las partes de Salud sin bajar seis pantallas.
+const HEALTH_SECTIONS = [['sec-hoy', 'Hoy'], ['sec-medicinas', 'Medicinas'], ['sec-comida', 'Comida'], ['sec-sueno', 'Sueño'], ['sec-mov', 'Movimiento'], ['sec-tend', 'Tendencias'], ['sec-mis', 'Misiones']];
+
 export function Health({ query = null }) {
   const s = useApp();
   const today = s.energy.day;
@@ -162,39 +166,54 @@ export function Health({ query = null }) {
       <main class="screen">
         <TopBar backTo="/areas" right={<button type="button" class="btn sm soft" onClick={() => setSheet('goals')}><Icon name="target" size={18} />Mis metas</button>} />
         <AreaHeader area="salud" />
-        <div class="grid2">
-          {tiles.map((t) => (
-            <div key={t.key} style={{ position: 'relative' }}>
-              <button type="button" class="card tight" onClick={() => tap(t.key)} style={{ textAlign: 'left', color: 'var(--ink)', width: '100%', height: '100%' }}
-                aria-label={t.key === 'water' ? `Agua: ${t.value} de ${g.water} vasos. Tocar para sumar uno` : t.key === 'veg' ? `Frutas y verduras: ${t.value} de ${g.veg} porciones. Tocar para sumar una` : t.key === 'calm' ? `Calma: ${t.value} hoy. Tocar para abrir Calma` : `${t.label}: ${t.value}. Tocar para registrar`}>
-                <div class="between-c"><span style={{ color: areaColor('salud'), display: 'flex' }}><Icon name={t.icon} /></span><Ring value={t.pct} size={30} stroke={5} color={areaColor('salud')} /></div>
-                <span class="display-num" style={{ fontSize: 24 }}>{t.value}</span>
-                <span class="tiny muted semi">{t.label} · {t.sub}</span>
-              </button>
-              {minus[t.key] && (h[t.key] || 0) > 0 && <button type="button" class="icon-btn plain" aria-label={minus[t.key][0]} onClick={() => save({ [t.key]: (h[t.key] || 0) - 1 }, minus[t.key][1])} style={{ position: 'absolute', right: 6, bottom: 6, width: 36, height: 36 }}><Icon name="minus" size={18} /></button>}
-            </div>
-          ))}
+        <SectionNav items={HEALTH_SECTIONS} label="Secciones de Salud" />
+        <div id="sec-hoy" class="sec">
+          <div class="grid2">
+            {tiles.map((t) => (
+              <div key={t.key} style={{ position: 'relative' }}>
+                <button type="button" class="card tight" onClick={() => tap(t.key)} style={{ textAlign: 'left', color: 'var(--ink)', width: '100%', height: '100%' }}
+                  aria-label={t.key === 'water' ? `Agua: ${t.value} de ${g.water} vasos. Tocar para sumar uno` : t.key === 'veg' ? `Frutas y verduras: ${t.value} de ${g.veg} porciones. Tocar para sumar una` : t.key === 'calm' ? `Calma: ${t.value} hoy. Tocar para abrir Calma` : `${t.label}: ${t.value}. Tocar para registrar`}>
+                  <div class="between-c"><span style={{ color: areaColor('salud'), display: 'flex' }}><Icon name={t.icon} /></span><Ring value={t.pct} size={30} stroke={5} color={areaColor('salud')} /></div>
+                  <span class="display-num" style={{ fontSize: 24 }}>{t.value}</span>
+                  <span class="tiny muted semi">{t.label} · {t.sub}</span>
+                </button>
+                {minus[t.key] && (h[t.key] || 0) > 0 && <button type="button" class="icon-btn plain" aria-label={minus[t.key][0]} onClick={() => save({ [t.key]: (h[t.key] || 0) - 1 }, minus[t.key][1])} style={{ position: 'absolute', right: 6, bottom: 6, width: 36, height: 36 }}><Icon name="minus" size={18} /></button>}
+              </div>
+            ))}
+          </div>
         </div>
-        <MedsCard s={s} today={today} onAdd={() => setSheet({ kind: 'med', id: null })} onList={() => setSheet('meds')} />
-        <SuppPlanCard s={s} onEdit={(id) => setSheet({ kind: 'med', id })} />
-        <PlateCard s={s} today={today} />
-        <HealthHighlights s={s} today={today} />
-        <section class="card" aria-label="Tu sueño">
-          <div class="between-c"><h2 class="h2">Tu sueño</h2><span class="small muted">meta {fmtHours(goal)}</span></div>
-          <SleepWeek s={s} today={today} onEdit={editSleep} />
-          <span class="tiny muted">Toca una noche para registrarla o corregirla.</span>
-          <SleepInsights s={s} today={today} onWakeGoal={() => setSheet('goals')} />
-          <a href="#/posada" class="link-btn" style={{ alignSelf: 'flex-start' }}><Icon name="moon" size={16} />Rutina para dormir en la posada</a>
-        </section>
-        <ActivityCard s={s} today={today} onLog={() => setSheet('exercise')} />
-        <TrainingCard s={s} today={today} onPlay={setPlay} />
-        <TrendsCard s={s} today={today} />
-        <WellbeingCard s={s} today={today} />
-        <span class="small muted">Frutas y verduras: la OMS recomienda al menos 400 g al día, unas 5 porciones. Una porción es una fruta mediana o media taza de vegetales.</span>
-        <div class="note"><Icon name="info" size={18} /><span>En la versión para Android (APK), tus pasos y tu sueño llegarán solos desde Health Connect. Por ahora los registras aquí o con «Cuéntame qué hiciste».</span></div>
-        <AreaMissions area="salud" />
-        <AreaTodos area="salud" />
-        <Talents area="salud" />
+        <div id="sec-medicinas" class="sec">
+          <MedsCard s={s} today={today} onAdd={() => setSheet({ kind: 'med', id: null })} onList={() => setSheet('meds')} />
+          <SuppPlanCard s={s} onEdit={(id) => setSheet({ kind: 'med', id })} />
+        </div>
+        <div id="sec-comida" class="sec">
+          <PlateCard s={s} today={today} />
+          <span class="small muted">Frutas y verduras: la OMS recomienda al menos 400 g al día, unas 5 porciones. Una porción es una fruta mediana o media taza de vegetales.</span>
+        </div>
+        <div id="sec-sueno" class="sec">
+          <section class="card" aria-label="Tu sueño">
+            <div class="between-c"><h2 class="h2">Tu sueño</h2><span class="small muted">meta {fmtHours(goal)}</span></div>
+            <SleepWeek s={s} today={today} onEdit={editSleep} />
+            <span class="tiny muted">Toca una noche para registrarla o corregirla.</span>
+            <SleepInsights s={s} today={today} onWakeGoal={() => setSheet('goals')} />
+            <a href="#/posada" class="link-btn" style={{ alignSelf: 'flex-start' }}><Icon name="moon" size={16} />Rutina para dormir en la posada</a>
+          </section>
+        </div>
+        <div id="sec-mov" class="sec">
+          <ActivityCard s={s} today={today} onLog={() => setSheet('exercise')} />
+          <TrainingCard s={s} today={today} onPlay={setPlay} />
+        </div>
+        <div id="sec-tend" class="sec">
+          <HealthHighlights s={s} today={today} />
+          <TrendsCard s={s} today={today} />
+          <WellbeingCard s={s} today={today} />
+        </div>
+        <div id="sec-mis" class="sec">
+          <AreaMissions area="salud" />
+          <AreaTodos area="salud" />
+          <Talents area="salud" />
+          <div class="note"><Icon name="info" size={18} /><span>En la versión para Android (APK), tus pasos y tu sueño llegarán solos desde Health Connect. Por ahora los registras aquí o con «Cuéntame qué hiciste».</span></div>
+        </div>
       </main>
       <Nav active="areas" />
       {sheet === 'goals' && <GoalsSheet onClose={() => setSheet(null)} />}

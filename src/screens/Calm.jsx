@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
-import { Nav, TopBar, Sheet, SheetHead, TChip, NumberChips, Bar, toast, areaColor, areaSoft, areaInk, plural, focusOnMount } from '../ui/kit.jsx';
+import { Nav, TopBar, Sheet, SheetHead, TChip, NumberChips, Bar, toast, areaColor, areaSoft, areaInk, plural, focusOnMount, SectionNav } from '../ui/kit.jsx';
 import { act, useApp } from '../app/store.js';
 import { env, vibrate } from '../app/env.js';
 import { DAYS_SHORT, weekday, relDay } from '../app/dates.js';
@@ -244,6 +244,9 @@ export function CalmPlayer({ session, onClose }) {
 const TIMER_MIN = [5, 10, 15, 20, 30];
 const BELLS = [[0, 'Sin campanas'], [1, 'Cada 1 min'], [5, 'Cada 5 min'], [10, 'Cada 10 min']];
 
+// 1.15: índice de la pantalla (es larga): ahora, respirar, meditar, tu mente y tu semana.
+const CALM_SECTIONS = [['calma-ahora', 'Ahora'], ['calma-respira', 'Respira'], ['calma-medita', 'Medita'], ['calma-mente', 'Tu mente'], ['calma-semana', 'Tu semana']];
+
 export function Calm({ query }) {
   const s = useApp();
   const today = s.energy.day;
@@ -275,6 +278,9 @@ export function Calm({ query }) {
           <div class="kpi"><span class="v tab-num">{st.streak}</span><span class="l">{st.streak === 1 ? 'día seguido' : 'días seguidos'}</span></div>
         </div>
 
+        <SectionNav items={CALM_SECTIONS} label="Secciones de Calma" />
+
+        <div id="calma-ahora" class="sec">
         <section class="card sos-card" aria-label="Pausa SOS">
           <div class="row-top">
             <span class="tile" style={{ background: 'var(--surface)', color: areaColor('emocional') }}><Icon name="shield" /></span>
@@ -302,6 +308,9 @@ export function Calm({ query }) {
           ) : <div class="note tone-good"><Icon name="check" size={18} /><span>Completaste los siete días. Repite cualquiera abajo o sigue con la meditación libre.</span></div>}
         </section>
 
+        </div>
+
+        <div id="calma-respira" class="sec">
         <section class="card flush" aria-label="Respiraciones">
           <div style={{ padding: '14px 0 4px' }}><h2 class="h2">Respira</h2></div>
           {BREATHS.map((b) => (
@@ -313,6 +322,9 @@ export function Calm({ query }) {
           ))}
         </section>
 
+        </div>
+
+        <div id="calma-medita" class="sec">
         <section class="card flush" aria-label="Meditaciones guiadas">
           <div class="between-c" style={{ padding: '14px 0 4px' }}><h2 class="h2">Meditaciones guiadas</h2>{canSpeak() && <span class="tiny muted semi">con voz</span>}</div>
           {GUIDED.map((g) => (
@@ -333,6 +345,9 @@ export function Calm({ query }) {
           <button type="button" class="btn" style={{ alignSelf: 'flex-start' }} onClick={startTimer}><Icon name="play" size={18} fill />Empezar · {tmin} min</button>
         </section>
 
+        </div>
+
+        <div id="calma-mente" class="sec">
         <section class="card flush" aria-label="Para tu mente">
           <div style={{ padding: '14px 0 4px' }}><h2 class="h2">Para tu mente</h2></div>
           <button type="button" class="lrow" style={{ minHeight: 64 }} onClick={() => setSheet('descarga')}>
@@ -357,6 +372,9 @@ export function Calm({ query }) {
           </a>
         </section>
 
+        </div>
+
+        <div id="calma-semana" class="sec">
         <section class="card" aria-label="Tu semana de calma">
           <div class="between-c"><h2 class="h2">Tu semana</h2><span class="small muted">{st.week} min</span></div>
           <div class="calm-bars" role="img" aria-label={week.map((d) => `${d.day === today ? 'hoy' : DAYS_SHORT[weekday(d.day)]}: ${d.minutes} min`).join(', ')}>
@@ -388,6 +406,7 @@ export function Calm({ query }) {
         <button type="button" class="note" style={{ border: 'none', textAlign: 'left', color: 'var(--ink)' }} onClick={() => setSheet('ayuda')}>
           <Icon name="heart" size={20} /><span class="grow">Esto ayuda, pero no reemplaza a un profesional. Si lo estás pasando mal, busca apoyo.</span><Icon name="right" size={18} />
         </button>
+        </div>
       </main>
       <Nav active="areas" />
       {sheet && sheet.startsWith('breath:') && <BreathSheet id={sheet.slice(7)} onClose={() => setSheet(null)} onStart={(sess) => { setSheet(null); setPlay(sess); }} />}

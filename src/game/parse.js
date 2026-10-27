@@ -158,6 +158,20 @@ export function matchMission(text, missions) {
 
 // Frase libre → lista de cosas a registrar.
 // ctx: { people:[{id,name}], missions:[pendientes de hoy] }
+// Palabras que terminan como un infinitivo pero no lo son.
+const NOT_VERB = new Set(['ayer', 'lugar', 'bar', 'mar', 'mujer', 'taller', 'hogar', 'super', 'alquiler', 'dolar', 'collar', 'altar', 'azucar', 'cancer', 'placer', 'poder', 'deber', 'par', 'mil']);
+const EVENTS = /^(?:cita|reuni[oó]n|examen|entrega|consulta|vuelo|clase|junta|cumplea[nñ]os|boda|pago de|chequeo)\b/i;
+export function futureTodo(clause, today) {
+  const p = parseTodo(clause, today);
+  if (!p.title || !p.due || p.due < today) return null;
+  const first = norm(p.title).split(/\s+/)[0] || '';
+  const verb = /^[a-zñ]*(?:ar|er|ir)(?:me|le|la|lo|les|las|los|se)?$/.test(first) && !NOT_VERB.has(first);
+  if (!verb && !EVENTS.test(p.title)) return null;
+  // Un monto con «gasté/pagué…» es un gasto; sin pasado («pagar 3,000 de la luz») sigue siendo un pendiente.
+  if (/(gast[eé]|pagu[eé]|compr[eé]|cobr[eé]|recib[ií])\b/i.test(clause)) return null;
+  return p;
+}
+
 export function parseCapture(text, ctx = {}) {
   const items = [];
   let raw = String(text || '').trim();
@@ -188,6 +202,10 @@ export function parseCapture(text, ctx = {}) {
       const p = parseTodo(todo[1], today);
       if (p.title) { items.push({ kind: 'todo', title: p.title, due: p.due, important: p.important, repeat: p.repeat, cat: p.area || 'general', text: c }); continue; }
     }
+    // 1.15: algo por hacer con su fecha, sin «tengo que»: «mañana pagar la luz», «el viernes renovar el marbete»,
+    // «llamar a mamá el sábado», «el lunes cita con el dentista». Un verbo en pasado («mañana gasté…») no cuenta.
+    const dated = futureTodo(c, today);
+    if (dated) { items.push({ kind: 'todo', title: dated.title, due: dated.due, important: dated.important, repeat: dated.repeat, cat: dated.area || 'general', text: c }); continue; }
     const amount = parseAmount(t);
     // Dinero
     const currency = currencyIn(c);

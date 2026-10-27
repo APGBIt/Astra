@@ -134,7 +134,7 @@ function Ficha({ s, p }) {
         <Avatar name={name} size={56} />
         <div class="stack-xs grow">
           <span class="h2">{name || 'Tu nombre'}</span>
-          {sub ? <span class="small muted semi">{sub}</span> : <a class="small strong" href="#/expediente/datos" style={{ color: 'var(--ink)' }}>Completa tus datos personales</a>}
+          {sub ? <span class="small muted semi">{sub}</span> : <a class="link-btn" href="#/expediente/datos" style={{ fontSize: 13.5, minHeight: 40 }}>Completa tus datos personales<Icon name="right" size={14} /></a>}
         </div>
       </div>
       {facts.length > 0 && <div class="chips" style={{ gap: 6 }}>{facts.map(([ic, t]) => <span key={t} class="chip"><Icon name={ic} size={14} />{t}</span>)}</div>}

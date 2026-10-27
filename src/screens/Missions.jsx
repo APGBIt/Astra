@@ -276,7 +276,7 @@ export function MissionsList() {
           </section>
         )}
       </main>
-      <Nav active="hoy" />
+      <Nav active="hoy" fab={{ href: '/mision/nueva', label: 'Nueva misión' }} />
     </>
   );
 }

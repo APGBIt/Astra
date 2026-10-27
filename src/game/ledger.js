@@ -275,6 +275,24 @@ export function fmtWork(h, wi) {
   return `${one(months)} ${one(months) === '1' ? 'mes' : 'meses'}`;
 }
 
+// Corto, para la lista de movimientos (1.15): «34 min», «2h05», «1.3 d», «1.2 mes».
+export function fmtWorkShort(h, wi) {
+  if (h == null || !Number.isFinite(h)) return '';
+  const min = h * 60;
+  if (min < 1) return '<1 min';
+  if (min < 59.5) return `${Math.round(min)} min`;
+  const day = (wi && wi.dayHours) || 8;
+  if (h < day) {
+    let hh = Math.floor(h);
+    let mm = Math.round(((h - hh) * 60) / 5) * 5;
+    if (mm === 60) { hh += 1; mm = 0; }
+    return mm ? `${hh}h${String(mm).padStart(2, '0')}` : `${hh} h`;
+  }
+  const monthHours = (wi && wi.monthHours) || (day * 5 * 52) / 12;
+  if (h < monthHours) return `${one(h / day)} d`;
+  return `${one(h / monthHours)} mes`;
+}
+
 // ----- Deshacer lo último que cambiaste en grupo -----
 // Se guarda cómo estaban los movimientos tocados, los que se agregaron y, si cambiaron, las categorías,
 // las reglas y los pagos programados.

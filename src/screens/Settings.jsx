@@ -73,7 +73,7 @@ export function Settings() {
   const mode = s.settings.aiMode;
   return (
     <main class="screen no-nav">
-      <TopBar backTo="/personaje" title="Ajustes" />
+      <TopBar backTo="/personaje" title="Ajustes" heading />
       {!storage.ok && <div class="note tone-vit"><Icon name="info" size={18} /><span>Este navegador no deja guardar datos. Tus avances se perderán al cerrar.</span></div>}
 
       <section class="card" aria-label="Perfil">

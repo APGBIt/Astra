@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
-import { Nav, TopBar, TChip, Sheet, SheetHead, toast, ask, money, areaColor, areaSoft, areaInk, plural } from '../ui/kit.jsx';
+import { Nav, TopBar, TChip, Sheet, SheetHead, toast, ask, money, areaColor, areaSoft, areaInk, plural, SectionNav } from '../ui/kit.jsx';
 import { act, useApp } from '../app/store.js';
 import { relDay, DAYS_SHORT, fmtShort } from '../app/dates.js';
 import { MOOD_QUADS, INFLUENCES } from '../game/content.js';
@@ -144,14 +144,23 @@ export function Mood() {
             <Icon name="right" size={18} />
           </div>
         </a>
-        <CheckIn onAction={(a) => runAction(a, { setPlay, setTool })} />
-        {s.moods.length > 0 && <Pixels s={s} today={today} />}
-        {pat.n >= 5 && <Patterns pat={pat} names={names} />}
-        {pat.n >= 5 && <WeeksCard s={s} today={today} />}
-        <MoodMoneyMini s={s} today={today} />
-        {s.moods.length > 0 && <History s={s} today={today} />}
-        <AreaMissions area="emocional" />
-        <AreaTodos area="emocional" />
+        {s.moods.length > 0 && <SectionNav items={[['animo-checkin', 'Check-in'], ['animo-patrones', 'Patrones'], ['animo-historial', 'Historial'], ['animo-misiones', 'Misiones']]} label="Secciones de Ánimo" />}
+        <div id="animo-checkin" class="sec">
+          <CheckIn onAction={(a) => runAction(a, { setPlay, setTool })} />
+        </div>
+        <div id="animo-patrones" class="sec">
+          {s.moods.length > 0 && <Pixels s={s} today={today} />}
+          {pat.n >= 5 && <Patterns pat={pat} names={names} />}
+          {pat.n >= 5 && <WeeksCard s={s} today={today} />}
+          <MoodMoneyMini s={s} today={today} />
+        </div>
+        <div id="animo-historial" class="sec">
+          {s.moods.length > 0 && <History s={s} today={today} />}
+        </div>
+        <div id="animo-misiones" class="sec">
+          <AreaMissions area="emocional" />
+          <AreaTodos area="emocional" />
+        </div>
       </main>
       <Nav active="areas" />
       {tool === 'descarga' && <WorrySheet onClose={() => setTool(null)} />}

@@ -3,7 +3,7 @@
 import { adjustTotals } from '../game/reconcile.js';
 import { useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
-import { TChip, money, plural } from '../ui/kit.jsx';
+import { TChip, ScrollTabs, money, plural } from '../ui/kit.jsx';
 import { DAYS, DAYS_SHORT, fmtShort, monthKey, monthName, weekday } from '../app/dates.js';
 import { catOf } from '../game/logic.js';
 import {
@@ -34,7 +34,7 @@ const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 // «los lunes», «los sábados».
 const daysPlural = (d) => (/s$/.test(d) ? d : `${d}s`);
 
-const VIEWS = [['resumen', 'Resumen'], ['gastos', 'Gastos'], ['ingresos', 'Ingresos'], ['deudas', 'Deudas y ahorro'], ['vida', 'Tu vida']];
+const VIEWS = [['resumen', 'General'], ['gastos', 'Gastos'], ['ingresos', 'Ingresos'], ['deudas', 'Deudas y ahorro'], ['vida', 'Tu vida']];
 
 export function Analysis({ s, today, onCat, setSheet = () => {} }) {
   const [per, setPer] = useState('mes');
@@ -48,6 +48,10 @@ export function Analysis({ s, today, onCat, setSheet = () => {} }) {
   const any = s.money.tx.some((t) => t.day >= period.from && t.day <= period.to);
   const adj = adjustTotals(s, period.from, period.to);
   const ch = (d, good) => (d == null || Math.abs(d) < 0.01 ? null : <span class="row" style={{ gap: 2, color: (d > 0) === good ? 'var(--good-ink)' : 'var(--vit-ink)' }}><Icon name={d > 0 ? 'arrowup' : 'arrowdown'} size={12} />{pct(Math.abs(d))}</span>);
+  // 1.15: en el mes en curso, lo que falta por cobrar cuenta (como en el Resumen y el Plan): así «te pasas» dice lo mismo en todas partes.
+  const pr = per === 'mes' ? monthProjection(s, today) : null;
+  const toGet = pr && pr.toGet > 0 ? pr.toGet : 0;
+  const expectedNet = toGet ? tot.income + toGet - tot.spent : null;
   return (
     <>
       <div class="chips stat-periods" role="group" aria-label="Período">
@@ -55,12 +59,15 @@ export function Analysis({ s, today, onCat, setSheet = () => {} }) {
       </div>
       <section class="card" aria-label="Ingresos y gastos del período">
         <div class={`kpis3${[tot.income, tot.spent, tot.net].some((v) => whole(Math.abs(v)).length > 10) ? ' stack' : ''}`}>
-          <div class="stack-xs"><span class="tiny semi muted">Ingresos</span><span class="strong tab-num kpi-v">{whole(tot.income)}</span>{cmp.any && <span class="tiny semi">{ch(cmp.dIncome, true)}</span>}</div>
+          <div class="stack-xs"><span class="tiny semi muted">Ingresos</span><span class="strong tab-num kpi-v">{whole(tot.income)}</span>{toGet > 0 && <span class="kpi-sub">faltan {whole(toGet)}</span>}{cmp.any && !toGet && <span class="tiny semi">{ch(cmp.dIncome, true)}</span>}</div>
           <div class="stack-xs"><span class="tiny semi muted">Gastos</span><span class="strong tab-num kpi-v">{whole(tot.spent)}</span>{cmp.any && <span class="tiny semi">{ch(cmp.dSpent, false)}</span>}</div>
-          <div class="stack-xs"><span class="tiny semi muted">{tot.net >= 0 ? 'Te quedó' : 'Gastaste de más'}</span><span class="strong tab-num kpi-v" style={{ color: tot.net < 0 ? 'var(--vit-ink)' : 'var(--ink)' }}>{whole(Math.abs(tot.net))}</span></div>
+          {expectedNet != null
+            ? <div class="stack-xs"><span class="tiny semi muted">{expectedNet >= 0 ? 'Te quedaría' : 'Te pasas'}</span><span class="strong tab-num kpi-v" style={{ color: expectedNet < 0 ? 'var(--vit-ink)' : 'var(--ink)' }}>{whole(Math.abs(expectedNet))}</span><span class="kpi-sub">con lo que falta cobrar</span></div>
+            : <div class="stack-xs"><span class="tiny semi muted">{tot.net >= 0 ? 'Te quedó' : 'Gastaste de más'}</span><span class="strong tab-num kpi-v" style={{ color: tot.net < 0 ? 'var(--vit-ink)' : 'var(--ink)' }}>{whole(Math.abs(tot.net))}</span></div>}
         </div>
         <span class="small muted">
-          {tot.rate != null ? (tot.rate >= 0 ? `Guardaste el ${pct(tot.rate)} de lo que entró. ` : 'Salió más de lo que entró. ') : ''}
+          {toGet > 0 ? (expectedNet < 0 ? `Ya gastaste ${whole(-expectedNet)} más de lo que entra este mes (falta cobrar ${whole(toGet)}). ` : `Falta cobrar ${whole(toGet)} este mes; con eso te quedarían ${whole(expectedNet)}. `)
+            : tot.rate != null ? (tot.rate >= 0 ? `Guardaste el ${pct(tot.rate)} de lo que entró. ` : 'Salió más de lo que entró. ') : ''}
           {tot.n ? `${plural(tot.n, 'gasto', 'gastos')} · ${whole(tot.perDay)} por día en promedio.` : 'Sin gastos en este período.'}
           {cmp.any ? ` Las flechas comparan con ${cmp.label} (${whole(cmp.prev.spent)} de gastos).` : ''}
         </span>
@@ -74,9 +81,7 @@ export function Analysis({ s, today, onCat, setSheet = () => {} }) {
             <span class="small">Salen de cuadrar tus cuentas con el banco. Entra a Movimientos, ábrelos y ponles su categoría para que el análisis sea real.</span></span>
         </section>
       )}
-      <div class="seg fin-tabs" role="tablist" aria-label="Qué quieres ver">
-        {VIEWS.map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={view === k ? 'true' : 'false'} onClick={() => setView(k)}>{l}</button>)}
-      </div>
+      <ScrollTabs tabs={VIEWS} value={view} onChange={setView} label="Qué quieres ver" mini />
       {view === 'resumen' && (
         <>
           {per === 'mes' && <Insights s={s} today={today} onCat={onCat} />}

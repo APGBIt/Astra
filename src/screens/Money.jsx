@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
-import { Sheet, SheetHead, TChip, Switch, Bar, money, usd, cur, toast, ask, plural, areaColor, focusOnMount } from '../ui/kit.jsx';
+import { Sheet, SheetHead, TChip, Switch, Bar, money, moneyR, usd, cur, toast, ask, plural, areaColor, focusOnMount } from '../ui/kit.jsx';
 import { act } from '../app/store.js';
 import { addDays, diffDays, fmtDay, fmtShort, monthKey, monthName, parseDay, weekday, DAYS, MONTHS } from '../app/dates.js';
 import { accountOf, accountLabel, addAccount, updateAccount, removeAccount, catOf, catName, frequentCats, setBudget } from '../game/logic.js';
@@ -12,7 +12,7 @@ import {
   fundInfo, addToFund, setRollover, carryFor, planFreqLabel, recurringSuggestions, dismissRecurring, setAvailable, spentByMonth, budgetFor,
   weekFlex, budgetCatOf, isGroupId, setGroupBudget, planHistory,
 } from '../game/money.js';
-import { monthProjection, projectionNote, budgetPace, budgetSuggestions, split503020, prevMonth, monthShort } from '../game/stats.js';
+import { monthProjection, projectionNote, budgetPace, budgetSuggestions, split503020, prevMonth, monthShort, planShortText } from '../game/stats.js';
 import { CATEGORY_GROUPS } from '../game/content.js';
 import { ACCOUNT_KINDS, PLAN_TEMPLATES } from '../game/content.js';
 import { toNumber } from '../game/parse.js';
@@ -279,7 +279,7 @@ export function AccountsTab({ s, today, setSheet }) {
         })}
       </section>
       <button type="button" class="btn ghost block" onClick={() => setSheet({ kind: 'account', id: null })}><Icon name="plus" size={18} />Agregar cuenta o tarjeta</button>
-      {cards.length > 0 && <p class="small muted" style={{ textAlign: 'center' }}>Tus {plural(cards.length, 'tarjeta', 'tarjetas')} están en la pestaña Deudas.</p>}
+      {cards.length > 0 && <p class="small muted" style={{ textAlign: 'center' }}>{cards.length === 1 ? 'Tu tarjeta está' : `Tus ${cards.length} tarjetas están`} en la pestaña Deudas.</p>}
       <AssetsCard s={s} today={today} setSheet={setSheet} />
     </>
   );
@@ -620,15 +620,16 @@ export function PlanTab({ s, today, setSheet }) {
         <div class="between-c"><h2 class="h2" style={{ textTransform: 'capitalize' }}>{monthName(mk)}</h2>{mp.daysLeft != null && <span class="chip sm">Quedan {plural(mp.daysLeft, 'día', 'días')}</span>}</div>
         {!mp.hasPlans && <span class="small muted">Agrega tu sueldo y tus pagos fijos: así sé cuánto te queda para el día a día.</span>}
         <div class="stack-xs">
-          <PlanLine label="Ingresos del mes" sub={mp.got < mp.income ? `recibido ${money(mp.got)}` : 'todo recibido'} value={mp.income} tone="good" />
-          <PlanLine label="Pagos fijos" sub={mp.fixed ? `pagado ${money(mp.fixedPaid)}` : ''} value={-mp.fixed} />
+          <PlanLine label="Ingresos del mes" sub={mp.got < mp.income ? `recibido ${moneyR(mp.got)}` : 'todo recibido'} value={mp.income} tone="good" />
+          <PlanLine label="Pagos fijos" sub={mp.fixed ? (mp.fixedPaid >= mp.fixed - 1 ? 'todo pagado' : `pagado ${moneyR(mp.fixedPaid)}`) : ''} value={-mp.fixed} />
           {mp.funds > 0 && <PlanLine label="Apartar para pagos futuros" value={-mp.funds} />}
           <PlanLine label="Gastos del día a día" sub="hasta hoy" value={-mp.variable} />
         </div>
         <div class="between-c" style={{ borderTop: '1.5px solid var(--line)', paddingTop: 10 }}>
-          <span class="stack-xs"><span class="strong">{mp.left >= 0 ? 'Te queda' : 'Te pasaste'}</span>{mp.perDay != null && mp.left > 0 && <span class="small semi" style={{ color: 'var(--finanzas-ink)' }}>{money(Math.round(mp.perDay))} por día hasta fin de mes</span>}</span>
-          <span class="display-num tab-num" style={{ fontSize: 28, color: mp.left < 0 ? 'var(--vit-ink)' : 'var(--ink)' }}>{money(Math.round(Math.abs(mp.left)))}</span>
+          <span class="stack-xs"><span class="strong">{mp.left >= 0 ? 'Te queda' : 'Te falta para tu plan'}</span>{mp.perDay != null && mp.left > 0 && <span class="small semi" style={{ color: 'var(--finanzas-ink)' }}>{moneyR(mp.perDay)} por día hasta fin de mes</span>}</span>
+          <span class="display-num tab-num" style={{ fontSize: 28, color: mp.left < 0 ? 'var(--vit-ink)' : 'var(--ink)' }}>{moneyR(Math.abs(mp.left))}</span>
         </div>
+        {mp.left < 0 && <span class="small" style={{ color: 'var(--vit-ink)', marginTop: -6 }}>{planShortText(mp)}</span>}
         <WeekBlock s={s} today={today} />
       </section>
       <section class="card flush" aria-label="Próximos días">
@@ -829,7 +830,7 @@ function PlanRow({ s, p, today, onOpen, onFund }) {
         <span class="stack-xs" style={{ width: '100%', paddingLeft: 48, gap: 6 }}>
           <Bar value={f.pct} color={areaColor('finanzas')} label={`Apartado ${Math.round(f.pct * 100)} %`} />
           <span class="between-c" style={{ gap: 8 }}>
-            <span class="tiny semi muted tab-num">Apartado {money(f.saved)} de {money(f.amount)}{f.need > 0 ? ` · aparta ${money(f.perMonth)} al mes` : ' · listo'}</span>
+            <span class="tiny semi muted tab-num">Apartado {moneyR(f.saved)} de {moneyR(f.amount)}{f.need > 0 ? ` · aparta ${moneyR(f.perMonth)} al mes` : ' · listo'}</span>
             {f.need > 0 && <button type="button" class="btn xs soft" onClick={onFund}>Apartar</button>}
           </span>
         </span>
@@ -840,8 +841,8 @@ function PlanRow({ s, p, today, onOpen, onFund }) {
 
 // «RD$5,000 de RD$12,000 + RD$3,000 que sobró el mes pasado»
 function budgetLine(r) {
-  const extra = !r.carry ? '' : r.carry > 0 ? ` + ${money(r.carry)} que sobró el mes pasado` : ` − ${money(-r.carry)} que te pasaste el mes pasado`;
-  return `${money(r.spent)} de ${money(r.budget)}${extra}`;
+  const extra = !r.carry ? '' : r.carry > 0 ? ` + ${moneyR(r.carry)} que sobró el mes pasado` : ` − ${moneyR(-r.carry)} que te pasaste el mes pasado`;
+  return `${moneyR(r.spent)} de ${moneyR(r.budget)}${extra}`;
 }
 
 function BudgetRow({ r, today, onOpen }) {
@@ -849,8 +850,8 @@ function BudgetRow({ r, today, onOpen }) {
   const pacePct = r.pace != null && r.avail > 0 ? Math.min(1, r.pace / r.avail) : null;
   const bp = r.pace != null && today ? budgetPace(r, today) : null;
   return (
-    <button type="button" class="stack-sm budget-row" onClick={onOpen} aria-label={`${r.isGroup ? 'Familia ' : ''}${r.c.name}: ${r.over ? `${money(-r.left)} de más` : `quedan ${money(r.left)}`}`}>
-      <span class="between"><span class="strong row" style={{ minWidth: 0, gap: 6 }}>{r.c.name}{r.isGroup && <span class="chip sm">Familia</span>}</span><span class="small strong" style={{ color: r.over ? 'var(--vit-ink)' : 'var(--muted)', whiteSpace: 'nowrap' }}>{r.over ? `${money(-r.left)} de más` : `Quedan ${money(r.left)}`}</span></span>
+    <button type="button" class="stack-sm budget-row" onClick={onOpen} aria-label={`${r.isGroup ? 'Familia ' : ''}${r.c.name}: ${r.over ? `${moneyR(-r.left)} de más` : `quedan ${moneyR(r.left)}`}`}>
+      <span class="between"><span class="strong row" style={{ minWidth: 0, gap: 6 }}>{r.c.name}{r.isGroup && <span class="chip sm">Familia</span>}</span><span class="small strong" style={{ color: r.over ? 'var(--vit-ink)' : 'var(--muted)', whiteSpace: 'nowrap' }}>{r.over ? `${moneyR(-r.left)} de más` : `Quedan ${moneyR(r.left)}`}</span></span>
       <span class="pace">
         <Bar value={r.pct} size="lg" color={color} />
         {pacePct != null && <b style={{ left: `${pacePct * 100}%` }} title="Lo esperado a hoy" />}

@@ -2,7 +2,7 @@
 // totales por categoría o familia, agrupar y ordenar, y seleccionar varios para editarlos juntos (con deshacer).
 import { useRef, useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
-import { Sheet, SheetHead, TChip, money, usd, cur, rateText, toast, ask, plural, focusOnMount } from '../ui/kit.jsx';
+import { Sheet, SheetHead, TChip, money, moneyR, usd, cur, rateText, toast, ask, plural, focusOnMount } from '../ui/kit.jsx';
 import { act } from '../app/store.js';
 import { monthKey, monthName, fmtDay, fmtShort } from '../app/dates.js';
 import { saveFile } from '../app/files.js';
@@ -11,7 +11,7 @@ import {
 } from '../game/logic.js';
 import {
   periodRange, RANGE_KINDS, normFilter, emptyFilter, filterCount, isFiltered, filterTx, sortList, SORTS, summarize, groupList, GROUP_BY, catTotals,
-  SOURCES, ONLY, workInfo, workHours, fmtWork, bulkEdit, bulkRemove, bulkAddTax, taxable, undoBulk, groupName,
+  SOURCES, ONLY, workInfo, workHours, fmtWork, fmtWorkShort, bulkEdit, bulkRemove, bulkAddTax, taxable, undoBulk, groupName,
 } from '../game/ledger.js';
 import { CATEGORY_GROUPS, ACCOUNT_KINDS } from '../game/content.js';
 import { toNumber } from '../game/parse.js';
@@ -33,7 +33,7 @@ export const signed = (t) => {
   return k === 'ingreso' ? `+${v}` : k === 'transfer' ? v : `−${v}`;
 };
 // La otra moneda del movimiento: si fue en US$, cuánto fue en pesos; si fue en pesos, cuánto en US$.
-const otherSide = (s, t) => (txCur(t) === 'USD' ? money(txDOP(t)) : usd(txUSD(s, t)));
+const otherSide = (s, t) => (txCur(t) === 'USD' ? moneyR(txDOP(t)) : usd(txUSD(s, t)));
 
 export const fxWhen = (s, today) => {
   const fx = s.money.fx;
@@ -60,21 +60,25 @@ export function TxRow({ s, t, onOpen, day = null, wi = null, selecting = false, 
   const to = k === 'transfer' || (k === 'gasto' && t.to) ? accountOf(s, t.to) : null;
   const where = to ? `${a ? `${accountLabel(a)} → ` : '→ '}${accountLabel(to)}` : a && accountLabel(a);
   const tone = k === 'ingreso' ? ['var(--good-soft)', 'var(--good-ink)'] : k === 'transfer' ? ['var(--soft)', 'var(--muted)'] : ['var(--finanzas-soft)', 'var(--finanzas-ink)'];
-  const hrs = wi && wi.ready && wi.show && k === 'gasto' && !t.noStats ? fmtWork(workHours(txDOP(t), wi), wi) : '';
+  const showHrs = wi && wi.ready && wi.show && k === 'gasto' && !t.noStats;
+  const hrs = showHrs ? fmtWork(workHours(txDOP(t), wi), wi) : '';
+  const hrsShort = showHrs ? fmtWorkShort(workHours(txDOP(t), wi), wi) : '';
   const marks = [t.split ? `parte ${t.split.i + 1} de ${t.split.n}` : '', t.noStats ? 'no cuenta' : '', t.adjust ? 'ajuste de saldo' : ''].filter(Boolean);
+  // 1.15: dos líneas por lado. Izquierda: comercio y detalle. Derecha: el monto y, debajo, la otra moneda y las horas de trabajo.
   return (
     <button type="button" class={`lrow txrow${selected ? ' sel' : ''}`} onClick={onOpen} aria-pressed={selecting ? (selected ? 'true' : 'false') : undefined}
       aria-label={`${selecting ? (selected ? 'Seleccionado: ' : 'Seleccionar: ') : ''}${t.merchant || c.name}, ${signed(t)}, ${c.name}${hrs ? `, ${hrs} de trabajo` : ''}`}>
       {selecting && <span class="selbox" aria-hidden="true">{selected && <Icon name="check" size={15} stroke={3} />}</span>}
       <span class="tile sm" style={{ background: tone[0], color: tone[1] }}><Icon name={c.icon || 'tag'} size={18} /></span>
-      <span class="stack-xs grow" style={{ minWidth: 0 }}>
-        <span class="strong clip">{t.merchant || c.name}</span>
-        <span class="tiny muted semi clamp2">{[day, t.time, to && k === 'transfer' ? null : c.name, where, t.tag, ...marks].filter(Boolean).join(' · ')}</span>
-      </span>
-      <span class="stack-xs" style={{ alignItems: 'flex-end', flexShrink: 0, gap: 1 }}>
-        <span class="strong tab-num" style={{ color: k === 'ingreso' ? 'var(--good-ink)' : k === 'transfer' ? 'var(--muted)' : 'var(--ink)', textDecoration: t.noStats ? 'line-through' : undefined }}>{signed(t)}</span>
-        <span class="tiny muted semi tab-num">{otherSide(s, t)}</span>
-        {hrs && <span class="tiny muted semi tab-num row hrs"><Icon name="clock" size={11} stroke={2.4} />{hrs}</span>}
+      <span class="tx-body">
+        <span class="tx-line">
+          <span class="strong tx-name">{t.merchant || c.name}</span>
+          <span class="strong tab-num tx-amt" style={{ color: k === 'ingreso' ? 'var(--good-ink)' : k === 'transfer' ? 'var(--muted)' : 'var(--ink)', textDecoration: t.noStats ? 'line-through' : undefined }}>{signed(t)}</span>
+        </span>
+        <span class="tx-line tiny muted semi">
+          <span class="tx-meta">{[day, t.time, to && k === 'transfer' ? null : c.name, where, t.tag, ...marks].filter(Boolean).join(' · ')}</span>
+          <span class="tab-num tx-sub">{otherSide(s, t)}{hrsShort && <><span>·</span><Icon name="clock" size={11} stroke={2.4} />{hrsShort}</>}</span>
+        </span>
       </span>
     </button>
   );
@@ -164,21 +168,16 @@ export function Movements({ s, today, per, setPer, filter, setFilter, setSheet, 
               {l === 'Gastos' && hrsAll && <span class="tiny semi row hrs" style={{ color: 'var(--finanzas-ink)' }}><Icon name="clock" size={12} stroke={2.4} />{hrsAll} de trabajo</span>}
             </span>
             <span class="stack-xs" style={{ alignItems: 'flex-end', gap: 2 }}>
-              <span class="display-num tab-num" style={{ fontSize: l === 'Balance' ? 22 : 19, color: c || undefined }}>{money(dop)}</span>
-              <span class="tiny semi muted tab-num">{usd(u)}</span>
+              <span class="display-num tab-num" style={{ fontSize: l === 'Balance' ? 22 : 19, color: c || undefined }}>{moneyR(dop)}</span>
+              <span class="tiny semi muted tab-num">{usd(u, { decimals: 0 })}</span>
             </span>
           </div>
         ))}
         {(sum.moved > 0 || sum.nExcluded > 0) && (
           <div class="lrow" style={{ minHeight: 44 }}>
-            <span class="tiny muted semi">{[sum.moved > 0 ? `Entre tus cuentas: ${money(sum.moved)} (no es gasto)` : '', sum.nExcluded ? `${plural(sum.nExcluded, 'movimiento', 'movimientos')} sin contar: ${money(sum.excluded)}` : ''].filter(Boolean).join(' · ')}</span>
+            <span class="tiny muted semi">{[sum.moved > 0 ? `Entre tus cuentas: ${moneyR(sum.moved)} (no es gasto)` : '', sum.nExcluded ? `${plural(sum.nExcluded, 'movimiento', 'movimientos')} sin contar: ${moneyR(sum.excluded)}` : ''].filter(Boolean).join(' · ')}</span>
           </div>
         )}
-        <button type="button" class="lrow" style={{ minHeight: 52 }} onClick={() => setSheet({ kind: 'fx' })} aria-label={`Tasa del dólar: US$1 = ${rateText(rate)}. Cambiar`}>
-          <span class="tile sm" style={{ background: 'var(--soft)' }}><Icon name="swap" size={18} /></span>
-          <span class="stack-xs grow"><span class="semi">US$1 = {rateText(rate)}</span><span class="tiny muted semi">{fxWhen(s, today)}{s.money.fx.auto && !fxIsManual(s) ? ' · se actualiza sola' : ''}</span></span>
-          <span class="small strong">Convertir</span><Icon name="right" size={16} />
-        </button>
       </section>
 
       <CatTotals s={s} list={list} wi={wi} f={f} onPick={(cats) => { setF({ cats }); toList(); }} />
@@ -192,7 +191,7 @@ export function Movements({ s, today, per, setPer, filter, setFilter, setSheet, 
               <button type="button" key={tg} class="lrow" onClick={() => { setF({ tags: f.tags.includes(tg) ? [] : [tg] }); toList(); }} aria-pressed={f.tags.includes(tg) ? 'true' : 'false'}>
                 <span class="tile sm" style={{ background: f.tags.includes(tg) ? 'var(--finanzas-soft)' : 'var(--soft)' }}><Icon name="tag" size={17} /></span>
                 <span class="grow semi">{tg}</span>
-                <span class="stack-xs" style={{ alignItems: 'flex-end', gap: 0 }}><span class="strong tab-num">{money(ts.spent)}</span><span class="tiny muted semi tab-num">{usd(ts.spentUSD)}</span></span>
+                <span class="stack-xs" style={{ alignItems: 'flex-end', gap: 0 }}><span class="strong tab-num">{moneyR(ts.spent)}</span><span class="tiny muted semi tab-num">{usd(ts.spentUSD, { decimals: 0 })}</span></span>
               </button>
             );
           })}
@@ -236,7 +235,7 @@ export function Movements({ s, today, per, setPer, filter, setFilter, setSheet, 
           const net = d.list.reduce((a, t) => a + (t.noStats ? 0 : txKind(t) === 'gasto' ? -txDOP(t) : txKind(t) === 'ingreso' ? txDOP(t) : 0), 0);
           return (
             <div key={d.day} class="txday">
-              <div class="between-c dayhead"><span class="eyebrow" style={{ fontSize: 11.5 }}>{d.day === today ? 'Hoy' : fmtDay(d.day)}</span>{net !== 0 && <span class="tiny strong muted tab-num">{money(net, { sign: net > 0 })}</span>}</div>
+              <div class="between-c dayhead"><span class="eyebrow" style={{ fontSize: 11.5 }}>{d.day === today ? 'Hoy' : fmtDay(d.day)}</span>{net !== 0 && <span class="tiny strong muted tab-num">{moneyR(net, { sign: net > 0 })}</span>}</div>
               {d.list.map((t) => <TxRow key={t.id} s={s} t={t} wi={wi} selecting={selecting} selected={selecting && sel.has(t.id)} onOpen={() => tap(t)} />)}
             </div>
           );
@@ -253,7 +252,7 @@ export function Movements({ s, today, per, setPer, filter, setFilter, setSheet, 
                 <button type="button" class="grp-btn" aria-expanded={isOpen ? 'true' : 'false'} onClick={() => setOpen({ ...open, [g.key]: !isOpen })}>
                   <span class="tile xs" style={{ background: g.isIncome ? 'var(--good-soft)' : 'var(--finanzas-soft)', color: g.isIncome ? 'var(--good-ink)' : 'var(--finanzas-ink)' }}><Icon name={g.icon} size={15} /></span>
                   <span class="stack-xs grow" style={{ minWidth: 0, gap: 4 }}>
-                    <span class="between-c" style={{ gap: 8 }}><span class="semi clip">{g.name}</span><span class="strong tab-num" style={{ whiteSpace: 'nowrap', color: g.isIncome ? 'var(--good-ink)' : undefined }}>{g.isIncome ? '+' : ''}{money(g.main)}</span></span>
+                    <span class="between-c" style={{ gap: 8 }}><span class="semi clip">{g.name}</span><span class="strong tab-num" style={{ whiteSpace: 'nowrap', color: g.isIncome ? 'var(--good-ink)' : undefined }}>{g.isIncome ? '+' : ''}{moneyR(g.main)}</span></span>
                     <span class="hbar"><i style={{ width: `${Math.max(2, g.share * 100)}%`, background: g.isIncome ? 'var(--good)' : undefined }} /></span>
                     <span class="tiny muted semi row wrap" style={{ gap: 4 }}>{plural(g.items.length, 'movimiento', 'movimientos')} · {Math.round(g.share * 100)} %{g.sum.income > 0 && g.sum.spent > 0 ? ` · entró ${money(g.sum.income)}` : ''}{gh && <span class="row hrs">· <Icon name="clock" size={11} stroke={2.4} />{gh}</span>}</span>
                   </span>
@@ -320,7 +319,7 @@ export function CatTotals({ s, list, wi, f, onPick }) {
   // Si solo hay ingresos (por ejemplo, con el filtro «Ingresos»), se ven los ingresos.
   const type = !hasSpent ? 'ingreso' : !hasIncome ? 'gasto' : type0;
   const ct = catTotals(s, list, { type, by });
-  const rows = all ? ct.rows : ct.rows.slice(0, 7);
+  const rows = all ? ct.rows : ct.rows.slice(0, 5);
   const max = ct.rows.length ? ct.rows[0].total : 1;
   return (
     <section class="card" aria-label="Totales por categoría">
@@ -347,15 +346,15 @@ export function CatTotals({ s, list, wi, f, onPick }) {
                   <span class="semi" style={{ lineHeight: 1.25 }}>{r.name}</span>
                   <span class="tiny muted semi">{plural(r.n, 'vez', 'veces')}{hrs ? ` · ${hrs} de trabajo` : ''}</span>
                 </span>
-                <span class="stack-xs" style={{ alignItems: 'flex-end', gap: 0, flexShrink: 0 }}><span class="strong tab-num">{money(r.total)}</span><span class="tiny muted semi tab-num" style={{ whiteSpace: 'nowrap' }}>{pct} % · {usd(r.usd, { decimals: 0 })}</span></span>
+                <span class="stack-xs" style={{ alignItems: 'flex-end', gap: 0, flexShrink: 0 }}><span class="strong tab-num">{moneyR(r.total)}</span><span class="tiny muted semi tab-num" style={{ whiteSpace: 'nowrap' }}>{pct} % · {usd(r.usd, { decimals: 0 })}</span></span>
               </span>
               <span class="catbar-track" aria-hidden="true"><i style={{ width: `${max ? Math.max(2, (r.total / max) * 100) : 0}%`, background: type === 'ingreso' ? 'var(--good)' : undefined }} /></span>
             </button>
           );
         })}
       </div>
-      {ct.rows.length > 7 && <button type="button" class="link-btn" style={{ alignSelf: 'flex-start' }} onClick={() => setAll(!all)}>{all ? 'Ver menos' : `Ver las ${ct.rows.length}`}<Icon name={all ? 'down' : 'right'} size={15} /></button>}
-      {ct.rows.length > 0 && <div class="between-c" style={{ borderTop: '1.5px solid var(--line)', paddingTop: 10 }}><span class="semi">Total {type === 'ingreso' ? 'de ingresos' : 'de gastos'}</span><span class="strong tab-num">{money(ct.total)}</span></div>}
+      {ct.rows.length > 5 && <button type="button" class="link-btn" style={{ alignSelf: 'flex-start' }} onClick={() => setAll(!all)}>{all ? 'Ver menos' : `Ver las ${ct.rows.length}`}<Icon name={all ? 'down' : 'right'} size={15} /></button>}
+      {ct.rows.length > 0 && <div class="between-c" style={{ borderTop: '1.5px solid var(--line)', paddingTop: 10 }}><span class="semi">Total {type === 'ingreso' ? 'de ingresos' : 'de gastos'}</span><span class="strong tab-num">{moneyR(ct.total)}</span></div>}
     </section>
   );
 }

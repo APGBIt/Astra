@@ -1,7 +1,7 @@
 import { shopSummary } from '../game/shop.js';
 import { useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
-import { Nav, Segs, Bar, Bolts, Avatar, AreaDot, Sheet, SheetHead, TChip, toast, useHour, areaColor, areaSoft, money, cur, plural } from '../ui/kit.jsx';
+import { Nav, Segs, Bar, Bolts, Avatar, AreaDot, Sheet, SheetHead, TChip, toast, useHour, areaColor, areaSoft, money, cur, plural, num } from '../ui/kit.jsx';
 import { TodoRow } from './Todos.jsx';
 import { RecordAlertsNote, openAlerts } from './Record.jsx';
 import { SleepForm, SleepSheet } from './Sleep.jsx';
@@ -67,7 +67,6 @@ export function Home() {
   const total = items.length + doneCount;
   const planned = pending.reduce((a, m) => a + m.cost, 0);
   const openTodos = pendingTodos(s).length;
-  const camps = activeCampaigns(s);
   const toggle = (m) => act((st, t, ev) => (isDone(st, m, t) ? undoMission(st, m.id, t) : completeMission(st, m.id, t, ev)));
   const prompts = homePrompts(s, today, hour, en, pending, (it) => setSheet({ kind: 'pay', initial: payInitial(s, it, today) }));
 
@@ -81,7 +80,7 @@ export function Home() {
           </div>
           <div class="row" style={{ gap: 6 }}>
             <SyncBadge />
-            <a class="chip tone-xp" href="#/tienda" style={{ textDecoration: 'none', minHeight: 36, padding: '0 12px' }} aria-label={`${s.gold} de oro: abrir la tienda`}><Icon name="coin" size={16} />{s.gold}</a>
+            <a class="chip tone-xp" href="#/tienda" style={{ textDecoration: 'none', minHeight: 36, padding: '0 12px' }} aria-label={`${num(s.gold)} de oro: abrir la tienda`}><Icon name="coin" size={16} />{num(s.gold)}</a>
             <a href="#/personaje" aria-label="Tu personaje" style={{ display: 'flex' }}><Avatar name={s.profile.name} size={44} /></a>
           </div>
         </header>
@@ -108,7 +107,7 @@ export function Home() {
             <h2 class="eyebrow">Tu día{total ? ` · ${doneCount} de ${total}` : ''}</h2>
             {planned > 0 && (
               <span class="row small strong" style={{ gap: 3, color: planned > en.left ? 'var(--vit-ink)' : 'var(--ene-ink)' }} aria-label={`Tus misiones piden ${planned} de energía y tienes ${en.left}`}>
-                pide <Icon name="bolt" size={13} fill />{planned} de {en.left}
+                <Icon name="bolt" size={13} fill />necesitas {planned} · tienes {en.left}
               </span>
             )}
           </div>
@@ -153,7 +152,7 @@ export function Home() {
               )}
             </section>
           )}
-          <div class="row wrap" style={{ gap: 6, paddingTop: 6 }}>
+          <div class="row wrap chip-links" style={{ gap: 6, paddingTop: 6 }}>
             <a class="chip" href="#/misiones" style={{ textDecoration: 'none' }}><Icon name="sword" size={14} />Misiones</a>
             <a class="chip" href="#/pendientes" style={{ textDecoration: 'none' }}><Icon name="list" size={14} />Pendientes{openTodos ? ` · ${openTodos}` : ''}</a>
             <a class="chip" href="#/posada" style={{ textDecoration: 'none' }}><Icon name="moon" size={14} />{s.inn[today] ? 'Posada' : 'Cerrar el día'}</a>
@@ -183,25 +182,7 @@ export function Home() {
           </section>
         )}
 
-        <section class="stack-xs" aria-label="Tu camino">
-          <div class="between-c"><h2 class="eyebrow">Tu camino</h2><a class="link-btn muted" href="#/camino" style={{ minHeight: 28, fontSize: 13 }}>Ver<Icon name="right" size={14} /></a></div>
-          {camps.length ? camps.slice(0, 2).map((c) => {
-            const boss = s.bosses.find((b) => b.id === c.bossId);
-            const ch = currentChapter(c);
-            return (
-              <a key={c.id} href={`#/camino?c=${c.id}`} class="row" style={{ gap: 12, minHeight: 52, textDecoration: 'none', color: 'var(--ink)' }}>
-                <span class="tile sm" style={{ background: areaSoft(c.area), color: areaColor(c.area) }}><Icon name="map" size={18} /></span>
-                <span class="stack-xs grow">
-                  <span class="between"><span class="semi">{c.title}</span><span class="tiny muted semi">{ch < c.chapters.length ? `Cap. ${ch + 1} de ${c.chapters.length + 1}` : `Jefe ${Math.round(bossHP(boss) * 100)} %`}</span></span>
-                  <Bar value={campaignProgress(s, c)} color={areaColor(c.area)} label={`Campaña ${Math.round(campaignProgress(s, c) * 100)} %`} />
-                </span>
-              </a>
-            );
-          }) : (
-            <a href="#/meta/nueva" class="note" style={{ textDecoration: 'none', margin: 0 }}><Icon name="map" size={20} /><span class="grow">Elige una meta para empezar una campaña con jefe final.</span><Icon name="right" size={18} /></a>
-          )}
-          {camps.length > 2 && <a class="link-btn muted" href="#/camino">y {camps.length - 2} más</a>}
-        </section>
+        <PathSummary s={s} />
       </main>
       <Nav active="hoy" />
       {sheet === 'sleep' && <SleepSheet s={s} day={today} today={today} onClose={() => setSheet(null)} />}
@@ -213,6 +194,34 @@ export function Home() {
       {sheet && sheet.kind === 'pay' && <TxSheet s={s} initial={sheet.initial} onClose={() => setSheet(null)} />}
     </>
   );
+}
+
+// ---------- Tu camino: las campañas activas (en Hoy, Personaje y Áreas) ----------
+
+export function PathSummary({ s, card = false }) {
+  const camps = activeCampaigns(s);
+  const body = (
+    <>
+      <div class="between-c"><h2 class={card ? 'h2' : 'eyebrow'}>Tu camino</h2><a class="link-btn muted" href="#/camino" style={{ minHeight: 40, fontSize: 13, padding: '0 2px 0 8px' }}>Ver<Icon name="right" size={14} /></a></div>
+      {camps.length ? camps.slice(0, 2).map((c) => {
+        const boss = s.bosses.find((b) => b.id === c.bossId);
+        const ch = currentChapter(c);
+        return (
+          <a key={c.id} href={`#/camino?c=${c.id}`} class="row" style={{ gap: 12, minHeight: 52, textDecoration: 'none', color: 'var(--ink)' }}>
+            <span class="tile sm" style={{ background: areaSoft(c.area), color: areaColor(c.area) }}><Icon name="map" size={18} /></span>
+            <span class="stack-xs grow">
+              <span class="between"><span class="semi">{c.title}</span><span class="tiny muted semi">{ch < c.chapters.length ? `Cap. ${ch + 1} de ${c.chapters.length + 1}` : `Jefe ${Math.round(bossHP(boss) * 100)} %`}</span></span>
+              <Bar value={campaignProgress(s, c)} color={areaColor(c.area)} label={`Campaña ${Math.round(campaignProgress(s, c) * 100)} %`} />
+            </span>
+          </a>
+        );
+      }) : (
+        <a href="#/meta/nueva" class="note" style={{ textDecoration: 'none', margin: 0 }}><Icon name="map" size={20} /><span class="grow">Elige una meta para empezar una campaña con jefe final.</span><Icon name="right" size={18} /></a>
+      )}
+      {camps.length > 2 && <a class="link-btn muted" href="#/camino">y {camps.length - 2} más</a>}
+    </>
+  );
+  return card ? <section class="card" aria-label="Tu camino">{body}</section> : <section class="stack-xs" aria-label="Tu camino">{body}</section>;
 }
 
 function greeting(h) {
@@ -245,7 +254,7 @@ function StatusCard({ s, lvl, en, sts }) {
         </div>
         <div class="meter">
           <span class="ml" style={{ color: 'var(--xp-ink)' }}><Icon name="star" size={13} fill />XP</span>
-          <span class="mv tab-num">{Math.round(lvl.progress * 100)}<span class="tiny muted"> %</span></span>
+          <span class="mv tab-num">{Math.floor(lvl.progress * 100)}<span class="tiny muted"> %</span></span>
           <Bar value={lvl.progress} color="var(--xp)" label={`Experiencia ${lvl.into} de ${lvl.need} para el nivel ${lvl.n + 1}`} />
         </div>
       </div>

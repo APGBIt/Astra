@@ -1,4 +1,5 @@
 import { useState } from 'preact/hooks';
+import { hoursShort } from '../app/text.js';
 import { Icon } from '../ui/icons.jsx';
 import { Sheet, SheetHead, Stepper, TChip, toast, areaColor, plural } from '../ui/kit.jsx';
 import { act } from '../app/store.js';
@@ -91,7 +92,7 @@ export function SleepWeek({ s, today, onEdit }) {
         const pct = v != null ? Math.min(1, v / 10) : 0;
         return (
           <button key={d} type="button" onClick={() => onEdit(d)} aria-label={`${DAYS[weekday(d)]} ${fmtShort(d)}: ${v != null ? fmtHours(v) : 'sin dato'}. Tocar para ${v != null ? 'corregir' : 'registrar'}`}>
-            <span class="tiny strong">{v != null ? v : ''}</span>
+            <span class="tiny strong tab-num" style={{ whiteSpace: 'nowrap' }}>{v != null ? hoursShort(v) : ''}</span>
             <span style={{ width: '100%', maxWidth: 28, height: `${Math.max(4, pct * 70)}px`, borderRadius: 8, background: v == null ? 'var(--soft-2)' : v >= goal ? areaColor('salud') : 'var(--vit)', display: 'block' }} />
             <span class="tiny muted">{d === today ? 'Hoy' : DAYS_SHORT[weekday(d)]}</span>
           </button>

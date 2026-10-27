@@ -2,7 +2,7 @@
 // vitaminas y minerales (para qué sirven, cuánto, cuándo, con qué, por cuánto tiempo y con qué medicinas cuidarse).
 import { useEffect, useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
-import { TopBar, Nav, Sheet, SheetHead, TChip, toast, ask, areaColor, areaSoft, areaInk } from '../ui/kit.jsx';
+import { TopBar, Nav, Sheet, SheetHead, TChip, toast, ask, areaColor, areaSoft, areaInk, joinY } from '../ui/kit.jsx';
 import { act, useApp } from '../app/store.js';
 import { fmtClock } from '../game/logic.js';
 import {
@@ -50,7 +50,7 @@ export function SuppPlanCard({ s, onEdit }) {
             <span class="tab-num semi" style={{ width: 84, flexShrink: 0, whiteSpace: 'nowrap' }}>{fmtClock(g.time)}</span>
             <span class="stack-xs grow" style={{ minWidth: 0 }}>
               <span class="tiny muted semi">{g.label}</span>
-              <span class="row wrap" style={{ gap: 6 }}>{g.list.map((x) => <button key={x.med.id} type="button" class="chip sm" onClick={() => onEdit(x.med.id)} aria-label={`Editar ${x.med.name}`}><Icon name="pill" size={13} />{x.med.name}</button>)}</span>
+              <span class="row wrap" style={{ gap: 6 }}>{g.list.map((x) => <button key={x.med.id} type="button" class="chip" style={{ minHeight: 36 }} onClick={() => onEdit(x.med.id)} aria-label={`Editar ${x.med.name}`}><Icon name="pill" size={13} />{x.med.name}</button>)}</span>
             </span>
           </div>
         ))}
@@ -178,7 +178,7 @@ export function NutrientSheet({ s, n, mine, onClose, onAdd }) {
       <Fact icon="people" title="Quién podría necesitarlo">{n.who}</Fact>
       <Fact icon="pill" title="Cuidado con medicinas">{n.meds}</Fact>
       {mine.length > 0 ? (
-        <div class="note tone-good"><Icon name="check" size={18} /><span>Lo tomas: {mine.map((m) => `${m.name} a las ${m.times.map(fmtClock).join(' y ')}`).join('; ')}.</span></div>
+        <div class="note tone-good"><Icon name="check" size={18} /><span>Lo tomas: {mine.map((m) => `${m.name} a las ${joinY(m.times.map(fmtClock))}`).join('; ')}.</span></div>
       ) : (
         <button type="button" class="btn block soft" onClick={() => onAdd({ name: n.name, kind: 'suplemento', times: [t], note: n.with.split('. ')[0].slice(0, 160) })}><Icon name="plus" size={18} />Agregar a mis suplementos</button>
       )}

@@ -1,5 +1,5 @@
 // Astra · caché para usar sin conexión (no guarda datos personales)
-const CACHE = 'astra-7827c6ca82';
+const CACHE = 'astra-321e168d64';
 const CORE = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE)).then(() => self.skipWaiting())); });
 // El lector de texto (ocr/) vive en su propia caché: no se vuelve a descargar con cada versión de la app.

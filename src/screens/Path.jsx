@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
 import { Nav, TopBar, Bar, TChip, Sheet, SheetHead, NumberField, money, num, toast, areaColor, areaSoft, areaInk, ask, cuantos } from '../ui/kit.jsx';
 import { act, useApp } from '../app/store.js';
-import { go } from '../app/router.js';
+import { go, back } from '../app/router.js';
 import { diffDays, relDay, fmtShort, addDays, fmtDay } from '../app/dates.js';
 import { AREA, SOURCES } from '../game/content.js';
 import { activeCampaigns, campaignProgress, currentChapter, setTask, bossHP, hitBoss, abandonCampaign, className, editCampaign, addTask, renameTask, removeTask } from '../game/logic.js';
@@ -30,11 +30,12 @@ export function Path({ query }) {
     return (
       <>
         <main class="screen">
+          <div class="row"><button type="button" class="icon-btn" aria-label="Volver" onClick={() => back('/personaje')}><Icon name="left" /></button></div>
           <div class="stack-sm"><span class="eyebrow">Clase: {className(s.profile.classKeys)}</span><h1 class="h1">Tu camino</h1></div>
           <div class="empty"><Icon name="map" size={28} /><span>No tienes campañas activas. Elige una meta y conviértela en una campaña con capítulos y un jefe final.</span><a class="btn sm" href="#/meta/nueva">Nueva meta</a></div>
           {won.length > 0 && <WonList s={s} won={won} />}
         </main>
-        <Nav active="camino" />
+        <Nav active="personaje" />
       </>
     );
   }
@@ -50,7 +51,8 @@ export function Path({ query }) {
       <main class="screen">
         <header class="stack">
           <div class="between-c">
-            <div class="chips" role="group" aria-label="Tus campañas">
+            <button type="button" class="icon-btn" aria-label="Volver" onClick={() => back('/personaje')}><Icon name="left" /></button>
+            <div class="chips grow" role="group" aria-label="Tus campañas">
               {camps.map((x) => <TChip key={x.id} sm on={x.id === c.id} onClick={() => setCid(x.id)} icon={AREA[x.area].icon} color={areaColor(x.area)}>{AREA[x.area].cls}</TChip>)}
             </div>
             <div class="row" style={{ gap: 8 }}>
@@ -136,7 +138,7 @@ export function Path({ query }) {
         {won.length > 0 && <WonList s={s} won={won} />}
         <button type="button" class="link-btn muted" style={{ alignSelf: 'center' }} onClick={async () => { if (await ask(`¿Abandonar «${c.title}»? Sus misiones se archivan.`, { ok: 'Abandonar', danger: true })) { act((st) => abandonCampaign(st, c.id)); toast('Campaña abandonada', 'map'); } }}>Abandonar esta campaña</button>
       </main>
-      <Nav active="camino" />
+      <Nav active="personaje" />
       {editing && <EditGoalSheet c={c} onClose={() => setEditing(false)} />}
     </>
   );

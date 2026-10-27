@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
-import { Nav, Bar, Sheet, SheetHead, TChip, Switch, money, usd, cur, rateText, toast, ask, focusOnMount, plural } from '../ui/kit.jsx';
+import { Nav, ScrollTabs, Bar, Sheet, SheetHead, TChip, Switch, money, usd, cur, rateText, toast, ask, focusOnMount, plural } from '../ui/kit.jsx';
 import { act, useApp } from '../app/store.js';
 import { go } from '../app/router.js';
 import { monthKey, relDay, fmtDay, fmtShort } from '../app/dates.js';
@@ -42,7 +42,8 @@ const SRC_LABEL = { recibo: 'Recibo', comprobante: 'Comprobante', alerta: 'Aviso
 const ACC_ICON = Object.fromEntries(ACCOUNT_KINDS.map((k) => [k.key, k.icon]));
 const num = (v) => toNumber(String(v || '').replace(/[^\d.,]/g, '')) || 0;
 
-const TABS = [['resumen', 'Resumen'], ['cuentas', 'Cuentas'], ['deudas', 'Deudas'], ['plan', 'Plan'], ['analisis', 'Análisis'], ['movimientos', 'Movimientos']];
+// 1.15: en el orden en que más se usan; la barra se queda arriba al bajar y la pestaña elegida siempre se ve.
+const TABS = [['resumen', 'Resumen'], ['movimientos', 'Movimientos'], ['plan', 'Plan'], ['cuentas', 'Cuentas'], ['deudas', 'Deudas'], ['analisis', 'Análisis']];
 
 export function Finance({ query }) {
   const s = useApp();
@@ -83,9 +84,7 @@ export function Finance({ query }) {
           </div>
         </header>
 
-        <div class="seg fin-tabs" role="tablist" aria-label="Secciones de finanzas">
-          {TABS.map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={tab === k ? 'true' : 'false'} onClick={() => setTab(k)}>{l}</button>)}
-        </div>
+        <ScrollTabs tabs={TABS} value={tab} onChange={setTab} label="Secciones de finanzas" sticky />
 
         {imp && (tab === 'resumen' || tab === 'movimientos') && (
           <div class="note tone-good" role="status">
@@ -132,7 +131,7 @@ export function Finance({ query }) {
         {tab === 'analisis' && <Analysis s={s} today={today} setSheet={setSheet} onCat={(cat) => setSheet({ kind: 'catdetail', id: cat })} />}
         {tab === 'movimientos' && <Movements s={s} today={today} per={per} setPer={setPer} filter={filter} setFilter={setFilter} setSheet={setSheet} sel={sel} setSel={setSel} />}
       </main>
-      <Nav active="areas" fab={sel ? null : { onClick: () => setSheet({ kind: 'tx' }), label: 'Nuevo movimiento' }} />
+      <Nav active="finanzas" fab={sel ? null : { onClick: () => setSheet({ kind: 'tx' }), label: 'Nuevo movimiento' }} />
       {sheet && sheet.kind === 'tx' && <TxSheet key={sheet.tx ? sheet.tx.id : `nuevo-${sheet.link ? (sheet.link.plan || sheet.link.credit) + sheet.link.date : sheet.to || ''}`} s={s} initial={sheet} tx={sheet.tx} onClose={close}
         onSplit={(id) => setSheet({ kind: 'split', id })} onOpenTx={(t) => setSheet({ kind: 'tx', tx: t })} onWork={() => setSheet({ kind: 'work' })} onLoan={(id) => setSheet({ kind: 'loan', id })} onCredit={(id) => setSheet({ kind: 'credit', id })} />}
       {sheet && sheet.kind === 'alert' && <AlertSheet onClose={close} />}

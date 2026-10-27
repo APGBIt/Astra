@@ -3,7 +3,7 @@ import { Icon } from '../ui/icons.jsx';
 import { Sheet, SheetHead, money, cur, toast, areaColor, areaSoft, dueLabel } from '../ui/kit.jsx';
 import { canDictate, dictate } from '../ui/dictate.js';
 import { act, useApp } from '../app/store.js';
-import { back, go } from '../app/router.js';
+import { back, go, parseHash } from '../app/router.js';
 import { parseCapture } from '../game/parse.js';
 import { MOOD_QUADS } from '../game/content.js';
 import {
@@ -16,14 +16,20 @@ import { shopFromCapture } from '../game/shop.js';
 import { qtyText } from '../game/shoplex.js';
 import { aiProvider, aiJSON, capturePrompt, aiErrorText } from '../ai/ai.js';
 
+// Atajos de Registrar (1.15: también gasto, misión, diario, calma y logro, porque el botón + abre esta hoja).
 const SHORTCUTS = [
+  { href: '/finanzas?nuevo=1', icon: 'receipt', label: 'Gasto', area: 'finanzas' },
   { href: '/pendientes/nuevo', icon: 'list', label: 'Pendiente', area: null },
-  { href: '/compras', icon: 'cart', label: 'Lista de compras', area: 'finanzas' },
-  { href: '/recibo', icon: 'camera', label: 'Escanear recibo', area: 'finanzas' },
-  { href: '/finanzas?alerta=1', icon: 'paste', label: 'Pegar alerta del banco', area: 'finanzas' },
+  { href: '/mision/nueva', icon: 'sword', label: 'Misión', area: null },
+  { href: '/recibo', icon: 'camera', label: 'Recibo', area: 'finanzas' },
+  { href: '/compras', icon: 'cart', label: 'Compras', area: 'finanzas' },
+  { href: '/finanzas?alerta=1', icon: 'paste', label: 'Aviso del banco', area: 'finanzas' },
   { href: '/animo', icon: 'face', label: 'Ánimo', area: 'emocional' },
-  { href: '/enfoque', icon: 'timer', label: 'Enfoque', area: 'laborales' },
+  { href: '/diario', icon: 'book', label: 'Diario', area: 'crecimiento' },
+  { href: '/calma', icon: 'sparkle', label: 'Calma', area: 'emocional' },
+  { href: '/logros?nuevo=1', icon: 'trophy', label: 'Logro', area: 'laborales' },
   { href: '/personas', icon: 'people', label: 'Contacto', area: 'relaciones' },
+  { href: '/enfoque', icon: 'timer', label: 'Enfoque', area: 'laborales' },
 ];
 
 export function describeItem(s, it) {
@@ -104,7 +110,15 @@ export function Capture() {
   const [aiBusy, setAiBusy] = useState(false);
   const [aiMsg, setAiMsg] = useState('');
   const stop = useRef(null);
-  const close = () => back('/');
+  // Abierta con el botón + («?registrar=1»): al cerrar se vuelve a la pantalla de abajo.
+  const close = () => {
+    const r = parseHash();
+    if (!r.query.get('registrar')) { back('/'); return; }
+    const q = new URLSearchParams(r.query);
+    q.delete('registrar');
+    const rest = q.toString();
+    back(`${r.path}${rest ? `?${rest}` : ''}`);
+  };
 
   const understand = (t = text) => {
     const ctx = { people: s.people, missions: dayMissions(s, today).pending, today };
@@ -197,12 +211,11 @@ export function Capture() {
       )}
 
       <div class="stack-sm">
-        <span class="label">O elige un atajo</span>
-        <div class="grid3">
+        <span class="label">O elige qué anotar</span>
+        <div class="shortcuts">
           {SHORTCUTS.map((x) => (
-            <a key={x.href} href={`#${x.href}`} onClick={(e) => { e.preventDefault(); go(x.href, { replace: true }); }}
-              style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 14, minHeight: 92, borderRadius: 20, background: areaSoft(x.area), color: 'var(--ink)', textDecoration: 'none' }}>
-              <span style={{ color: areaColor(x.area), display: 'flex' }}><Icon name={x.icon} size={22} /></span>
+            <a key={x.href} class="shortcut" href={`#${x.href}`} onClick={(e) => { e.preventDefault(); go(x.href, { replace: true }); }} style={{ background: areaSoft(x.area) }}>
+              <span class="si" style={{ color: areaColor(x.area) }}><Icon name={x.icon} size={22} /></span>
               <span class="small strong" style={{ lineHeight: 1.2 }}>{x.label}</span>
             </a>
           ))}

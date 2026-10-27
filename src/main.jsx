@@ -1,4 +1,5 @@
 import { render } from 'preact';
+import './ui/typo.js';
 import { useEffect } from 'preact/hooks';
 import { useApp, runReconcile, applyTheme, getState, onChange } from './app/store.js';
 import { startNotifications } from './app/notify.js';
@@ -46,7 +47,19 @@ function screenKey(parts) {
 }
 const sameScreen = (x, y) => screenKey(x.parts) === screenKey(y.parts);
 
+// «registrar=1» en la dirección abre Registrar encima de la pantalla en la que estás (el botón +).
+// La estructura no cambia al abrirlo, así la pantalla de abajo conserva su estado.
 function Screen({ route }) {
+  const reg = !!route.query.get('registrar') && route.parts[0] !== 'registrar';
+  return (
+    <>
+      <ScreenBody route={route} />
+      {reg && <Capture key={`reg:${route.path}`} />}
+    </>
+  );
+}
+
+function ScreenBody({ route }) {
   const s = useApp();
   const [a, b, c] = route.parts;
   const q = route.query;

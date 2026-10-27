@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
-import { Sheet, SheetHead, TChip, Ring, toast, areaColor, areaSoft, areaInk, plural, money } from '../ui/kit.jsx';
+import { Sheet, SheetHead, TChip, Ring, toast, areaColor, areaSoft, areaInk, plural, money, joinY } from '../ui/kit.jsx';
 import { act } from '../app/store.js';
 import { fmtDay, fmtShort, addDays, diffDays } from '../app/dates.js';
 import { WHO5_ITEMS, WHO5_OPTIONS, WHO5_LOW, WHEEL, WHEEL_AREA, VALUES, VALUE, HELP } from '../game/wellness.js';
@@ -173,6 +173,12 @@ function WheelRadar({ last, prev, size = 300 }) {
   );
 }
 
+// «dinero y salud», o con comillas si alguna ya lleva «y»: «dinero» y «disfrute y descanso».
+const lowList = (ids) => {
+  const names = ids.map((id) => WHEEL.find((a) => a.id === id).label.toLowerCase());
+  return joinY(names.some((n) => / y /.test(n)) && names.length > 1 ? names.map((n) => `«${n}»`) : names);
+};
+
 export function WheelCard({ s, today }) {
   const [open, setOpen] = useState(false);
   const w = wheelInfo(s);
@@ -183,7 +189,7 @@ export function WheelCard({ s, today }) {
       {w.last ? (
         <>
           <WheelRadar last={w.last} prev={w.prev} />
-          <span class="small muted">Promedio {w.avg.toFixed(1)} de 10{w.prev ? ' · la línea punteada es la vez anterior' : ''}. Lo más bajo: <b>{w.low.map((id) => WHEEL.find((a) => a.id === id).label.toLowerCase()).join(' y ')}</b>.</span>
+          <span class="small muted">Promedio {w.avg.toFixed(1)} de 10{w.prev ? ' · la línea punteada es la vez anterior' : ''}. {w.low.length > 3 ? <>Lo más bajo (todas con {w.lowScore}): <b>{lowList(w.low)}</b>.</> : <>Lo más bajo: <b>{lowList(w.low)}</b>.</>}</span>
           {WHEEL_AREA[w.low[0]] && <a class="link-btn" style={{ alignSelf: 'flex-start' }} href={`#/meta/nueva?area=${WHEEL_AREA[w.low[0]]}`}><Icon name="map" size={16} />Crear una meta para mejorarlo</a>}
         </>
       ) : <span class="small muted">Califica del 1 al 10 tu satisfacción de hoy en cada área de tu vida. Ver la rueda completa muestra dónde poner energía este mes.</span>}

@@ -2,6 +2,30 @@
 
 Tu vida en modo juego de rol. App web instalable (y futura APK) para crecer en seis áreas de la vida con barras de vitalidad y energía, caminos, misiones y jefes.
 
+## Novedades de la versión 1.15 (interfaz: navegación, Finanzas y textos)
+
+Revisión de las 41 pantallas con 88 días de datos de ejemplo, en claro y oscuro, a 360 y 390 px.
+
+- **Finanzas en la barra de abajo** (en lugar de Camino): Hoy · Pendientes · Finanzas · Áreas · Personaje. Su número dice cuántos pagos vencieron o tocan hoy. Tu camino sigue en Hoy, Personaje y Áreas, y su pantalla tiene botón de volver.
+- **El botón + registra**: en Hoy, Áreas, Personaje y las áreas abre Registrar encima de la pantalla en la que estás (al cerrarlo vuelves ahí), con 12 atajos: gasto, pendiente, misión, recibo, compras, aviso del banco, ánimo, diario, calma, logro, contacto y enfoque. Donde hay algo propio, el + hace eso: movimiento en Finanzas, pendiente en Pendientes, misión en Tus misiones, rutina en Hogar, foto en Compras y logro en Logros.
+- **Pestañas que se ven**: las de Finanzas (ahora Resumen, Movimientos, Plan, Cuentas, Deudas y Análisis) y las de Análisis se desplazan de lado; la elegida siempre se ve completa y una flecha avisa que hay más. Las de Finanzas se quedan arriba al bajar.
+- **Índice en las pantallas largas**: Salud (Hoy, Medicinas, Comida, Sueño, Movimiento, Tendencias y Misiones), Calma y Ánimo tienen chips arriba que llevan a cada parte y marcan por dónde vas.
+- **El mismo número en todo Finanzas**: Resumen, Plan y Análisis dicen lo mismo cuando gastas más de lo que entra. El Plan explica su total («ya gastaste RD$24,110 más de lo que entra este mes y toca apartar RD$10,500 para pagos futuros») y Análisis cuenta lo que falta cobrar del mes.
+- **Movimientos más compactos**: cada uno en dos líneas (comercio y monto; detalle, la otra moneda y las horas de trabajo). La pestaña es un 19 % más corta. Totales, presupuestos y resúmenes en pesos enteros; los centavos quedan en cada movimiento y en los saldos.
+- **Registrar entiende fechas**: «mañana pagar la luz», «el viernes renovar el marbete» o «el lunes cita con el dentista» se guardan como pendientes con su fecha (antes quedaban como nota del día).
+- **Arreglos**:
+  - «Pagos que se repiten» ya no sugiere la cuota de un préstamo ni lo que le prestas a alguien.
+  - Ícono de Ajustes nuevo (antes parecía un sol) y tarjeta de Ajustes alineada en Personaje.
+  - El oro con separador de miles (3,294); la XP no marca 100 % antes de subir de nivel.
+  - «Tu tarjeta está en la pestaña Deudas» en singular; iniciales sin símbolos («Pedro (mentor)» → PE).
+  - Listas con «y» bien puestas («salud, dinero y hogar»; «dinero» y «disfrute y descanso»).
+  - Horas de sueño en la gráfica como «7h15» (antes «7.25»).
+  - Un número no se separa de su % o de su unidad al final de una línea («457 %», «7 h 30»).
+  - En Hoy, la energía dice «necesitas 3 · tienes 8».
+  - En Tienda, quitar una recompensa pasa por «Editar» (antes la × estaba junto al botón de canjear).
+- **Accesibilidad**: textos tenues con más contraste (4.5:1 en claro y oscuro), Ajustes y Tienda con encabezado principal, botones y campos de al menos 36–44 px. axe-core: 0 problemas en 31 pantallas (antes 7).
+- Sin cambios en tus datos: la versión de los datos sigue en 4.
+
 ## Novedades de la versión 1.14 (Salud: vitaminas y minerales, tu plato y plan de movimiento)
 
 - **Guía de vitaminas y minerales** (`#/nutrientes`): 18 fichas (vitaminas A, B12, complejo B, ácido fólico, C, D, E, K; calcio, hierro, magnesio, zinc, potasio, yodo, selenio; omega-3, multivitamínico y fibra) con para qué sirve, cuánto al día, límite superior, cuándo y con qué tomarlo, de qué separarlo, por cuánto tiempo, quién podría necesitarlo y cuidado con medicinas. Cantidades de las tablas de los NIH.
