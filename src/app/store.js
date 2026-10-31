@@ -129,6 +129,7 @@ const serialize = () => (json != null ? json : (json = JSON.stringify(state)));
 let dirty = false;
 let timer = null;
 
+const statusKey = () => `${storage.ok}|${storage.failing}|${storage.lsFull}|${storage.idb}|${storage.blocked}|${storage.persisted}`;
 const statusSubs = new Set();
 const emitStorage = () => statusSubs.forEach((f) => { try { f(); } catch { /* sin efecto */ } });
 export function onStorage(fn) { statusSubs.add(fn); return () => statusSubs.delete(fn); }
@@ -209,6 +210,7 @@ export function flush() {
   timer = null;
   if (!dirty || storage.blocked) return Promise.resolve();
   dirty = false;
+  const before = statusKey();
   const text = serialize();
   const at = Math.max(Date.now(), storage.savedAt + 1);
   storage.savedAt = at;
@@ -239,8 +241,10 @@ export function flush() {
     if (idbOk) storage.idb = true;
     const failing = !lsOk && !idbOk;
     if (failing) dirty = true; // se reintenta con el próximo cambio
-    if (failing !== storage.failing || storage.ok === failing) { storage.failing = failing; storage.ok = !failing; }
-    emitStorage();
+    storage.failing = failing;
+    storage.ok = !failing;
+    // Solo se avisa si cambió algo que se muestra (así guardar no vuelve a pintar toda la pantalla).
+    if (statusKey() !== before) emitStorage();
     if (!failing) broadcast(at);
   });
 }

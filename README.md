@@ -20,7 +20,7 @@ Revisión con una persona simulada que usa Astra todos los días durante 90 día
   - Ánimo, contactos, sesiones de enfoque y lecturas guardan hasta 5,000 registros. Antes se quedaban con 500: a dos check-ins por día se borraba lo anterior a unos 8 meses, y «Tu año en píxeles» nunca llegaba a un año.
   - Los días de hace más de 120 días se quedan con su resumen (XP, oro, vitalidad, misiones y pendientes) en lugar de borrarse. La tabla «Días» de Drive tiene toda la historia.
   - Compras guarda las últimas 260 compras (antes 60).
-- **Más rápida con meses de datos**: cada toque copiaba todos tus datos con `structuredClone`; ahora se copian desde el texto ya guardado. Completar algo en Hoy (CPU 4x): con 3 meses, de 173 a unos 80 ms; con 1 año, de 374 a 90–140 ms; con 2 años, de 565 a 160–190 ms.
+- **Más rápida con meses de datos**: cada toque copiaba todos tus datos con `structuredClone`; ahora se copian desde el texto ya guardado. Completar algo en Hoy (CPU 4x): con 3 meses de datos, de unos 170 a unos 80 ms; con 1 año, de unos 370 a 90–180 ms; con 2 años, de unos 570 a 160–200 ms.
 - **Sincronizar gasta menos datos móviles**:
   - Conector propio, versión 2: lo que sube y baja viaja comprimido (gzip). Con 1 año de datos, cada subida pasa de unos 1.5 MB a unos 180 KB. En Drive se sigue guardando el JSON legible. Con un conector viejo todo funciona igual, sin comprimir, y la pantalla de sincronización explica cómo actualizarlo (la dirección no cambia).
   - Sube como mucho cada 2 minutos (antes, 20 segundos después de cada cambio) y al salir de la app. Las tablas de la hoja se rehacen cada hora (antes, cada 15 minutos).
