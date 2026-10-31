@@ -159,6 +159,9 @@ p { margin: 0; }
 .note.tone-xp { background: var(--xp-soft); color: var(--xp-ink); }
 .note.tone-good { background: var(--good-soft); color: var(--good-ink); }
 .note svg { flex-shrink: 0; margin-top: 1px; }
+.save-alert { position: sticky; top: 0; z-index: 30; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 0 0 12px; padding: 12px 14px; border-radius: 0 0 18px 18px; background: var(--vit-soft); color: var(--vit-ink); font-size: 14px; line-height: 1.4; font-weight: 600; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+.save-alert svg { flex-shrink: 0; }
+.save-alert .grow { min-width: 180px; }
 
 /* ---------- Botones ---------- */
 .btn { min-height: 56px; padding: 0 22px; border-radius: 28px; border: none; background: var(--ink); color: var(--on-ink); display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; font-size: 16px; text-decoration: none; }

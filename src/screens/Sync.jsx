@@ -8,7 +8,7 @@ import {
   useSync, syncNow, resolveFirst, connectScript, disconnect, setAuto, linkCode, parseLinkCode, normalizeScriptUrl,
 } from '../app/sync.js';
 import { googleClientId, setGoogleClientId, validClientId, startGoogleLogin, googleToken, redirectUri } from '../app/google.js';
-import { CONNECTOR_CODE } from '../app/connector.js';
+import { CONNECTOR_CODE, CONNECTOR_VERSION } from '../app/connector.js';
 import { saveFile } from '../app/files.js';
 
 // Sincronización con Drive: cada persona conecta SU Drive. Astra sigue funcionando sin internet.
@@ -110,7 +110,7 @@ export function SyncScreen() {
               ? <button type="button" class="btn block" onClick={() => startGoogleLogin({ intent: 'resume', hint: st.account })}><Icon name="lock" size={18} />Iniciar sesión con Google</button>
               : <button type="button" class="btn block" disabled={st.phase === 'syncing'} onClick={now}><Icon name="sync" size={18} />Sincronizar ahora</button>}
             <label class="between-c panel" style={{ cursor: 'pointer' }}>
-              <span class="stack-xs"><span class="semi">Automática</span><span class="small muted">Al abrir Astra, al volver la conexión y unos segundos después de cada cambio.{st.provider === 'google' ? ' Con Google, la sesión dura una hora; después basta un toque para seguir.' : ''}</span></span>
+              <span class="stack-xs"><span class="semi">Automática</span><span class="small muted">Al abrir Astra, al volver la conexión, al salir de la app y poco después de tus cambios (cada 2 minutos como mucho, para gastar menos datos).{st.provider === 'google' ? ' Con Google, la sesión dura una hora; después basta un toque para seguir.' : ''}</span></span>
               <Switch checked={st.auto} onChange={setAuto} label="Sincronización automática" />
             </label>
             {st.folderUrl && <a class="btn soft block" href={st.folderUrl} target="_blank" rel="noopener"><Icon name="folder" size={18} />Abrir mi carpeta Astra en Drive</a>}
@@ -119,6 +119,7 @@ export function SyncScreen() {
         )}
       </section>
 
+      {st.provider === 'script' && st.connV > 0 && st.connV < CONNECTOR_VERSION && <ConnectorUpdate />}
       {st.provider === 'script' && <LinkShare />}
 
       {!st.provider && (
@@ -167,6 +168,32 @@ function Connector({ id, open, setOpen, icon, title, sub, children }) {
         <Icon name={on ? 'down' : 'right'} size={18} />
       </button>
       {on && children}
+    </section>
+  );
+}
+
+// Conector viejo: la sincronización sigue funcionando, pero sin comprimir (gasta más datos móviles).
+function ConnectorUpdate() {
+  const [showCode, setShowCode] = useState(false);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(CONNECTOR_CODE); toast('Código copiado', 'copy'); } catch { setShowCode(true); }
+  };
+  return (
+    <section class="card" aria-label="Actualizar el conector">
+      <div class="stack-xs">
+        <h2 class="h2">Actualiza tu conector</h2>
+        <span class="small muted">Hay una versión nueva ({CONNECTOR_VERSION}): tus datos viajan comprimidos y sincronizar gasta hasta 8 veces menos datos móviles. Mientras tanto, todo sigue funcionando igual.</span>
+      </div>
+      <ol class="steps">
+        <li>En una computadora, abre tu script en <b>script.google.com</b> (o en la hoja «Base de datos de Astra»: <b>Extensiones → Apps Script</b>).</li>
+        <li>Borra el código, pega el nuevo y guarda.</li>
+        <li><b>Implementar → Gestionar implementaciones → ✏️ → Versión: Nueva versión → Implementar.</b> La dirección no cambia: no hay que tocar nada en Astra.</li>
+      </ol>
+      <div class="row wrap" style={{ gap: 8 }}>
+        <button type="button" class="btn sm soft" onClick={copy}><Icon name="copy" size={17} />Copiar el código</button>
+        <button type="button" class="btn sm soft" onClick={() => saveFile('astra-conector.gs', CONNECTOR_CODE, 'text/plain')}><Icon name="download" size={17} />Descargar</button>
+      </div>
+      {showCode && <textarea class="input code-box" rows={8} readOnly value={CONNECTOR_CODE} onFocus={(e) => e.currentTarget.select()} aria-label="Código del conector" />}
     </section>
   );
 }

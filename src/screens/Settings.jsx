@@ -1,18 +1,17 @@
 import { useEffect, useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
 import { TopBar, TChip, toast, ask } from '../ui/kit.jsx';
-import { act, useApp, exportData, importData, resetAll, applyTheme, storage } from '../app/store.js';
-import { go } from '../app/router.js';
+import { act, useApp, applyTheme } from '../app/store.js';
 import { env } from '../app/env.js';
 import { installState, promptInstall } from '../app/pwa.js';
 import { AREAS } from '../game/content.js';
 import { className } from '../game/logic.js';
 import { aiProvider, providerLabel } from '../ai/ai.js';
 import { DailyGoalsEditor } from './Goals.jsx';
-import { fmtDay } from '../app/dates.js';
 import { APP_VERSION } from '../app/config.js';
 import { SyncCard } from './Sync.jsx';
 import { NotifyCard } from './NotifyCard.jsx';
+import { DataCard, RestorePoints, BackupCard, ErrorsCard } from './DataCard.jsx';
 
 const MODELS = [
   { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5 (recomendado)' },
@@ -39,42 +38,10 @@ export function Settings() {
     st.profile.classKeys = keys.includes(k) ? keys.filter((x) => x !== k) : keys.length >= 2 ? [keys[1], k] : [...keys, k];
   });
 
-  const download = async () => {
-    const name = `astra-copia-${s.energy.day}.json`;
-    const data = exportData();
-    // Dentro de Claude, las descargas pasan por su propio aviso.
-    if (window.claude && typeof window.claude.use === 'function') {
-      const dl = await Promise.resolve(window.claude.use('downloads')).catch(() => null);
-      if (dl) {
-        try {
-          const r = await dl.save({ filename: name, data });
-          if (r && r.status === 'saved') { set((st, t) => { st.settings.lastBackup = t; }); toast('Copia descargada', 'download'); }
-        } catch { /* la persona canceló o esta vista no permite descargas */ }
-        return;
-      }
-    }
-    const blob = new Blob([data], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-    set((st, t) => { st.settings.lastBackup = t; });
-    toast('Copia descargada', 'download');
-  };
-  const onImport = async (e) => {
-    const f = e.currentTarget.files && e.currentTarget.files[0];
-    if (!f) return;
-    try { importData(await f.text()); toast('Copia recuperada', 'check'); } catch (err) { toast(err.message || 'No se pudo leer la copia', 'info'); }
-  };
-
   const mode = s.settings.aiMode;
   return (
     <main class="screen no-nav">
       <TopBar backTo="/personaje" title="Ajustes" heading />
-      {!storage.ok && <div class="note tone-vit"><Icon name="info" size={18} /><span>Este navegador no deja guardar datos. Tus avances se perderán al cerrar.</span></div>}
 
       <section class="card" aria-label="Perfil">
         <h2 class="h2">Perfil</h2>
@@ -136,16 +103,10 @@ export function Settings() {
 
       <SyncCard />
 
-      <section class="card" aria-label="Tus datos">
-        <h2 class="h2">Copia en archivo</h2>
-        <span class="small muted">Tus datos viven en este teléfono (y en tu Drive si sincronizas). También puedes descargar una copia para guardarla o pasarla a otro equipo. Incluye tu expediente: guárdala en un lugar seguro.</span>
-        <span class="small strong">{s.settings.lastBackup ? `Última copia: ${fmtDay(s.settings.lastBackup, { weekdayName: false })}` : 'Todavía no has descargado una copia.'}</span>
-        <div class="row wrap">
-          <button type="button" class="btn sm" onClick={download}><Icon name="download" size={18} />Descargar copia</button>
-          <label class="btn sm ghost" style={{ position: 'relative' }}><Icon name="upload" size={18} />Recuperar copia<input type="file" accept="application/json,.json" onChange={onImport} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} /></label>
-        </div>
-        <button type="button" class="link-btn" style={{ color: 'var(--vit-ink)', alignSelf: 'flex-start' }} onClick={async () => { if (await ask('¿Borrar todo tu progreso? Se borran tu personaje, misiones y registros. No se puede deshacer.', { ok: 'Borrar todo', danger: true })) { resetAll(); go('/', { replace: true }); } }}><Icon name="trash" size={16} />Borrar todo y empezar de cero</button>
-      </section>
+      <DataCard />
+      <RestorePoints />
+      <BackupCard />
+      <ErrorsCard />
 
       <section class="card" aria-label="Privacidad">
         <h2 class="h2">Privacidad</h2>

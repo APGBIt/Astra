@@ -119,17 +119,18 @@ export function Create() {
         <section class="card" aria-label="Cómo estás hoy">
           <div class="stack-xs"><h2 class="h2">¿Cómo estás hoy en cada área?</h2><span class="small muted">1 = muy descuidada · 5 = en su mejor momento</span></div>
           {AREAS.map((a) => (
-            <div class="row" key={a.key} style={{ gap: 10 }}>
-              <AreaTile area={a.key} size="sm" />
-              <span class="grow strong small">{a.area}</span>
-              <div class="row" role="group" aria-label={a.area} style={{ gap: 4 }}>
+            // El nombre va arriba de los botones: así «Emocionales» o «Crecimiento» no se cortan en pantallas angostas.
+            <div key={a.key} style={{ display: 'grid', gridTemplateColumns: '36px minmax(0, 1fr)', columnGap: 12, rowGap: 6, alignItems: 'center' }}>
+              <span style={{ gridRow: 'span 2', display: 'flex' }}><AreaTile area={a.key} size="sm" /></span>
+              <span class="strong small">{a.area}</span>
+              <div class="row" role="group" aria-label={a.area} style={{ gap: 6 }}>
                 {[1, 2, 3, 4, 5].map((v) => {
                   const on = v <= ratings[a.key];
                   const sel = v === ratings[a.key];
                   return (
                     <button key={v} type="button" aria-label={`${v} de 5`} aria-pressed={sel ? 'true' : 'false'}
                       onClick={() => setRatings({ ...ratings, [a.key]: v })}
-                      style={{ width: 36, height: 40, borderRadius: 10, border: on ? 'none' : '1.5px solid var(--line-2)', background: sel ? areaInk(a.key) : on ? areaSoft(a.key) : 'var(--surface)', color: sel ? 'var(--surface)' : on ? areaInk(a.key) : 'var(--muted)', fontWeight: 800, fontSize: 13 }}>{v}</button>
+                      style={{ flex: '1 1 0', minWidth: 0, maxWidth: 64, height: 40, borderRadius: 10, border: on ? 'none' : '1.5px solid var(--line-2)', background: sel ? areaInk(a.key) : on ? areaSoft(a.key) : 'var(--surface)', color: sel ? 'var(--surface)' : on ? areaInk(a.key) : 'var(--muted)', fontWeight: 800, fontSize: 13 }}>{v}</button>
                   );
                 })}
               </div>

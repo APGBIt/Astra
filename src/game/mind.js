@@ -5,7 +5,7 @@ import {
   EMOTIONS, LEGACY_EMOTIONS, STRATEGIES, PROGRAM, WHO5_LOW, WHEEL, VALUE, JOURNAL_PROMPTS, BODY_SPOTS, COPING_IDEAS,
 } from './wellness.js';
 import { INFLUENCES } from './content.js';
-import { gainXP, addGold, autoCheck, checkAchievements, addTodo, uid, dailyGoal, getDay, logCalm, txKind, txDOP, inStats } from './logic.js';
+import { gainXP, addGold, autoCheck, checkAchievements, addTodo, uid, dailyGoal, getDay, logCalm, txKind, txDOP, inStats, doneCount } from './logic.js';
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -547,7 +547,7 @@ export function weekSummary(s, today) {
   const from = addDays(today, -6);
   const inWeek = (d) => d >= from && d <= today;
   let missions = 0;
-  for (const [d, x] of Object.entries(s.days || {})) if (inWeek(d)) missions += Object.keys((x && x.done) || {}).length;
+  for (const [d, x] of Object.entries(s.days || {})) if (inWeek(d)) missions += doneCount(x);
   const moods = [0, 0, 0, 0];
   for (const m of s.moods) if (inWeek(m.day)) moods[m.quad] += 1;
   const sleeps = Object.entries(s.health || {}).filter(([d, h]) => inWeek(d) && h && h.sleep != null).map(([, h]) => h.sleep);

@@ -402,7 +402,7 @@ export function closeTrip(s, p, today, ev = []) {
   }
   const trip = { id: uid(), day, list: lid, store, n: items.length, total, est, tx: tx ? tx.id : '', items: items.slice(0, 60).map((i) => ({ name: i.name, qty: i.qty, unit: i.unit, price: priceOf(s, i) })) };
   sh.trips.unshift(trip);
-  sh.trips = sh.trips.slice(0, 60);
+  sh.trips = sh.trips.slice(0, 260); // unos 5 años de compras semanales (antes 60)
   // Recompensa: ir con lista (+8 XP), y +7 si lo pagado no pasó de lo estimado. Una vez al día para no premiar el ir y venir.
   const d = getDay(s, today);
   let xp = 0;

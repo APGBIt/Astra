@@ -21,7 +21,10 @@ Tus datos se guardan en tu teléfono y, si lo conectas, en tu propio Google Driv
    Con IA lee mejor: Personaje → Ajustes → Lectura con IA. Lo más seguro es el servidor propio (carpeta server/).
 
 5) TUS DATOS
-   Personaje → Ajustes → «Descargar copia» para guardar tu progreso o pasarlo a otro teléfono.
+   Viven en tu teléfono (base de datos del navegador). Astra guarda sola puntos de restauración:
+   uno al empezar cada día y otro antes de recuperar una copia, borrar todo o juntar con Drive.
+   Personaje → Ajustes → «Puntos de restauración» para volver a uno, y «Descargar copia» para
+   guardar tu progreso fuera del teléfono o pasarlo a otro.
 
 6) SINCRONIZAR CON TU DRIVE
    Personaje → Ajustes → Sincronización. Cada persona conecta su propio Drive:
