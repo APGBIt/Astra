@@ -11,7 +11,8 @@ import { ensureHealthPlus } from '../game/health.js';
 import { ensureShop } from '../game/shop.js';
 import { ensureFood } from '../game/food.js';
 import { dayKey } from './dates.js';
-import { kvGet, kvSet } from './idb.js';
+import { AREA } from '../game/content.js';
+import { kvGet, kvSetMany } from './idb.js';
 import { takeSnap, readSnap } from './snapshots.js';
 
 const KEY = 'astra.v1';
@@ -61,6 +62,7 @@ export function migrate(s) {
   ensureFood(m);
   m.v = 4;
   if (!Array.isArray(m.profile.classKeys)) m.profile.classKeys = [];
+  m.profile.classKeys = m.profile.classKeys.filter((k) => AREA[k]).slice(0, 2);
   if (!Array.isArray(m.streak.freezeDays)) m.streak.freezeDays = [];
   return m;
 }
@@ -79,7 +81,8 @@ export const storage = {
   lsFull: false, // la copia rápida ya no cabe en localStorage
   failing: false, // el último guardado no quedó en ningún lado
   blocked: false, // hay datos guardados que no se pudieron abrir: no se guarda nada encima
-  staleAt: 0, // si está bloqueado y hay una copia rápida más vieja, de cuándo es
+  stale: false, // si está bloqueado: hay una copia rápida más vieja en este teléfono
+  staleAt: 0, // de cuándo es esa copia (0: no se sabe)
   savedAt: 0, // cuándo se guardó lo último
   persisted: null, // el navegador prometió no borrar los datos para hacer espacio
   size: 0, // tamaño de tus datos (caracteres)
@@ -146,8 +149,12 @@ async function boot() {
   const at = num(lsGet(AT));
   const needIdb = lsGet(WHERE) === 'idb' || at > lsAt;
   let rec = null;
+  let idbAt = 0;
   try {
-    rec = await withTimeout(kvGet('state'), needIdb ? 10000 : 3000);
+    // Si la copia rápida es lo último, basta con saber de cuándo es lo de la base de datos (sin leerlo todo).
+    if (needIdb || !hadLocal) rec = await withTimeout(kvGet('state'), needIdb ? 10000 : 3000);
+    else idbAt = num(await withTimeout(kvGet('stateAt'), 3000));
+    if (rec) idbAt = num(rec.at);
     storage.idb = true;
   } catch {
     storage.idb = false;
@@ -164,12 +171,13 @@ async function boot() {
   } else if (needIdb && !rec) {
     // Lo último está en la base de datos y no se pudo leer: no se guarda nada encima. Se puede reintentar.
     storage.blocked = true;
+    storage.stale = hadLocal;
     storage.staleAt = hadLocal ? lsAt : 0;
   }
-  if (storage.idb && !storage.blocked && (!rec || num(rec.at) < storage.savedAt || !storage.savedAt)) {
-    // Primera vez con la base de datos (o quedó atrás): se guarda ahí también.
+  if (storage.idb && !storage.blocked && (!idbAt || idbAt < storage.savedAt || !storage.savedAt)) {
+    // Primera vez con la base de datos (o quedó atrás): se guarda ahí también, sin hacer esperar a la pantalla.
     dirty = true;
-    await flush();
+    flush();
   }
   if (rescue) takeSnap('rescate', rescue, null).catch(() => {});
   current = state;
@@ -181,6 +189,7 @@ export const dataSize = () => serialize().length;
 // Si está bloqueado: seguir con la copia rápida más vieja de este teléfono (la persona lo decide).
 export function useStaleCopy() {
   storage.blocked = false;
+  storage.stale = false;
   storage.staleAt = 0;
   dirty = true;
   flush();
@@ -225,7 +234,7 @@ export function flush() {
   } catch { /* */ }
   // Si al abrir la base de datos tardó demasiado, se vuelve a intentar cuando localStorage no alcanzó.
   const tryIdb = storage.idb !== false || !lsOk;
-  const idbP = tryIdb ? kvSet('state', { at, json: text }).then(() => true, () => false) : Promise.resolve(false);
+  const idbP = tryIdb ? kvSetMany([['state', { at, json: text }], ['stateAt', at]]).then(() => true, () => false) : Promise.resolve(false);
   return idbP.then((idbOk) => {
     if (idbOk) storage.idb = true;
     const failing = !lsOk && !idbOk;
@@ -454,7 +463,7 @@ export function importData(text) {
 export function importBackup(data) {
   snapshotNow('importar');
   // Recuperar un archivo es una decisión explícita: si los datos estaban bloqueados, se reemplazan.
-  if (storage.blocked) { storage.blocked = false; storage.staleAt = 0; emitStorage(); }
+  if (storage.blocked) { storage.blocked = false; storage.stale = false; storage.staleAt = 0; emitStorage(); }
   const keep = { aiKey: state.settings.aiKey, serverToken: state.settings.serverToken };
   state = migrate(data);
   json = null;

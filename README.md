@@ -2,6 +2,35 @@
 
 Tu vida en modo juego de rol. App web instalable (y futura APK) para crecer en seis áreas de la vida con barras de vitalidad y energía, caminos, misiones y jefes.
 
+## Novedades de la versión 1.16 (tus datos a largo plazo: lo que no estábamos viendo)
+
+Revisión con una persona simulada que usa Astra todos los días durante 90 días, 1 año y 2 años (con las funciones reales de la app), medida en Chromium con la CPU 4 veces más lenta, como un teléfono de gama media.
+
+- **Tus datos ya no se pierden en silencio**:
+  - Se guardan en la base de datos del navegador (IndexedDB), que no tiene el tope de localStorage (unos 5 millones de caracteres, compartidos con todas las páginas de `apgbit.github.io`). Con 2 años de uso intenso, Astra ocupa 2.8 millones. La copia rápida en localStorage sigue mientras quepa.
+  - Si lo último no queda guardado en ningún lado, sale un aviso fijo con «Descargar copia» y «Reintentar». Antes fallaba sin avisar.
+  - Si los datos están en la base de datos y el navegador no los entrega, Astra no empieza de cero: ofrece reintentar, seguir con la copia rápida o recuperar un archivo.
+  - Se pide al navegador que no borre los datos para hacer espacio (antes solo se pedía al guardar una foto). En un iPhone sin instalar la app, Ajustes avisa que Safari borra los datos tras 7 días sin abrirla.
+  - Al salir de la app se guarda en el momento.
+- **Puntos de restauración en el teléfono** (Ajustes): uno al empezar cada día y otro antes de recuperar una copia, borrar todo, juntar con Drive o volver a un punto. Se quedan los de los últimos 7 días, uno por semana del mes anterior y los de antes de cada cambio grande (30 días), comprimidos. Cada uno se puede abrir («Volver aquí») o descargar. Antes, sin Drive no había ninguna copia automática.
+- **Recuperar una copia pregunta antes** y compara lo que trae con lo que tienes ahora: nivel, movimientos, pendientes, check-ins y último registro. «Borrar todo» ya se puede deshacer.
+- **Si una pantalla falla, ya no queda en blanco**: sale «Esta pantalla tuvo un problema» con volver a Hoy, descargar una copia, ir a Ajustes y copiar el detalle. Los errores quedan anotados en Ajustes → Errores recientes.
+- **Dos ventanas abiertas** (la app instalada y una pestaña): la que vuelve al frente toma lo más reciente. Una ventana vieja ya no borra lo que hiciste en la otra.
+- **Historia completa**:
+  - Ánimo, contactos, sesiones de enfoque y lecturas guardan hasta 5,000 registros. Antes se quedaban con 500: a dos check-ins por día se borraba lo anterior a unos 8 meses, y «Tu año en píxeles» nunca llegaba a un año.
+  - Los días de hace más de 120 días se quedan con su resumen (XP, oro, vitalidad, misiones y pendientes) en lugar de borrarse. La tabla «Días» de Drive tiene toda la historia.
+  - Compras guarda las últimas 260 compras (antes 60).
+- **Más rápida con meses de datos**: cada toque copiaba todos tus datos con `structuredClone`; ahora se copian desde el texto ya guardado. Completar algo en Hoy (CPU 4x): con 3 meses, de 173 a unos 80 ms; con 1 año, de 374 a 90–140 ms; con 2 años, de 565 a 160–190 ms.
+- **Sincronizar gasta menos datos móviles**:
+  - Conector propio, versión 2: lo que sube y baja viaja comprimido (gzip). Con 1 año de datos, cada subida pasa de unos 1.5 MB a unos 180 KB. En Drive se sigue guardando el JSON legible. Con un conector viejo todo funciona igual, sin comprimir, y la pantalla de sincronización explica cómo actualizarlo (la dirección no cambia).
+  - Sube como mucho cada 2 minutos (antes, 20 segundos después de cada cambio) y al salir de la app. Las tablas de la hoja se rehacen cada hora (antes, cada 15 minutos).
+- **Arreglos**:
+  - Abrir la página del conector (`conector.gs/`) o recibir un error de GitHub podía reemplazar la copia de la app guardada para usar sin conexión. Ahora solo se guarda la app, y solo si llegó bien.
+  - Con internet lento, la app abre la copia guardada a los 4 segundos en lugar de esperar sin límite.
+  - En «Crea tu personaje», los nombres de las áreas ya no se cortan a 360 y 390 px.
+  - Una clase guardada que no existe ya no rompe Personaje ni Ajustes.
+- La versión de los datos sigue en 4. Lo nuevo (base de datos, puntos de restauración y días resumidos) se agrega solo al abrir.
+
 ## Novedades de la versión 1.15 (interfaz: navegación, Finanzas y textos)
 
 Revisión de las 41 pantallas con 88 días de datos de ejemplo, en claro y oscuro, a 360 y 390 px.
@@ -271,7 +300,9 @@ Ideas tomadas de comparar YNAB, Monarch, Copilot, Simplifi, PocketGuard, Rocket 
 
 ## Privacidad
 
-No hay cuentas ni servidores propios. Todo se guarda en el navegador, también el expediente, y, si la persona lo conecta, en su propio Google Drive. Nadie más tiene acceso: cada quien conecta su Drive y el conector propio solo responde a la app que tiene su clave. La IA es opcional y solo recibe la foto de un recibo o el texto que decides enviar. El lector de texto (OCR) trabaja en el teléfono: la imagen no sale de ahí. La copia de seguridad y el archivo de Drive incluyen el expediente: guárdalos en un lugar seguro.
+No hay cuentas ni servidores propios. Todo se guarda en el navegador (en su base de datos, IndexedDB, y en una copia rápida en localStorage), también el expediente, y, si la persona lo conecta, en su propio Google Drive. Nadie más tiene acceso: cada quien conecta su Drive y el conector propio solo responde a la app que tiene su clave. La IA es opcional y solo recibe la foto de un recibo o el texto que decides enviar. El lector de texto (OCR) trabaja en el teléfono: la imagen no sale de ahí. La copia de seguridad y el archivo de Drive incluyen el expediente: guárdalos en un lugar seguro.
+
+El navegador da el mismo espacio a todas las páginas de un mismo dominio. En `apgbit.github.io` eso incluye las demás páginas publicadas desde esa cuenta de GitHub: en ese navegador pueden leer los datos de Astra y comparten su espacio. Para separarlos del todo, Astra necesita un dominio propio.
 
 La tasa del dólar se pide una vez al día a una fuente pública (currency-api por jsDelivr, con ExchangeRate-API de respaldo): solo se pide la tasa, sin enviar ningún dato tuyo. Se puede apagar en Finanzas → Dólares y pesos. Los enlaces para importar movimientos llevan los datos después del «#», que el navegador no envía a ningún servidor.
 
@@ -296,9 +327,9 @@ npm test        # pruebas de la lógica del juego y del analizador de texto
 ```
 
 - `src/game`: reglas del juego (`logic.js`), dinero (`money.js`: saldos, tarjetas, pagos programados, flujo y presupuestos; `ledger.js`: filtros, totales, edición en grupo, reglas, dividir y horas de trabajo; `debts.js`: plan para salir de deudas; `loans.js`: préstamos con personas; `worth.js`: patrimonio mes a mes; `scan.js`: lo que dice un recibo o un comprobante; `stats.js`: análisis), salud (`health.js`: medicinas, actividad y últimas semanas), mente (`mind.js`, `wellness.js`), contenido (`content.js`), analizador de frases y alertas (`parse.js`), frase y palabra del día (`daily.js`, `quotes.js`, `words.js`), fusión de cambios entre equipos (`merge.js`) y tablas legibles (`tables.js`).
-- `src/app`: estado y almacenamiento (`store.js`), sincronización (`sync.js`, `transports.js`, `google.js`), conector de Apps Script (`connector.js`), fotos (`photos.js`, `idb.js`), lector de texto (`ocr.js`) y configuración pública (`config.js`: ID de cliente de Google para «Conectar con Google»).
+- `src/app`: estado y almacenamiento (`store.js`: base de datos del navegador y copia rápida; `snapshots.js`: puntos de restauración; `gz.js`: compresión), sincronización (`sync.js`, `transports.js`, `google.js`), conector de Apps Script (`connector.js`), fotos (`photos.js`, `idb.js`), lector de texto (`ocr.js`) y configuración pública (`config.js`: ID de cliente de Google para «Conectar con Google»).
 - `src/ai`: lectura de recibos y frases con IA.
-- `src/screens` y `src/ui`: pantallas y componentes (Preact).
+- `src/screens` y `src/ui`: pantallas y componentes (Preact). `src/ui/guard.jsx`: pantalla de error, aviso de guardado y datos que no se pudieron abrir.
 - `server`: lector de recibos opcional para Cloudflare Workers.
 
 GitHub Pages publica la carpeta `docs/`. Después de cambiar el código, ejecuta `npm run build` y sube los cambios.

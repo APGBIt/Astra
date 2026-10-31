@@ -342,3 +342,28 @@ test('migrate de datos con días resumidos y listas largas no pierde nada', () =
   assert.deepEqual(m.days['2025-01-01'], s.days['2025-01-01']);
   assert.equal(m.moods.length, 900);
 });
+
+test('sincronizar de punta a punta con el conector 2: la primera subida va comprimida y Drive queda legible', async () => {
+  const gs = appsScript();
+  const ops = [];
+  const old = globalThis.fetch;
+  globalThis.fetch = async (url, init) => { const b = JSON.parse(init.body); ops.push(b); return { ok: true, status: 200, json: async () => gs.post(b) }; };
+  try {
+    const { connectScript, syncState } = await import('../src/app/sync.js');
+    act((s) => { s.profile.onboarded = true; s.profile.name = 'Ana Prueba'; L.addTx(s, { type: 'gasto', amount: 850, cat: 'super', merchant: 'La Sirena', day: D }, D, []); });
+    await connectScript('https://script.google.com/macros/s/abc123/exec', 'k'.repeat(32));
+    const st = syncState();
+    assert.equal(st.connV, 2);
+    assert.equal(st.gz, true);
+    const up = ops.find((o) => o.op === 'guardar');
+    assert.ok(up, 'subió los datos');
+    assert.equal(up.enc, 'gzip');
+    assert.ok(up.tablasGz, 'las tablas también van comprimidas');
+    const datos = [...gs.files.values()].find((f) => f.name === 'astra-datos.json');
+    const o = JSON.parse(datos.content);
+    assert.equal(o.app, 'astra');
+    assert.equal(o.data.profile.name, 'Ana Prueba');
+    assert.equal(o.data.money.tx[0].merchant, 'La Sirena');
+    assert.equal(o.data.settings.aiKey, '', 'las claves no suben');
+  } finally { globalThis.fetch = old; }
+});

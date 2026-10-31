@@ -83,12 +83,19 @@ export function SaveAlert() {
   const st = useStorage();
   const [busy, setBusy] = useState(false);
   if (!st.failing) return null;
+  // Navegador que no deja guardar nada desde el principio (por ejemplo, una vista previa): se avisa sin alarma.
+  if (!st.ls && st.idb === false) {
+    return (
+      <div class="save-alert" role="status">
+        <span class="row-top" style={{ gap: 10 }}><Icon name="info" size={18} /><span>Aquí el navegador no deja guardar datos: lo que hagas se pierde al cerrar. Abre Astra desde su enlace o instálala para guardar tu progreso.</span></span>
+      </div>
+    );
+  }
   return (
     <div class="save-alert" role="alert">
-      <Icon name="info" size={18} />
-      <span class="grow">No se pudieron guardar tus últimos cambios en este teléfono. Descarga una copia para no perderlos.</span>
-      <span class="row" style={{ gap: 6 }}>
-        <button type="button" class="btn xs" onClick={() => downloadBackup()}>Copia</button>
+      <span class="row-top" style={{ gap: 10 }}><Icon name="info" size={18} /><span>No se pudieron guardar tus últimos cambios en este teléfono. Descarga una copia para no perderlos.</span></span>
+      <span class="row" style={{ gap: 6, paddingLeft: 28 }}>
+        <button type="button" class="btn xs" onClick={() => downloadBackup()}><Icon name="download" size={15} />Descargar copia</button>
         <button type="button" class="btn xs ghost" disabled={busy} onClick={async () => { setBusy(true); await retrySave(); setBusy(false); }}>Reintentar</button>
       </span>
     </div>
@@ -107,10 +114,11 @@ export function Blocked({ onImport }) {
       </section>
       <div class="stack-sm">
         <button type="button" class="btn block" onClick={() => location.reload()}><Icon name="sync" size={18} />Reintentar</button>
-        {st.staleAt > 0 && <button type="button" class="btn block soft" onClick={useStaleCopy}>Seguir con la copia rápida del {fmtDay(dayKey(new Date(st.staleAt)), { weekdayName: false })}</button>}
+        {st.stale && <button type="button" class="btn block soft" onClick={useStaleCopy}>{st.staleAt > 0 ? `Seguir con la copia rápida del ${fmtDay(dayKey(new Date(st.staleAt)), { weekdayName: false })}` : 'Seguir con la copia rápida de este teléfono'}</button>}
+        {st.stale && <span class="small muted">La copia rápida puede no tener lo último que hiciste.</span>}
         <label class="btn block ghost" style={{ position: 'relative' }}><Icon name="upload" size={18} />Recuperar desde un archivo de copia<input type="file" accept="application/json,.json" onChange={onImport} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} /></label>
       </div>
-      <p class="small muted">Si tienes Drive conectado, también puedes reinstalar la app y traer tus datos desde Drive.</p>
+      <p class="small muted">Si tienes Drive conectado, tus datos también están a salvo ahí.</p>
     </main>
   );
 }

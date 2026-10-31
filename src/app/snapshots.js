@@ -49,6 +49,11 @@ export function keepSnaps(list, today) {
   return sorted.filter((x) => keep.has(x.id)).slice(0, 20);
 }
 
+// Avisos de «hay un punto nuevo» (para que Ajustes muestre la lista al día).
+const subs = new Set();
+export function onSnap(fn) { subs.add(fn); return () => subs.delete(fn); }
+const emit = () => subs.forEach((f) => { try { f(); } catch { /* */ } });
+
 let queue = Promise.resolve();
 const serial = (fn) => { const p = queue.then(fn, fn); queue = p.catch(() => {}); return p; };
 
@@ -77,6 +82,7 @@ export function takeSnap(reason, text, summary = null, { oncePerDay = false, now
     const ids = new Set(kept.map((x) => x.id));
     await kvSet(INDEX, kept);
     for (const x of all) if (!ids.has(x.id)) await kvDel(`snap:${x.id}`).catch(() => {});
+    emit();
     return rec;
   });
 }

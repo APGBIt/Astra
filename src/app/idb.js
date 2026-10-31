@@ -35,6 +35,8 @@ function tx(store, mode, fn) {
 
 export const kvGet = (k) => tx('kv', 'readonly', (st) => st.get(k));
 export const kvSet = (k, v) => tx('kv', 'readwrite', (st) => st.put(v, k));
+// Varias claves en una sola transacción (o se guardan todas o ninguna).
+export const kvSetMany = (entries) => tx('kv', 'readwrite', (st) => { let r = null; for (const [k, v] of entries) r = st.put(v, k); return r; });
 export const kvDel = (k) => tx('kv', 'readwrite', (st) => st.delete(k));
 export const photoGet = (id) => tx('photos', 'readonly', (st) => st.get(id));
 export const photoPut = (rec) => tx('photos', 'readwrite', (st) => st.put(rec));

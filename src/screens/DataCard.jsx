@@ -4,7 +4,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
 import { toast, ask } from '../ui/kit.jsx';
 import { act, useApp, useStorage, exportData, importBackup, readBackup, summaryOf, resetAll, restoreSnap, snapshotNow, storageEstimate, askPersist, dataSize, migrate } from '../app/store.js';
-import { listSnaps, readSnap, SNAP_REASONS } from '../app/snapshots.js';
+import { listSnaps, readSnap, onSnap, SNAP_REASONS } from '../app/snapshots.js';
 import { saveFile } from '../app/files.js';
 import { recentErrors, clearErrors, errorText, downloadBackup } from '../ui/guard.jsx';
 import { go } from '../app/router.js';
@@ -20,7 +20,7 @@ const pad = (n) => String(n).padStart(2, '0');
 export const fmtWhen = (at) => {
   const d = new Date(at);
   const h = d.getHours();
-  return `${fmtDay(dayKey(d), { weekdayName: false })}, ${h % 12 || 12}:${pad(d.getMinutes())} ${h < 12 ? 'a. m.' : 'p. m.'}`;
+  return `${fmtDay(dayKey(d), { weekdayName: false })}, ${h % 12 || 12}:${pad(d.getMinutes())}\u00a0${h < 12 ? 'a.\u00a0m.' : 'p.\u00a0m.'}`;
 };
 // «Nivel 12 · 340 movimientos · 85 check-ins»
 export function summaryText(m) {
@@ -62,7 +62,7 @@ export function RestorePoints() {
   const [list, setList] = useState(null);
   const [busy, setBusy] = useState('');
   const load = () => listSnaps().then(setList).catch(() => setList([]));
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); return onSnap(load); }, []);
   const back = async (x) => {
     if (!await ask(`¿Volver a como estaban tus datos el ${fmtWhen(x.at)}? Lo de ahora se reemplaza. Antes guardo un punto con lo de ahora, por si te arrepientes.`, { ok: 'Volver a este punto', danger: true })) return;
     setBusy(x.id);

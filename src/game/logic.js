@@ -152,8 +152,9 @@ export function talentsFor(s, area) {
 export const talentCount = (s, area) => talentsFor(s, area).filter((t) => t.unlocked).length;
 
 export function className(keys) {
-  if (!keys || !keys.length) return 'Aventurero';
-  return keys.map((k) => AREA[k].cls).join(' ');
+  const ok = (keys || []).filter((k) => AREA[k]);
+  if (!ok.length) return 'Aventurero';
+  return ok.map((k) => AREA[k].cls).join(' ');
 }
 
 export function attrMult(s, area, today) {
