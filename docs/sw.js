@@ -1,5 +1,5 @@
 // Astra · caché para usar sin conexión (no guarda datos personales)
-const CACHE = 'astra-321e168d64';
+const CACHE = 'astra-22a5563347';
 const CORE = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE)).then(() => self.skipWaiting())); });
 // El lector de texto (ocr/) vive en su propia caché: no se vuelve a descargar con cada versión de la app.
@@ -10,7 +10,21 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (req.mode === 'navigate') {
-    e.respondWith(fetch(req).then((r) => { const cp = r.clone(); caches.open(CACHE).then((c) => c.put('./index.html', cp)); return r; }).catch(() => caches.match('./index.html')));
+    // Solo la página de la app se guarda como «index.html», y solo si llegó bien: abrir la página del conector
+    // (conector.gs/) o un error de GitHub ya no reemplaza la app guardada para usar sin conexión.
+    const root = new URL('./', self.registration.scope).pathname;
+    if (url.pathname !== root && url.pathname !== root + 'index.html') { e.respondWith(fetch(req).catch(() => caches.match(req))); return; }
+    const net = fetch(req).then((r) => { if (r.ok) { const cp = r.clone(); caches.open(CACHE).then((c) => c.put('./index.html', cp)); } return r; });
+    e.waitUntil(net.then(() => {}, () => {}));
+    // Con internet lento, a los 4 segundos se abre la copia guardada (la nueva queda lista para la próxima vez).
+    e.respondWith(new Promise((resolve) => {
+      let done = false;
+      const end = (r) => { if (!done && r) { done = true; resolve(r); } };
+      const saved = () => caches.match('./index.html');
+      const t = setTimeout(() => { saved().then(end); }, 4000);
+      net.then((r) => { clearTimeout(t); if (r.ok) end(r); else saved().then((hit) => end(hit || r)); })
+        .catch(() => { clearTimeout(t); saved().then((hit) => end(hit || Response.error())); });
+    }));
     return;
   }
   if (url.origin === location.origin && url.pathname.includes('/ocr/')) {

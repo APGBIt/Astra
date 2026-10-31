@@ -106,6 +106,22 @@ export function defaultState(today = dayKey()) {
 
 // ---------- Días ----------
 
+// Historia que se guarda: ánimo, contactos, lecturas y sesiones de enfoque. Antes se borraba lo anterior a
+// 500 registros (a dos check-ins por día, unos 8 meses: «Tu año en píxeles» nunca llegaba a un año).
+export const HISTORY_MAX = 5000;
+
+// Resumen de un día viejo: lo que sirve para mirar atrás (XP, oro, vitalidad, misiones y pendientes hechos).
+export function compactDay(d) {
+  if (!d || typeof d !== 'object' || d.c) return d;
+  const out = { c: 1, xp: Number(d.xp) || 0, gold: Number(d.gold) || 0, vitEnd: d.vitEnd ?? null, n: Object.keys(d.done || {}).length };
+  if (d.todos) out.todos = d.todos;
+  if (d.xpBy && Object.keys(d.xpBy).length) out.xpBy = d.xpBy;
+  if (d.closed) out.closed = true;
+  return out;
+}
+// Misiones hechas en un día (también en los días ya resumidos).
+export const doneCount = (d) => (!d ? 0 : d.c ? Number(d.n) || 0 : Object.keys(d.done || {}).length);
+
 export function getDay(s, day) {
   if (!s.days[day]) s.days[day] = { done: {}, slips: {}, avoided: {}, excused: {}, xp: 0, xpBy: {}, gold: 0, potions: {}, fed: {}, vitEnd: null };
   const d = s.days[day];
@@ -136,8 +152,9 @@ export function talentsFor(s, area) {
 export const talentCount = (s, area) => talentsFor(s, area).filter((t) => t.unlocked).length;
 
 export function className(keys) {
-  if (!keys || !keys.length) return 'Aventurero';
-  return keys.map((k) => AREA[k].cls).join(' ');
+  const ok = (keys || []).filter((k) => AREA[k]);
+  if (!ok.length) return 'Aventurero';
+  return ok.map((k) => AREA[k].cls).join(' ');
 }
 
 export function attrMult(s, area, today) {
@@ -500,9 +517,9 @@ export function reconcile(s, today) {
       s.recovery = null;
       if (s.vit < 30) changeVit(s, 30 - s.vit, 'Terminó tu recuperación', today, ev);
     }
-    // Poda de días viejos.
+    // Días viejos: los de hace más de 120 días se quedan solo con su resumen (antes se borraban).
     const keys = Object.keys(s.days).sort();
-    for (const k of keys.slice(0, Math.max(0, keys.length - 120))) delete s.days[k];
+    for (const k of keys.slice(0, Math.max(0, keys.length - 120))) s.days[k] = compactDay(s.days[k]);
   }
   ensureEnergyDay(s, today);
   if (s.chores && s.chores.length) syncChores(s, today);
@@ -860,7 +877,7 @@ export function addMood(s, p, today, ev) {
   const entry = { id: uid(), day: today, ts: Date.now(), quad: clamp(Number(p.quad) || 0, 0, 3), words: (p.words || []).slice(0, 4), influences: (p.influences || []).slice(0, 6), note: String(p.note || '').slice(0, 500) };
   if (Array.isArray(p.body) && p.body.length) entry.body = p.body.map((x) => String(x).slice(0, 30)).slice(0, 5);
   s.moods.unshift(entry);
-  s.moods = s.moods.slice(0, 500);
+  s.moods = s.moods.slice(0, HISTORY_MAX);
   const today2 = s.moods.filter((m) => m.day === today).length;
   if (today2 <= 2) gainXP(s, 'emocional', 15, today, ev);
   bossFeed(s, 'mood', 1, today, ev);
@@ -941,7 +958,7 @@ export function contactPerson(s, pid, kind, today, ev) {
   if (!p) return;
   p.last = today;
   s.contacts.unshift({ id: uid(), pid, day: today, kind: kind || 'contacto' });
-  s.contacts = s.contacts.slice(0, 500);
+  s.contacts = s.contacts.slice(0, HISTORY_MAX);
   const n = s.contacts.filter((c) => c.day === today).length;
   if (n <= 4) gainXP(s, 'relaciones', 15, today, ev);
   bossFeed(s, 'contact', 1, today, ev);
@@ -995,7 +1012,7 @@ export function logPages(s, bookId, pages, today, ev) {
   if (!b || !n) return;
   b.read = Math.min(b.pages, b.read + n);
   s.reads.unshift({ id: uid(), day: today, bookId, pages: n });
-  s.reads = s.reads.slice(0, 1000);
+  s.reads = s.reads.slice(0, HISTORY_MAX);
   gainXP(s, 'crecimiento', Math.min(30, Math.max(2, Math.round(n / 2))), today, ev);
   bossFeed(s, 'pages', n, today, ev);
   if (b.read >= b.pages && !b.done) {
@@ -1042,7 +1059,7 @@ export function finishFocus(s, p, today, ev) {
   const minutes = Math.max(1, Math.round(Number(p.minutes) || 25));
   const entry = { id: uid(), day: today, minutes, label: String(p.label || '').slice(0, 60), broken: !!p.broken };
   s.focus.unshift(entry);
-  s.focus = s.focus.slice(0, 500);
+  s.focus = s.focus.slice(0, HISTORY_MAX);
   if (entry.broken) {
     gainXP(s, 'laborales', 5, today, ev);
   } else {
@@ -2818,7 +2835,7 @@ export function weekStats(s, today) {
   for (let i = 6; i >= 0; i -= 1) {
     const day = addDays(today, -i);
     const d = s.days[day];
-    const done = d ? Object.keys(d.done || {}).length : 0;
+    const done = doneCount(d);
     if (d && d.vitEnd != null) vit = d.vitEnd;
     out.push({ day, done, todos: d ? d.todos || 0 : 0, xp: d ? d.xp : 0, vit: day === today ? s.vit : vit, xpBy: d ? d.xpBy || {} : {} });
   }

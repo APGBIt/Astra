@@ -1,9 +1,12 @@
 // Código del conector propio (Google Apps Script). Cada persona lo instala en SU Drive: así sus datos
 // quedan en su cuenta y la app no necesita ningún servidor. Se copia desde la app o desde conector.gs.
-export const CONNECTOR_VERSION = 1;
+export const CONNECTOR_VERSION = 2;
 
 export const CONNECTOR_CODE = `/**
- * Conector de Astra para tu Google Drive (versión 1).
+ * Conector de Astra para tu Google Drive (versión 2).
+ *
+ * Versión 2: los datos viajan comprimidos (gzip), así sincronizar gasta hasta 8 veces menos datos móviles.
+ * En tu Drive se siguen guardando como texto normal (astra-datos.json).
  *
  * Guarda tus datos y tus fotos de Astra en la carpeta «Astra» de TU Drive.
  * Solo tu app de Astra, con su clave, puede leer o escribir aquí. Este código no envía nada a nadie más.
@@ -16,11 +19,15 @@ export const CONNECTOR_CODE = `/**
  *    Google lo marca así porque es un script tuyo que Google no ha revisado.
  * 5. Copia la «URL de la aplicación web» y pégala en Astra → Ajustes → Sincronización → Conector propio.
  *
+ * Para actualizar un conector que ya tenías: pega este código encima del anterior, guarda y ve a
+ * Implementar → Gestionar implementaciones → ✏️ (editar) → Versión: «Nueva versión» → Implementar.
+ * La dirección (/exec) no cambia y no hay que volver a conectar nada en Astra.
+ *
  * Si algún día pierdes la clave (por ejemplo, cambias de teléfono sin el código de enlace),
  * ejecuta aquí la función reiniciarClave y vuelve a conectar desde Astra.
  */
 
-var VERSION = 1;
+var VERSION = 2;
 var DATOS = 'astra-datos.json';
 var HOJA = 'Base de datos de Astra';
 
@@ -45,7 +52,7 @@ function doPost(e) {
     }
     if (b.op === 'hola') return salida({ ok: true, v: VERSION, carpeta: carpeta().getName(), url: carpeta().getUrl(), cuenta: Session.getEffectiveUser().getEmail(), estado: estado() });
     if (b.op === 'estado') return salida(Object.assign({ ok: true }, estado()));
-    if (b.op === 'leer') return salida(Object.assign({ ok: true, data: leer() }, estado()));
+    if (b.op === 'leer') return salida(Object.assign(leerPara(b), estado()));
     if (b.op === 'guardar') return salida(guardar(b));
     if (b.op === 'foto') return salida(subirFoto(b));
     if (b.op === 'leerFoto') return salida(leerFoto(b));
@@ -95,7 +102,21 @@ function archivoDatos() {
 
 function estado() {
   var p = PropertiesService.getScriptProperties();
-  return { rev: Number(p.getProperty('REV') || 0), updated: p.getProperty('UPDATED') || null, device: p.getProperty('DEVICE') || null };
+  return { rev: Number(p.getProperty('REV') || 0), updated: p.getProperty('UPDATED') || null, device: p.getProperty('DEVICE') || null, v: VERSION, gz: true };
+}
+
+// Texto que llega comprimido (gzip + base64) desde Astra.
+function descomprimir(b64) {
+  return Utilities.ungzip(Utilities.newBlob(Utilities.base64Decode(b64), 'application/x-gzip')).getDataAsString('UTF-8');
+}
+function comprimir(texto) {
+  return Utilities.base64Encode(Utilities.gzip(Utilities.newBlob(texto, 'application/json', 'astra.json')).getBytes());
+}
+
+function leerPara(b) {
+  var texto = leer();
+  if (texto && b.acepta === 'gzip') return { ok: true, data: comprimir(texto), enc: 'gzip' };
+  return { ok: true, data: texto };
 }
 
 function leer() {
@@ -106,7 +127,7 @@ function leer() {
 function guardar(b) {
   var st = estado();
   if (b.expect !== null && b.expect !== undefined && Number(b.expect) !== st.rev) return { ok: false, conflicto: true, rev: st.rev };
-  var texto = String(b.data || '');
+  var texto = b.enc === 'gzip' && b.data ? descomprimir(String(b.data)) : String(b.data || '');
   if (!texto) return { ok: false, error: 'vacio' };
   var f = archivoDatos();
   if (f) f.setContent(texto); else carpeta().createFile(DATOS, texto, 'application/json');
@@ -114,7 +135,9 @@ function guardar(b) {
   var ahora = new Date().toISOString();
   PropertiesService.getScriptProperties().setProperties({ REV: String(rev), UPDATED: ahora, DEVICE: String(b.device || '') });
   respaldo(texto);
-  if (b.tablas) { try { tablas(b.tablas); } catch (e) {} }
+  var t = b.tablas;
+  if (!t && b.tablasGz) { try { t = JSON.parse(descomprimir(String(b.tablasGz))); } catch (e) { t = null; } }
+  if (t) { try { tablas(t); } catch (e) {} }
   return { ok: true, rev: rev, updated: ahora };
 }
 

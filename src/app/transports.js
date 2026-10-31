@@ -4,6 +4,7 @@
 //   push(text, expect, meta) → { rev }             (subir; si Drive cambió desde `expect`, error «conflict»)
 //   putPhoto(blob, meta) → fileId, getPhoto(fileId) → Blob, delPhoto(fileId)
 import { toCSV } from '../game/tables.js';
+import { canGzip, gzipB64, gunzipB64 } from './gz.js';
 
 export class SyncError extends Error {
   constructor(code, message, extra = {}) {
@@ -33,7 +34,9 @@ async function timed(promise, ms, ctl) {
 
 // ---------- Conector propio (Apps Script en el Drive de cada persona) ----------
 
-export function scriptTransport({ url, key }) {
+// `gz`: el conector es la versión 2 o más y entiende datos comprimidos (gzip + base64).
+export function scriptTransport({ url, key, gz = false }) {
+  let zip = gz && canGzip();
   const call = async (op, payload = {}, ms = 45000) => {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new SyncError('offline', 'Sin conexión');
     const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -56,10 +59,26 @@ export function scriptTransport({ url, key }) {
   return {
     kind: 'script',
     hello: () => call('hola'),
-    async head() { const j = await call('estado'); return j.rev ? { rev: j.rev, updated: j.updated, device: j.device } : null; },
-    async pull() { const j = await call('leer'); return { rev: j.rev, text: j.data }; },
+    // Después de head(), `caps` dice qué entiende el conector (versión y si acepta datos comprimidos).
+    caps: null,
+    async head() {
+      const j = await call('estado');
+      this.caps = { v: Number(j.v) || 1, gz: !!j.gz };
+      // Lo que diga el conector ahora manda: un conector viejo nunca recibe datos comprimidos.
+      zip = this.caps.gz && canGzip();
+      return j.rev ? { rev: j.rev, updated: j.updated, device: j.device } : null;
+    },
+    async pull() {
+      const j = await call('leer', zip ? { acepta: 'gzip' } : {});
+      const text = j.enc === 'gzip' && j.data ? await gunzipB64(j.data) : j.data;
+      return { rev: j.rev, text };
+    },
     async push(text, expect, meta = {}) {
-      const j = await call('guardar', { data: text, expect, device: meta.device || '', tablas: meta.tables || null }, 90000);
+      // Comprimido, lo que sube pesa unas 8 veces menos (en Drive se guarda como texto normal).
+      const body = zip
+        ? { data: await gzipB64(text), enc: 'gzip', expect, device: meta.device || '', tablasGz: meta.tables ? await gzipB64(JSON.stringify(meta.tables)) : null }
+        : { data: text, expect, device: meta.device || '', tablas: meta.tables || null };
+      const j = await call('guardar', body, 90000);
       return { rev: j.rev };
     },
     async putPhoto(blob, meta = {}) {

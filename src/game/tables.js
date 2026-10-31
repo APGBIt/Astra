@@ -18,7 +18,7 @@ import { nutrientOf } from './nutrients.js';
 import { shopOf, priceOf, wishInfo } from './shop.js';
 import { aisleOf, qtyText } from './shoplex.js';
 import {
-  accountLabel, catName, catOf, choreStatus, freqLabel, repeatLabel, todoCategory, txCur, txDOP, txKind, txOrig, txRate,
+  accountLabel, catName, catOf, choreStatus, doneCount, freqLabel, repeatLabel, todoCategory, txCur, txDOP, txKind, txOrig, txRate,
 } from './logic.js';
 
 const KIND = { gasto: 'Gasto', ingreso: 'Ingreso', transfer: 'Entre cuentas' };
@@ -213,7 +213,7 @@ export function buildTables(s, today) {
       ['Fecha', 'Misiones hechas', 'Pendientes hechos', 'XP', 'Oro', 'Vitalidad al cierre'],
       dayKeys.map((d) => {
         const x = s.days[d] || {};
-        return [d, Object.keys(x.done || {}).length, x.todos || 0, x.xp || 0, x.gold || 0, x.vitEnd ?? ''];
+        return [d, doneCount(x), x.todos || 0, x.xp || 0, x.gold || 0, x.vitEnd ?? ''];
       }),
     ),
   };

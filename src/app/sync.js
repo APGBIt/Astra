@@ -2,7 +2,7 @@
 // Cada persona conecta su propio Drive (conector propio de Apps Script o «Conectar con Google»).
 // Lo que se sube: tus datos de Astra sin tus claves de IA, una copia por día y las fotos que agregues.
 import { useEffect, useReducer } from 'preact/hooks';
-import { act, getState, applyRemote, cleanData, onChange, onReset, runReconcile } from './store.js';
+import { act, getState, applyRemote, cleanData, onChange, onReset, runReconcile, snapshotNow, onExternal } from './store.js';
 import { dayKey } from './dates.js';
 import { kvGet, kvSet, kvDel, photoGet, photoPut, photoDel } from './idb.js';
 import { scriptTransport, driveTransport, SyncError } from './transports.js';
@@ -15,7 +15,13 @@ const KEY = 'astra.sync';
 const DEFAULTS = {
   provider: null, auto: true, device: '', script: null, google: { ids: {} }, account: '', folderUrl: '',
   changes: 0, synced: 0, lastSync: null, lastBackupDay: null, tablesHash: '', tablesAt: 0, connectedAt: null,
+  lastPushAt: 0, connV: 0, gz: false,
 };
+// Cuándo sincroniza solo (1.16): ya no sube todo a los 20 segundos de cada cambio. Espera un poco más y deja
+// al menos 2 minutos entre subidas; al salir de la app sube lo pendiente. Con el conector 2 todo va comprimido.
+const AUTO_DELAY = 45000;
+const MIN_GAP = 2 * 60000;
+const TABLES_EVERY = 60 * 60000;
 
 function load() {
   try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { return { ...DEFAULTS }; }
@@ -35,7 +41,7 @@ function setStatus(phase, msg = '') { status = { phase, msg }; emit(); }
 
 export const syncConfig = () => cfg;
 export function syncState() {
-  return { ...status, provider: cfg.provider, auto: cfg.auto, lastSync: cfg.lastSync, dirty: cfg.changes > cfg.synced, account: cfg.account, folderUrl: cfg.folderUrl, device: cfg.device };
+  return { ...status, provider: cfg.provider, auto: cfg.auto, lastSync: cfg.lastSync, dirty: cfg.changes > cfg.synced, account: cfg.account, folderUrl: cfg.folderUrl, device: cfg.device, connV: cfg.connV, gz: cfg.gz };
 }
 export function useSync() {
   const [, force] = useReducer((x) => x + 1, 0);
@@ -46,7 +52,7 @@ export function useSync() {
 // ---------- Transporte según el conector ----------
 
 function transport() {
-  if (cfg.provider === 'script' && cfg.script) return scriptTransport(cfg.script);
+  if (cfg.provider === 'script' && cfg.script) return scriptTransport({ ...cfg.script, gz: !!cfg.gz });
   if (cfg.provider === 'google') {
     const token = googleToken();
     if (!token) return null;
@@ -145,6 +151,7 @@ async function run({ manual = false } = {}) {
     let done = false;
     for (let attempt = 0; attempt < 3 && !done; attempt++) {
       const head = await tr.head();
+      if (tr.caps && (tr.caps.v !== cfg.connV || tr.caps.gz !== cfg.gz)) save({ connV: tr.caps.v, gz: tr.caps.gz });
       const base = await getBase();
       const validBase = base && base.provider === cfg.provider && base.rev != null && head && base.rev <= head.rev;
       if (!head) {
@@ -154,7 +161,7 @@ async function run({ manual = false } = {}) {
         const data = cleanData(getState());
         const { rev } = await tr.push(pack(data), null, await metaFor(data, manual));
         await setBase(rev, data);
-        save({ synced: k, lastSync: Date.now() });
+        save({ synced: k, lastSync: Date.now(), lastPushAt: Date.now() });
         done = true;
         break;
       }
@@ -193,6 +200,8 @@ async function run({ manual = false } = {}) {
           break;
         }
         // Cambios aquí y allá: se juntan con el estado común (se lee el estado de ahora, sin esperas en medio).
+        // Antes, un punto de restauración en este teléfono (uno por día), por si algo sale mal al juntar.
+        snapshotNow('drive', { oncePerDay: true });
         const merged = mergeStates(JSON.parse(base.text), cleanData(getState()), rdata);
         applyMerged(merged);
         data = cleanData(getState());
@@ -203,7 +212,7 @@ async function run({ manual = false } = {}) {
       try {
         const { rev } = await tr.push(pack(data), expect, await metaFor(data, manual));
         await setBase(rev, data);
-        save({ synced: k, lastSync: Date.now() });
+        save({ synced: k, lastSync: Date.now(), lastPushAt: Date.now() });
         done = true;
       } catch (e) {
         if (e.code !== 'conflict') throw e; // otro equipo subió algo justo ahora: se repite
@@ -235,7 +244,7 @@ function tablesIfDue(data, manual) {
   const tables = buildTables(data, dayKey());
   const h = hash(JSON.stringify(tables));
   if (h === cfg.tablesHash) return null;
-  if (!manual && Date.now() - (cfg.tablesAt || 0) < 15 * 60000) return null;
+  if (!manual && Date.now() - (cfg.tablesAt || 0) < TABLES_EVERY) return null;
   save({ tablesHash: h, tablesAt: Date.now() });
   return { tables };
 }
@@ -260,7 +269,7 @@ export async function resolveFirst(choice) {
     const remote = await tr.pull();
     const rdata = unpack(remote.text);
     const local = cleanData(getState());
-    await kvSet('antes-de-sincronizar', { at: Date.now(), text: JSON.stringify(local) }).catch(() => {});
+    await snapshotNow('drive');
     if (choice === 'remote') {
       const k = cfg.changes;
       applyMerged(rdata);
@@ -281,25 +290,36 @@ export async function resolveFirst(choice) {
 
 // ---------- Programación automática ----------
 
-function schedule(ms = 20000) {
+// `push`: lo pide un cambio tuyo; respeta la pausa mínima entre subidas.
+function schedule(ms = AUTO_DELAY, { push = false } = {}) {
   if (!cfg.provider || !cfg.auto) return;
   clearTimeout(timer);
-  timer = setTimeout(() => { if (typeof document === 'undefined' || !document.hidden || ms > 60000) syncNow(); }, ms);
+  const wait = push ? Math.max(ms, (cfg.lastPushAt || 0) + MIN_GAP - Date.now()) : ms;
+  timer = setTimeout(() => { if (typeof document === 'undefined' || !document.hidden || wait > 60000) syncNow(); }, wait);
 }
+const pending = () => cfg.changes > cfg.synced;
 
 let started = false;
 export function startSync() {
   if (started) return;
   started = true;
-  onChange(() => { save({ changes: cfg.changes + 1 }); schedule(); });
+  onChange(() => { save({ changes: cfg.changes + 1 }); schedule(AUTO_DELAY, { push: true }); });
   onReset(() => { disconnect(); });
+  // Otra ventana de Astra guardó: se leen sus cuentas de sincronización (no se cuentan dos veces).
+  onExternal(() => { cfg = load(); emit(); });
   if (typeof window !== 'undefined') {
     window.addEventListener('online', () => schedule(1500));
     window.addEventListener('offline', () => { if (cfg.provider) setStatus('offline'); });
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden && cfg.provider && cfg.auto && Date.now() - (cfg.lastSync || 0) > 60000) schedule(1000);
+      if (!cfg.provider || !cfg.auto) return;
+      // Al salir de la app, lo pendiente se sube (si no se acaba de subir).
+      if (document.hidden) { if (pending() && Date.now() - (cfg.lastPushAt || 0) > 30000) syncNow(); return; }
+      if (Date.now() - (cfg.lastSync || 0) > 60000) schedule(1000);
     });
-    setInterval(() => { if (cfg.provider && cfg.auto && !document.hidden && (cfg.changes > cfg.synced || Date.now() - (cfg.lastSync || 0) > 5 * 60000)) syncNow(); }, 60000);
+    setInterval(() => {
+      if (!cfg.provider || !cfg.auto || document.hidden) return;
+      if ((pending() && Date.now() - (cfg.lastPushAt || 0) > MIN_GAP) || Date.now() - (cfg.lastSync || 0) > 5 * 60000) syncNow();
+    }, 60000);
   }
   if (cfg.provider && cfg.auto) schedule(1500);
 }
@@ -325,7 +345,7 @@ export async function connectScript(url, key = null) {
   const tr = scriptTransport({ url: u, key: k });
   const hi = await tr.hello();
   await kvDel('base').catch(() => {});
-  save({ provider: 'script', script: { url: u, key: k }, account: hi.cuenta || '', folderUrl: hi.url || '', synced: -1, connectedAt: Date.now() });
+  save({ provider: 'script', script: { url: u, key: k }, account: hi.cuenta || '', folderUrl: hi.url || '', synced: -1, connectedAt: Date.now(), connV: Number(hi.v) || 1, gz: !!(hi.estado && hi.estado.gz) });
   setStatus('idle');
   return syncNow({ manual: true });
 }

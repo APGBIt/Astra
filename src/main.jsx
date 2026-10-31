@@ -1,7 +1,8 @@
 import { render } from 'preact';
 import './ui/typo.js';
 import { useEffect } from 'preact/hooks';
-import { useApp, runReconcile, applyTheme, getState, onChange } from './app/store.js';
+import { useApp, runReconcile, applyTheme, getState, onChange, ready, snapshotNow, askPersist, useStorage, importData } from './app/store.js';
+import { Guard, SaveAlert, Blocked, watchErrors } from './ui/guard.jsx';
 import { startNotifications } from './app/notify.js';
 import { useRoute, go } from './app/router.js';
 import { initPWA } from './app/pwa.js';
@@ -49,12 +50,13 @@ const sameScreen = (x, y) => screenKey(x.parts) === screenKey(y.parts);
 
 // «registrar=1» en la dirección abre Registrar encima de la pantalla en la que estás (el botón +).
 // La estructura no cambia al abrirlo, así la pantalla de abajo conserva su estado.
+// Cada pantalla va dentro de un «guardián»: si falla, se muestra una salida en vez de quedar en blanco.
 function Screen({ route }) {
   const reg = !!route.query.get('registrar') && route.parts[0] !== 'registrar';
   return (
     <>
-      <ScreenBody route={route} />
-      {reg && <Capture key={`reg:${route.path}`} />}
+      <Guard where={route.path}><ScreenBody route={route} /></Guard>
+      {reg && <Guard where="registrar"><Capture key={`reg:${route.path}`} /></Guard>}
     </>
   );
 }
@@ -115,6 +117,18 @@ function ScreenBody({ route }) {
 }
 
 function App() {
+  const st = useStorage();
+  if (st.blocked) return <div class="app"><Blocked onImport={onBlockedImport} /><Toasts /></div>;
+  return <Main />;
+}
+
+async function onBlockedImport(e) {
+  const f = e.currentTarget.files && e.currentTarget.files[0];
+  if (!f) return;
+  try { importData(await f.text()); toast('Copia recuperada', 'check'); } catch (err) { toast(err.message || 'No se pudo leer la copia', 'info'); }
+}
+
+function Main() {
   const route = useRoute(sameScreen);
   useEffect(() => {
     applyTheme(getState().settings.theme);
@@ -127,15 +141,19 @@ function App() {
     if (!getState().profile.onboarded && location.hash && location.hash !== '#/crear' && location.hash !== '#/sincronizar') go('/', { replace: true });
     startSync();
     startNotifications(getState, onChange);
+    // Copia del día en este teléfono (una por día) y pedir al navegador que no borre los datos.
+    const snap = setTimeout(() => snapshotNow('dia', { oncePerDay: true }), 4000);
+    if (getState().profile.onboarded) askPersist();
     if (googleBack) {
       if (!googleBack.ok) toast(googleBack.error === 'access_denied' ? 'No diste permiso para usar tu Drive' : 'No se pudo iniciar sesión con Google', 'info');
       else if (googleBack.intent === 'connect' || syncConfig().provider !== 'google') connectGoogle().catch((e) => toast((e && e.message) || 'No se pudo conectar con Google Drive', 'info'));
       else syncNow({ manual: true });
     }
-    return () => { document.removeEventListener('visibilitychange', onVis); clearInterval(id); };
+    return () => { document.removeEventListener('visibilitychange', onVis); clearInterval(id); clearTimeout(snap); };
   }, []);
   return (
     <div class="app">
+      <SaveAlert />
       <Screen key={screenKey(route.parts)} route={route} />
       <Toasts />
       <Celebrations />
@@ -145,4 +163,6 @@ function App() {
 }
 
 initPWA();
-render(<App />, document.getElementById('astra'));
+watchErrors();
+// Se pinta cuando los datos están listos (si lo último quedó en la base de datos del navegador, se espera a leerla).
+ready.finally(() => render(<Guard where="app"><App /></Guard>, document.getElementById('astra')));

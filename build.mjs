@@ -125,7 +125,21 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (req.mode === 'navigate') {
-    e.respondWith(fetch(req).then((r) => { const cp = r.clone(); caches.open(CACHE).then((c) => c.put('./index.html', cp)); return r; }).catch(() => caches.match('./index.html')));
+    // Solo la página de la app se guarda como «index.html», y solo si llegó bien: abrir la página del conector
+    // (conector.gs/) o un error de GitHub ya no reemplaza la app guardada para usar sin conexión.
+    const root = new URL('./', self.registration.scope).pathname;
+    if (url.pathname !== root && url.pathname !== root + 'index.html') { e.respondWith(fetch(req).catch(() => caches.match(req))); return; }
+    const net = fetch(req).then((r) => { if (r.ok) { const cp = r.clone(); caches.open(CACHE).then((c) => c.put('./index.html', cp)); } return r; });
+    e.waitUntil(net.then(() => {}, () => {}));
+    // Con internet lento, a los 4 segundos se abre la copia guardada (la nueva queda lista para la próxima vez).
+    e.respondWith(new Promise((resolve) => {
+      let done = false;
+      const end = (r) => { if (!done && r) { done = true; resolve(r); } };
+      const saved = () => caches.match('./index.html');
+      const t = setTimeout(() => { saved().then(end); }, 4000);
+      net.then((r) => { clearTimeout(t); if (r.ok) end(r); else saved().then((hit) => end(hit || r)); })
+        .catch(() => { clearTimeout(t); saved().then((hit) => end(hit || Response.error())); });
+    }));
     return;
   }
   if (url.origin === location.origin && url.pathname.includes('/ocr/')) {
@@ -206,7 +220,10 @@ Tus datos se guardan en tu teléfono y, si lo conectas, en tu propio Google Driv
    Con IA lee mejor: Personaje → Ajustes → Lectura con IA. Lo más seguro es el servidor propio (carpeta server/).
 
 5) TUS DATOS
-   Personaje → Ajustes → «Descargar copia» para guardar tu progreso o pasarlo a otro teléfono.
+   Viven en tu teléfono (base de datos del navegador). Astra guarda sola puntos de restauración:
+   uno al empezar cada día y otro antes de recuperar una copia, borrar todo o juntar con Drive.
+   Personaje → Ajustes → «Puntos de restauración» para volver a uno, y «Descargar copia» para
+   guardar tu progreso fuera del teléfono o pasarlo a otro.
 
 6) SINCRONIZAR CON TU DRIVE
    Personaje → Ajustes → Sincronización. Cada persona conecta su propio Drive:
