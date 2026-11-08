@@ -1,6 +1,6 @@
 {
   "name": "astra",
-  "version": "1.16.0",
+  "version": "1.17.0",
   "description": "Astra: tu vida en modo juego de rol. Vitalidad, energía, caminos, misiones y jefes para crecer en seis áreas de la vida.",
   "scripts": {
     "build": "node build.mjs",
@@ -15,6 +15,7 @@
   },
   "devDependencies": {
     "@tesseract.js-data/spa": "1.0.0",
+    "pdfjs-dist": "^6.5.438",
     "sharp": "^0.34.5",
     "tesseract.js": "6.0.1",
     "tesseract.js-core": "6.0.0"

@@ -1,10 +1,12 @@
 // Astra · caché para usar sin conexión (no guarda datos personales)
-const CACHE = 'astra-22a5563347';
+const CACHE = 'astra-972ab10124';
 const CORE = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE)).then(() => self.skipWaiting())); });
 // El lector de texto (ocr/) vive en su propia caché: no se vuelve a descargar con cada versión de la app.
 const OCR = 'astra-ocr-1';
-self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE && k !== OCR).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
+// El lector de PDF (pdf/, 1.17) también tiene su caché: se descarga una vez.
+const PDF = 'astra-pdf-1';
+self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE && k !== OCR && k !== PDF).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
@@ -27,8 +29,9 @@ self.addEventListener('fetch', (e) => {
     }));
     return;
   }
-  if (url.origin === location.origin && url.pathname.includes('/ocr/')) {
-    e.respondWith(caches.open(OCR).then((c) => c.match(req).then((hit) => hit || fetch(req).then((r) => { if (r.ok) c.put(req, r.clone()); return r; }))));
+  if (url.origin === location.origin && (url.pathname.includes('/ocr/') || url.pathname.includes('/pdf/'))) {
+    const box = url.pathname.includes('/pdf/') ? PDF : OCR;
+    e.respondWith(caches.open(box).then((c) => c.match(req).then((hit) => hit || fetch(req).then((r) => { if (r.ok) c.put(req, r.clone()); return r; }))));
     return;
   }
   if (url.origin === location.origin || url.host.endsWith('fonts.googleapis.com') || url.host.endsWith('fonts.gstatic.com')) {

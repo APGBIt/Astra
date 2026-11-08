@@ -119,7 +119,9 @@ const CORE = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE)).then(() => self.skipWaiting())); });
 // El lector de texto (ocr/) vive en su propia caché: no se vuelve a descargar con cada versión de la app.
 const OCR = 'astra-ocr-1';
-self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE && k !== OCR).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
+// El lector de PDF (pdf/, 1.17) también tiene su caché: se descarga una vez.
+const PDF = 'astra-pdf-1';
+self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE && k !== OCR && k !== PDF).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
@@ -142,8 +144,9 @@ self.addEventListener('fetch', (e) => {
     }));
     return;
   }
-  if (url.origin === location.origin && url.pathname.includes('/ocr/')) {
-    e.respondWith(caches.open(OCR).then((c) => c.match(req).then((hit) => hit || fetch(req).then((r) => { if (r.ok) c.put(req, r.clone()); return r; }))));
+  if (url.origin === location.origin && (url.pathname.includes('/ocr/') || url.pathname.includes('/pdf/'))) {
+    const box = url.pathname.includes('/pdf/') ? PDF : OCR;
+    e.respondWith(caches.open(box).then((c) => c.match(req).then((hit) => hit || fetch(req).then((r) => { if (r.ok) c.put(req, r.clone()); return r; }))));
     return;
   }
   if (url.origin === location.origin || url.host.endsWith('fonts.googleapis.com') || url.host.endsWith('fonts.gstatic.com')) {
@@ -214,18 +217,22 @@ Tus datos se guardan en tu teléfono y, si lo conectas, en tu propio Google Driv
    Android (Chrome): menú ⋮ → «Instalar app».
    iPhone (Safari): Compartir → «Agregar a inicio».
 
-4) LECTURA DE RECIBOS Y COMPROBANTES
+4) ANÁLISIS DE LABORATORIO
+   Salud → Análisis: sube el PDF, la foto o el texto de tus resultados. Astra los lee en el teléfono
+   (carpeta pdf/ para los PDF y ocr/ para las fotos), quita tus datos personales y te deja revisar cada prueba.
+
+5) LECTURA DE RECIBOS Y COMPROBANTES
    Finanzas → Recibo: toma la foto o sube la captura. Sin IA, Astra lee el texto en el teléfono (OCR, carpeta ocr/):
    la primera vez descarga el lector (unos 6 MB) y después funciona sin internet.
    Con IA lee mejor: Personaje → Ajustes → Lectura con IA. Lo más seguro es el servidor propio (carpeta server/).
 
-5) TUS DATOS
+6) TUS DATOS
    Viven en tu teléfono (base de datos del navegador). Astra guarda sola puntos de restauración:
    uno al empezar cada día y otro antes de recuperar una copia, borrar todo o juntar con Drive.
    Personaje → Ajustes → «Puntos de restauración» para volver a uno, y «Descargar copia» para
    guardar tu progreso fuera del teléfono o pasarlo a otro.
 
-6) SINCRONIZAR CON TU DRIVE
+7) SINCRONIZAR CON TU DRIVE
    Personaje → Ajustes → Sincronización. Cada persona conecta su propio Drive:
    con el conector propio (un script en su Drive) o con «Conectar con Google».
    El código del conector está en conector.gs/ (se abre en el navegador para copiarlo).
@@ -300,6 +307,24 @@ writeFileSync('dist/ocr/LEEME.txt', `Lector de texto (OCR) de Astra
 Tesseract.js ${JSON.parse(readFileSync('node_modules/tesseract.js/package.json', 'utf8')).version} y tesseract.js-core ${JSON.parse(readFileSync('node_modules/tesseract.js-core/package.json', 'utf8')).version} (licencia Apache 2.0),
 con el modelo de español de tessdata (paquete @tesseract.js-data/spa, licencia MIT; datos de Tesseract, Apache 2.0).
 En teléfonos sin WebAssembly SIMD, el núcleo sin SIMD se descarga de cdn.jsdelivr.net.
+`);
+
+// Lector de PDF para los análisis (1.17): pdf.js de Mozilla, versión «legacy» para teléfonos menos nuevos.
+// Se descarga la primera vez que se abre un PDF (unos 1.9 MB) y queda guardado.
+rmSync('dist/pdf', { recursive: true, force: true });
+mkdirSync('dist/pdf/wasm', { recursive: true });
+for (const [from, to] of [
+  ['node_modules/pdfjs-dist/legacy/build/pdf.min.mjs', 'pdf.min.mjs'],
+  ['node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs', 'pdf.worker.min.mjs'],
+  ['node_modules/pdfjs-dist/wasm/openjpeg.wasm', 'wasm/openjpeg.wasm'],
+  ['node_modules/pdfjs-dist/wasm/jbig2.wasm', 'wasm/jbig2.wasm'],
+  ['node_modules/pdfjs-dist/LICENSE', 'LICENSE-pdf.js.txt'],
+  ['node_modules/pdfjs-dist/wasm/LICENSE_OPENJPEG', 'wasm/LICENSE_OPENJPEG.txt'],
+  ['node_modules/pdfjs-dist/wasm/LICENSE_JBIG2', 'wasm/LICENSE_JBIG2.txt'],
+]) cpSync(from, `dist/pdf/${to}`);
+writeFileSync('dist/pdf/LEEME.txt', `Lector de PDF de Astra (para los análisis de laboratorio)
+pdf.js ${JSON.parse(readFileSync('node_modules/pdfjs-dist/package.json', 'utf8')).version} de Mozilla (licencia Apache 2.0), versión legacy.
+wasm/: decodificadores de imágenes OpenJPEG y JBIG2 (sus licencias van al lado), solo para PDF escaneados.
 `);
 
 // Copia para GitHub Pages (se publica la carpeta docs/).

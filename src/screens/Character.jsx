@@ -4,7 +4,9 @@ import { Nav, TopBar, Segs, Bar, Avatar, TChip, Sheet, SheetHead, NumberChips, t
 import { PathSummary } from './Home.jsx';
 import { RecordCard } from './Record.jsx';
 import { RoutineChecklist } from './Sleep.jsx';
-import { WeeklyReviewCard } from './Reflect.jsx';
+import { HabitPicker } from './Vitals.jsx';
+import { sleepNeed, bedtimeForNeed, needText, setHabits } from '../game/vitals.js';
+import { readyWeek } from '../game/report.js';
 import { journalDays } from '../game/mind.js';
 import { act, useApp } from '../app/store.js';
 import { back } from '../app/router.js';
@@ -156,7 +158,8 @@ export function Character() {
         <div class="grid2">
           <a href="#/tienda" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)' }}><span class="row"><Icon name="bag" /><span class="strong grow">Tienda</span></span><span class="small muted">{num(s.gold)} de oro</span></a>
           <a href="#/posada" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)' }}><span class="row"><Icon name="moon" /><span class="strong grow">Posada</span></span><span class="small muted">{s.inn[today] ? 'Hoy cerrado' : 'Cierra el día'}</span></a>
-          <a href="#/cronica" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)' }}><span class="row"><Icon name="chart" /><span class="strong grow">Crónica</span></span><span class="small muted">{Object.keys(s.achievements).length} insignias</span></a>
+          <a href="#/informe" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)', gridColumn: '1 / -1', background: 'var(--crecimiento-soft)', borderColor: 'transparent' }}><span class="row"><Icon name="chart" /><span class="strong grow">Informe semanal</span><Icon name="right" size={18} /></span><span class="small muted">Tu progreso y lo que conviene mejorar{s.reports && s.reports.seen && !s.reports.seen[readyWeek(today, new Date().getHours())] ? ' · hay uno nuevo' : ''}</span></a>
+          <a href="#/cronica" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)' }}><span class="row"><Icon name="trophy" /><span class="strong grow">Crónica</span></span><span class="small muted">{Object.keys(s.achievements).length} insignias</span></a>
           <a href="#/misiones" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)' }}><span class="row"><Icon name="sword" /><span class="strong grow">Misiones</span></span><span class="small muted">{plural(liveMissions(s).length, 'activa', 'activas')}</span></a>
           <a href="#/ajustes" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)', gridColumn: '1 / -1' }}><span class="row"><Icon name="gear" /><span class="strong grow">Ajustes</span><Icon name="right" size={18} /></span><span class="small muted">Metas diarias, notificaciones, IA, copia de seguridad y tema</span></a>
         </div>
@@ -202,7 +205,10 @@ export function Inn() {
   const [wake, setWake] = useState(prev && prev.wake ? prev.wake : s.profile.wakeGoal || '');
   const [bed, setBed] = useState(prev && prev.bed ? prev.bed : (s.profile.wakeGoal && bedtimeFor(s, s.profile.wakeGoal)) || '');
   const [routine, setRoutine] = useState(prev && Array.isArray(prev.routine) ? prev.routine : []);
-  const suggested = bedtimeFor(s, wake);
+  // 1.17: los hábitos del día (para ver su efecto) y el sueño que necesitas esta noche (meta + deuda + esfuerzo − siesta).
+  const [habits, setHabitList] = useState(() => { const hb = (s.health[today] || {}).habits; return hb ? Object.keys(hb).filter((k) => hb[k] === 1) : []; });
+  const need = sleepNeed(s, today);
+  const suggested = bedtimeForNeed(s, wake, need.need) || bedtimeFor(s, wake);
   const planned = sleepFromTimes(bed, wake);
   const paidRoutine = prev ? prev.routinePaid || 0 : 0;
   const d = s.days[today];
@@ -211,7 +217,7 @@ export function Inn() {
   const todosToday = s.todos.filter((t) => t.done === today).length;
   const todosTomorrow = s.todos.filter((t) => !t.done && t.due && t.due <= addDays(today, 1)).length;
   const save = () => {
-    const first = act((st, t, ev) => saveInn(st, { mood, goods, better, bed, wake, routine, intent: intentDone || null }, t, ev));
+    const first = act((st, t, ev) => { setHabits(st, t, habits); return saveInn(st, { mood, goods, better, bed, wake, routine, intent: intentDone || null }, t, ev); });
     const extra = Math.max(0, routine.length - paidRoutine) * 2;
     toast(`${first ? 'Descansaste en la posada · +5 de vitalidad' : 'Cierre actualizado'}${extra ? ` · +${extra} XP de Vigor` : ''}`, 'moon');
     back('/');
@@ -252,9 +258,14 @@ export function Inn() {
           <div class="field"><label for="bd">Me voy a acostar a las</label><input id="bd" type="time" class="input" value={bed} onInput={(e) => setBed(e.currentTarget.value)} /></div>
         </div>
         <span class="small muted">
-          {suggested ? <>Para dormir {fmtHours(s.profile.sleepGoal)}, acuéstate a las <b>{fmtClock(suggested)}</b>{bed && suggested !== bed ? <> · <button type="button" class="link-btn" style={{ minHeight: 0, display: 'inline', padding: 0 }} onClick={() => setBed(suggested)}>usar esa hora</button>.</> : ''}</> : `Dormir ${fmtHours(s.profile.sleepGoal)} llena tu energía de mañana.`}
+          {suggested ? <>Esta noche necesitas {fmtHours(need.need)}{need.need !== need.goal ? ` (${needText(need)})` : ''}: acuéstate a las <b>{fmtClock(suggested)}</b>{bed && suggested !== bed ? <> · <button type="button" class="link-btn" style={{ minHeight: 0, display: 'inline', padding: 0 }} onClick={() => setBed(suggested)}>usar esa hora</button>.</> : ''}</> : `Esta noche necesitas ${fmtHours(need.need)}${need.need !== need.goal ? ` (${needText(need)})` : ''}. Escribe a qué hora te levantas y te digo a qué hora acostarte.`}
           {planned != null && bed && wake ? ` Así dormirías ${fmtHours(planned)}.` : ''}
         </span>
+      </section>
+      <section class="stack-sm" aria-label="Hábitos de hoy">
+        <span class="label">¿Qué hubo hoy?</span>
+        <span class="small muted">Marca lo que pasó (o nada). Con unos días, en Salud verás qué te ayuda a dormir y a amanecer mejor.</span>
+        <HabitPicker value={habits} onChange={setHabitList} />
       </section>
       <section class="stack-sm" aria-label="Rutina para dormir">
         <div class="between-c"><span class="label">Rutina para dormir</span><span class="small muted semi">+2 XP de Vigor cada una</span></div>
@@ -349,7 +360,11 @@ export function Chronicle() {
         <div class="kpi"><span class="v" style={{ color: 'var(--xp-ink)' }}>+{xp.toLocaleString('en-US')}</span><span class="l">XP</span></div>
         <div class="kpi"><span class="v">{moods}</span><span class="l">Check-ins</span></div>
       </div>
-      <WeeklyReviewCard s={s} today={today} />
+      <a href="#/informe" class="card tight" style={{ textDecoration: 'none', color: 'var(--ink)', flexDirection: 'row', alignItems: 'center', background: 'var(--crecimiento-soft)', borderColor: 'transparent' }}>
+        <span class="tile" style={{ background: 'var(--surface)', color: 'var(--crecimiento)' }}><Icon name="chart" /></span>
+        <span class="stack-xs grow"><span class="strong">Informe semanal</span><span class="small muted">Lo que salió bien, lo que conviene mejorar, tu foco y tu revisión de la semana.</span></span>
+        <Icon name="right" size={18} />
+      </a>
       <section class="card" aria-label="Vitalidad de la semana">
         <div class="between-c"><h2 class="h2">Vitalidad</h2><span class="small muted">al cierre de cada día</span></div>
         <VitChart week={week} />

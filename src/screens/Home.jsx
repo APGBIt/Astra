@@ -15,7 +15,9 @@ import { CheckIn } from './Emotions.jsx';
 import { CalmPlayer, WorrySheet, ThoughtSheet, runAction } from './Calm.jsx';
 import { IntentPrompt } from './Journal.jsx';
 import { ReviewPrompt, Who5Prompt } from './Reflect.jsx';
-import { reviewDue, wellbeingInfo } from '../game/mind.js';
+import { reviewDue, wellbeingInfo, weekStart } from '../game/mind.js';
+import { reportDue } from '../game/report.js';
+import { ReportPrompt } from './Report.jsx';
 import { act, useApp } from '../app/store.js';
 import { fmtDay, addDays, diffDays } from '../app/dates.js';
 import { AREA, MOOD_QUADS } from '../game/content.js';
@@ -275,7 +277,12 @@ function homePrompts(s, today, hour, en, pending, onPay) {
   if (en.left <= 1 && pending.length) out.push({ key: 'potion', el: <PotionPrompt /> });
   if (winPromptDue(s, today)) out.push({ key: 'win', el: <WinPrompt /> });
   if (hour >= 18 && !s.inn[today]) out.push({ key: 'inn', el: <InnPrompt /> });
-  if (s.mind && reviewDue(s, today, hour)) out.push({ key: 'review', el: <ReviewPrompt /> });
+  // 1.17: «¿Cómo amaneciste?» en la mañana (después del sueño) y el informe de la semana cuando está listo.
+  const hToday = s.health[today] || {};
+  if (hour >= 5 && hour < 12 && hToday.sleep != null && !hToday.ready) out.push({ key: 'ready', el: <ReadyPrompt /> });
+  const repWk = reportDue(s, today, hour);
+  if (repWk) out.push({ key: 'report', el: <ReportPrompt wk={repWk} /> });
+  else if (s.mind && reviewDue(s, today, hour)) out.push({ key: 'review', el: <ReviewPrompt wk={weekStart(today)} /> });
   else if (s.mind && hour >= 17 && wellbeingInfo(s, today).due && (s.profile.created || today) <= addDays(today, -6)) out.push({ key: 'who5', el: <Who5Prompt s={s} today={today} /> });
   if (openAlerts(s, today).length) out.push({ key: 'record', el: <RecordAlertsNote /> });
   const shop = shopSummary(s, today);
@@ -286,6 +293,18 @@ function homePrompts(s, today, hour, en, pending, onPay) {
   const wk = planWeek(s, today);
   if (hour >= 12 && wk.todayKind && !wk.todayDone) out.push({ key: 'move', el: <MovePrompt kind={wk.todayKind} /> });
   return out;
+}
+
+function ReadyPrompt() {
+  return (
+    <a href="#/area/salud?checkin=1" class="card" style={{ textDecoration: 'none', color: 'var(--ink)' }} aria-label="Cómo amaneciste">
+      <div class="row">
+        <span class="tile" style={{ background: 'var(--salud-soft)', color: 'var(--salud)' }}><Icon name="sun" /></span>
+        <div class="stack-xs grow"><span class="strong">¿Cómo amaneciste?</span><span class="small muted">Cuatro toques y te digo si hoy conviene exigirte o ir suave.</span></div>
+        <Icon name="right" size={18} />
+      </div>
+    </a>
+  );
 }
 
 function MovePrompt({ kind }) {

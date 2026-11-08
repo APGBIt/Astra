@@ -28,6 +28,7 @@ import { SuppPlanCard } from './Nutrition.jsx';
 import { PlateCard } from './Plate.jsx';
 import { TrainingCard, RoutinePlayer } from './Training.jsx';
 import { ROUTINE } from '../game/routines.js';
+import { ReadinessCard, CheckInSheet, LoadCard, SleepNeedNote, VitalsCard, VitalSheet, HabitsEffectCard, LongTermCard, LabsCard } from './Vitals.jsx';
 
 // ---------- Mapa de áreas ----------
 
@@ -137,15 +138,19 @@ function Talents({ area }) {
 // ---------- Salud ----------
 
 // 1.15: un índice arriba para saltar entre las partes de Salud sin bajar seis pantallas.
-const HEALTH_SECTIONS = [['sec-hoy', 'Hoy'], ['sec-medicinas', 'Medicinas'], ['sec-comida', 'Comida'], ['sec-sueno', 'Sueño'], ['sec-mov', 'Movimiento'], ['sec-tend', 'Tendencias'], ['sec-mis', 'Misiones']];
+// 1.17: Señales (pulso, VFC, presión, peso y hábitos) y Análisis de laboratorio.
+const HEALTH_SECTIONS = [['sec-hoy', 'Hoy'], ['sec-medicinas', 'Medicinas'], ['sec-comida', 'Comida'], ['sec-sueno', 'Sueño'], ['sec-mov', 'Movimiento'], ['sec-senales', 'Señales'], ['sec-analisis', 'Análisis'], ['sec-tend', 'Tendencias'], ['sec-mis', 'Misiones']];
 
 export function Health({ query = null }) {
   const s = useApp();
   const today = s.energy.day;
   const h = s.health[today] || {};
-  const [sheet, setSheet] = useState(null);
+  const [sheet, setSheet] = useState(() => (query && query.get('checkin') ? 'checkin' : null));
   const [play, setPlay] = useState(() => (query && ROUTINE[query.get('rutina')] ? query.get('rutina') : null));
   const [sleepDay, setSleepDay] = useState(today);
+  // «¿Cómo amaneciste?» desde Hoy también abre la hoja si ya estabas en Salud.
+  const wantCheckin = !!(query && query.get('checkin'));
+  useEffect(() => { if (wantCheckin) setSheet('checkin'); }, [wantCheckin]);
   const goal = dailyGoal(s, 'sleep');
   const g = { steps: dailyGoal(s, 'steps'), water: dailyGoal(s, 'water'), exercise: dailyGoal(s, 'exercise'), veg: dailyGoal(s, 'veg'), calm: dailyGoal(s, 'calm') };
   const calmToday = calmMinutes(s, today);
@@ -168,6 +173,7 @@ export function Health({ query = null }) {
         <AreaHeader area="salud" />
         <SectionNav items={HEALTH_SECTIONS} label="Secciones de Salud" />
         <div id="sec-hoy" class="sec">
+          <ReadinessCard s={s} today={today} onCheckIn={() => setSheet('checkin')} onSleep={() => editSleep(today)} />
           <div class="grid2">
             {tiles.map((t) => (
               <div key={t.key} style={{ position: 'relative' }}>
@@ -196,15 +202,25 @@ export function Health({ query = null }) {
             <SleepWeek s={s} today={today} onEdit={editSleep} />
             <span class="tiny muted">Toca una noche para registrarla o corregirla.</span>
             <SleepInsights s={s} today={today} onWakeGoal={() => setSheet('goals')} />
+            <SleepNeedNote s={s} today={today} />
             <a href="#/posada" class="link-btn" style={{ alignSelf: 'flex-start' }}><Icon name="moon" size={16} />Rutina para dormir en la posada</a>
           </section>
         </div>
         <div id="sec-mov" class="sec">
           <ActivityCard s={s} today={today} onLog={() => setSheet('exercise')} />
+          <LoadCard s={s} today={today} />
           <TrainingCard s={s} today={today} onPlay={setPlay} />
+        </div>
+        <div id="sec-senales" class="sec">
+          <VitalsCard s={s} today={today} onOpen={(k) => setSheet({ kind: 'vital', k })} />
+          <HabitsEffectCard s={s} today={today} />
+        </div>
+        <div id="sec-analisis" class="sec">
+          <LabsCard s={s} today={today} />
         </div>
         <div id="sec-tend" class="sec">
           <HealthHighlights s={s} today={today} />
+          <LongTermCard s={s} today={today} />
           <TrendsCard s={s} today={today} />
           <WellbeingCard s={s} today={today} />
         </div>
@@ -212,13 +228,15 @@ export function Health({ query = null }) {
           <AreaMissions area="salud" />
           <AreaTodos area="salud" />
           <Talents area="salud" />
-          <div class="note"><Icon name="info" size={18} /><span>En la versión para Android (APK), tus pasos y tu sueño llegarán solos desde Health Connect. Por ahora los registras aquí o con «Cuéntame qué hiciste».</span></div>
+          <div class="note"><Icon name="info" size={18} /><span>En la versión para Android (APK), tus pasos, tu sueño, tu pulso y tu VFC llegarán solos desde Health Connect. Por ahora los registras aquí o con «Cuéntame qué hiciste».</span></div>
         </div>
       </main>
       <Nav active="areas" />
       {sheet === 'goals' && <GoalsSheet onClose={() => setSheet(null)} />}
       {sheet === 'steps' && <NumberSheet title="Pasos de hoy" label="Pasos" initial={h.steps || ''} onClose={() => setSheet(null)} onSave={(v) => save({ steps: v }, 'Pasos guardados')} />}
-      {sheet === 'exercise' && <ExerciseSheet onClose={() => setSheet(null)} onSave={(v, type, inten, strength) => save({ exercise: (h.exercise || 0) + v, exType: type, exIntensity: inten, strength }, `+${v} minutos de ${(EXERCISE_TYPES.find((x) => x.key === type) || { label: 'actividad' }).label.toLowerCase()}${inten === 'intensa' ? ' (cuentan doble)' : ''}`)} />}
+      {sheet === 'checkin' && <CheckInSheet s={s} day={today} today={today} onClose={() => setSheet(null)} />}
+      {sheet && sheet.kind === 'vital' && <VitalSheet s={s} today={today} kind={sheet.k} onClose={() => setSheet(null)} />}
+      {sheet === 'exercise' && <ExerciseSheet onClose={() => setSheet(null)} onSave={(v, type, inten, strength, rpe) => save({ exercise: (h.exercise || 0) + v, exType: type, exIntensity: inten, strength, rpe }, `+${v} minutos de ${(EXERCISE_TYPES.find((x) => x.key === type) || { label: 'actividad' }).label.toLowerCase()}${inten === 'intensa' ? ' (cuentan doble)' : ''}`)} />}
       {sheet === 'meds' && <MedsSheet s={s} today={today} onClose={() => setSheet(null)} onEdit={(id) => setSheet({ kind: 'med', id })} />}
       {sheet && sheet.kind === 'med' && <MedSheet key={sheet.id || 'nueva'} s={s} id={sheet.id} onClose={() => setSheet(null)} />}
       {sheet === 'sleep' && <SleepSheet s={s} day={sleepDay} today={today} onClose={() => setSheet(null)} />}

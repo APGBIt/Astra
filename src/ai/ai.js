@@ -57,7 +57,7 @@ async function httpError(res) {
 }
 
 // Llama a la IA con una instrucción y, si hace falta, una imagen. Devuelve JSON.
-export async function aiJSON(provider, prompt, { image = null, signal, task = 'texto' } = {}) {
+export async function aiJSON(provider, prompt, { image = null, signal, task = 'texto', maxTokens = 2000 } = {}) {
   if (!provider) throw { code: 'no_ai' };
   if (provider.kind === 'claude') {
     return provider.sample.json(prompt, { images: image || undefined, signal, cache: false });
@@ -85,7 +85,7 @@ export async function aiJSON(provider, prompt, { image = null, signal, task = 't
           'anthropic-version': '2023-06-01',
           'anthropic-dangerous-direct-browser-access': 'true',
         },
-        body: JSON.stringify({ model: provider.model, max_tokens: 2000, messages: [{ role: 'user', content }] }),
+        body: JSON.stringify({ model: provider.model, max_tokens: maxTokens, messages: [{ role: 'user', content }] }),
       });
     }
   } catch (e) {

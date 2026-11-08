@@ -31,6 +31,8 @@ import { Wins } from './screens/Wins.jsx';
 import { Growth } from './screens/Growth.jsx';
 import { WordScreen } from './screens/Word.jsx';
 import { SyncScreen } from './screens/Sync.jsx';
+import { Labs } from './screens/Labs.jsx';
+import { Report } from './screens/Report.jsx';
 import { startSync, syncNow, connectGoogle, syncConfig } from './app/sync.js';
 import { handleGoogleRedirect } from './app/google.js';
 import { toast } from './ui/kit.jsx';
@@ -112,6 +114,8 @@ function ScreenBody({ route }) {
     case 'metas': return <Growth query={q} />;
     case 'palabra': return <WordScreen />;
     case 'sincronizar': return <SyncScreen />;
+    case 'analiticas': return <Labs query={q} />;
+    case 'informe': return <Report query={q} />;
     default: return <Home />;
   }
 }

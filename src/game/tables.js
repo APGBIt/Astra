@@ -17,6 +17,8 @@ import { plateFull } from './food.js';
 import { nutrientOf } from './nutrients.js';
 import { shopOf, priceOf, wishInfo } from './shop.js';
 import { aisleOf, qtyText } from './shoplex.js';
+import { labRows } from './labs.js';
+import { readiness, dayLoad, READY_ITEMS, HABITS } from './vitals.js';
 import {
   accountLabel, catName, catOf, choreStatus, doneCount, freqLabel, repeatLabel, todoCategory, txCur, txDOP, txKind, txOrig, txRate,
 } from './logic.js';
@@ -134,17 +136,26 @@ export function buildTables(s, today) {
       }),
     ),
     // 1.10: minutos intensos, día de fuerza y medicinas tomadas.
+    // 1.17: preparación, cómo amaneciste, carga, pulso, VFC, presión, peso y hábitos del día.
     Salud: table(
-      ['Fecha', 'Sueño (horas)', 'Me acosté', 'Me levanté', 'Calidad', 'Pasos', 'Agua (vasos)', 'Ejercicio (min)', 'Tipo de ejercicio', 'Frutas y verduras', 'Minutos intensos', 'Fuerza', 'Medicinas tomadas', 'Comidas anotadas', 'Platos completos', 'Pausas activas'],
+      ['Fecha', 'Sueño (horas)', 'Me acosté', 'Me levanté', 'Calidad', 'Pasos', 'Agua (vasos)', 'Ejercicio (min)', 'Tipo de ejercicio', 'Frutas y verduras', 'Minutos intensos', 'Fuerza', 'Medicinas tomadas', 'Comidas anotadas', 'Platos completos', 'Pausas activas',
+        'Preparación', 'Cómo amaneciste', 'Carga', 'Pulso en reposo', 'VFC (ms)', 'Presión', 'Peso (kg)', 'Hábitos'],
       days.map((d) => {
         const h = s.health[d] || {};
         const types = Object.entries(h.exTypes || {}).map(([k, v]) => `${label(EXERCISE_TYPES, k)} ${v}`).join(', ');
         const doses = s.meds && s.meds.length ? dosesFor(s, d) : [];
+        const rd = readiness(s, d);
+        const rdy = h.ready ? READY_ITEMS.filter((x) => h.ready[x.key]).map((x) => `${x.label} ${h.ready[x.key]}`).join(', ') + (h.ready.sick ? ', enfermo' : '') : '';
+        const bp = Array.isArray(h.bp) && h.bp.length ? h.bp.map((r) => `${r.sys}/${r.dia} (${r.t})`).join(', ') : '';
+        const hab = h.habits ? HABITS.filter((x) => h.habits[x.key] === 1).map((x) => x.label).join(', ') || 'Ninguno' : '';
         return [d, h.sleep ?? '', h.bed || '', h.wake || '', h.quality ? label(SLEEP_QUALITY, h.quality, 'v') : '', h.steps ?? '', h.water ?? '', h.exercise ?? '', types, h.veg ?? '',
           h.exVig || '', h.strength || (h.exTypes || {}).gimnasio > 0 ? 'Sí' : '', doses.length ? `${doses.filter((x) => x.status === 'si').length} de ${doses.length}` : '',
-          h.food ? Object.keys(h.food).length : '', h.food ? Object.values(h.food).filter(plateFull).length : '', h.breaks || ''];
+          h.food ? Object.keys(h.food).length : '', h.food ? Object.values(h.food).filter(plateFull).length : '', h.breaks || '',
+          rd ? rd.score : '', rdy, h.exercise ? dayLoad(h) : '', h.rhr || '', h.hrv || '', bp, h.weight || '', hab];
       }),
     ),
+    // 1.17: análisis de laboratorio (sin el informe ni la foto: solo las pruebas).
+    Análisis: table(['Fecha', 'Laboratorio', 'Prueba', 'Resultado', 'Unidad', 'Rango del informe', 'Estado', 'Según'], labRows(s)),
     Medicinas: table(
       ['Nombre', 'Dosis', 'Tipo', 'Nutriente', 'Horas', 'Días', 'Desde', 'Hasta', 'Tomadas en 30 días', 'Nota'],
       (s.meds || []).map((m) => {

@@ -101,6 +101,10 @@ export function defaultState(today = dayKey()) {
     mind: defaultMind(),
     growth: defaultGrowth(),
     shop: defaultShop(),
+    // 1.17: análisis de laboratorio, señales vitales e informe semanal.
+    labs: [],
+    vitals: { wunit: 'lb', bpWeek: null, sex: '' },
+    reports: { seen: {}, focus: {}, claimed: {} },
   };
 }
 
@@ -834,6 +838,9 @@ export function logHealth(s, day, patch, today, ev) {
   }
   if (patch.exercise != null) {
     const before = h.exercise || 0;
+    // 1.17: la carga del día (minutos × esfuerzo, método sRPE de Foster). En días de antes se parte de la estimada.
+    const vigBefore = Math.min(before, h.exVig || 0);
+    const loadBefore = h.load != null ? h.load : (before - vigBefore) * 3 + vigBefore * 6;
     h.exercise = clamp(Math.round(Number(patch.exercise) || 0), 0, 600);
     // Minutos por tipo (caminar, gimnasio…): lo que sumas ahora va al tipo que elegiste.
     if (h.exercise > before && patch.exType) {
@@ -852,6 +859,13 @@ export function logHealth(s, day, patch, today, ev) {
     let addedVig = 0;
     if (added > 0 && inten === 'intensa') { addedVig = added; h.exVig = (h.exVig || 0) + added; }
     if (h.exVig) { h.exVig = Math.min(h.exVig, h.exercise); if (!h.exVig) delete h.exVig; }
+    if (added > 0) {
+      const rpe = clamp(Math.round(Number(patch.rpe) || (inten === 'intensa' ? 6 : 3)), 1, 10);
+      h.load = Math.round(loadBefore + added * rpe);
+    } else if (added < 0) {
+      h.load = before > 0 ? Math.round(loadBefore * (h.exercise / before)) : 0;
+      if (!h.load) delete h.load;
+    }
     if (added > 0 && (patch.strength || (patch.strength === undefined && type && type.strength))) {
       if (!h.strength) { h.strength = true; gainXP(s, 'salud', 5, day, ev); }
     }
@@ -2791,6 +2805,10 @@ export const ACHIEVEMENTS = [
   } },
   { id: 'fuerza8', icon: 'dumbbell', title: 'Cuerpo fuerte', desc: 'Trabaja fuerza 8 días.', test: (s) => Object.values(s.health || {}).filter((h) => h && (h.strength || (h.exTypes || {}).gimnasio > 0 || (h.exTypes || {}).fuerza > 0)).length >= 8 },
   { id: 'sueno1', icon: 'star', title: 'De la lista a la vida', desc: 'Logra algo de tu lista de cosas por lograr.', test: (s) => !!s.growth && s.growth.dreams.some((d) => d.done) },
+  // 1.17: análisis, cómo amaneces y foco de la semana.
+  { id: 'analisis1', icon: 'flask', title: 'Chequeo al día', desc: 'Guarda tus primeros análisis de laboratorio.', test: (s) => (s.labs || []).length >= 1 },
+  { id: 'manana14', icon: 'sun', title: 'Me escucho', desc: 'Anota cómo amaneciste 14 días.', test: (s) => Object.values(s.health || {}).filter((h) => h && h.ready).length >= 14 },
+  { id: 'foco3', icon: 'target', title: 'Semana a semana', desc: 'Cumple el foco de 3 semanas.', test: (s) => Object.keys((s.reports && s.reports.claimed) || {}).length >= 3 },
 ];
 
 export function checkAchievements(s, today, ev) {

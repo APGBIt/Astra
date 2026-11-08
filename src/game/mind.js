@@ -517,11 +517,12 @@ export function reviewFor(s, day) {
   return ((s.mind && s.mind.reviews) || []).find((r) => r.week === wk) || null;
 }
 
-export function saveReview(s, p, today, ev = []) {
-  const wk = weekStart(today);
-  let r = reviewFor(s, today);
+// `day`: un día de la semana que revisas (1.17: desde el informe se puede cerrar la semana pasada el lunes).
+export function saveReview(s, p, today, ev = [], day = today) {
+  const wk = weekStart(day);
+  let r = reviewFor(s, day);
   const first = !r;
-  if (!r) { r = { id: uid(), week: wk, day: today }; s.mind.reviews.unshift(r); }
+  if (!r) { r = { id: uid(), week: wk, day: today }; s.mind.reviews.unshift(r); s.mind.reviews.sort((a, b) => (a.week < b.week ? 1 : a.week > b.week ? -1 : 0)); }
   r.day = today;
   for (const k of ['good', 'hard', 'learned', 'focus']) r[k] = txt(p[k], 800);
   r.values = {};

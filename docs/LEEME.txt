@@ -15,18 +15,22 @@ Tus datos se guardan en tu teléfono y, si lo conectas, en tu propio Google Driv
    Android (Chrome): menú ⋮ → «Instalar app».
    iPhone (Safari): Compartir → «Agregar a inicio».
 
-4) LECTURA DE RECIBOS Y COMPROBANTES
+4) ANÁLISIS DE LABORATORIO
+   Salud → Análisis: sube el PDF, la foto o el texto de tus resultados. Astra los lee en el teléfono
+   (carpeta pdf/ para los PDF y ocr/ para las fotos), quita tus datos personales y te deja revisar cada prueba.
+
+5) LECTURA DE RECIBOS Y COMPROBANTES
    Finanzas → Recibo: toma la foto o sube la captura. Sin IA, Astra lee el texto en el teléfono (OCR, carpeta ocr/):
    la primera vez descarga el lector (unos 6 MB) y después funciona sin internet.
    Con IA lee mejor: Personaje → Ajustes → Lectura con IA. Lo más seguro es el servidor propio (carpeta server/).
 
-5) TUS DATOS
+6) TUS DATOS
    Viven en tu teléfono (base de datos del navegador). Astra guarda sola puntos de restauración:
    uno al empezar cada día y otro antes de recuperar una copia, borrar todo o juntar con Drive.
    Personaje → Ajustes → «Puntos de restauración» para volver a uno, y «Descargar copia» para
    guardar tu progreso fuera del teléfono o pasarlo a otro.
 
-6) SINCRONIZAR CON TU DRIVE
+7) SINCRONIZAR CON TU DRIVE
    Personaje → Ajustes → Sincronización. Cada persona conecta su propio Drive:
    con el conector propio (un script en su Drive) o con «Conectar con Google».
    El código del conector está en conector.gs/ (se abre en el navegador para copiarlo).

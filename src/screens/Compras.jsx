@@ -376,7 +376,8 @@ function ScanSheet({ list, mode: mode0, onClose }) {
       if (provider) {
         ctl.current = new AbortController();
         try {
-          const raw = await aiJSON(provider, shopScanPrompt(mode, known), { image: prepared.blob, signal: ctl.current.signal, task: 'compras' });
+          // «recibo»: los servidores propios de antes de la 1.17 solo aceptan la foto con esa tarea (con «compras» la descartaban).
+          const raw = await aiJSON(provider, shopScanPrompt(mode, known), { image: prepared.blob, signal: ctl.current.signal, task: 'recibo' });
           r = checkShopScan(raw, mode);
         } catch (err) {
           if (err && err.code === 'cancelled') return;

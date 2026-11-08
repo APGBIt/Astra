@@ -6,7 +6,7 @@
 //   ALLOWED_ORIGIN     (texto)    el dominio de tu app, p. ej. https://apgbit.github.io
 //   MODEL              (texto, opcional) por defecto claude-sonnet-5-5
 
-const MAX_PROMPT = 8000;
+const MAX_PROMPT = 12000;
 const MAX_IMAGE_B64 = 7 * 1024 * 1024;
 const MEDIA = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
@@ -52,11 +52,12 @@ export default {
 
     let body;
     try { body = await req.json(); } catch { return json({ error: 'bad_json' }, 400, cors.headers); }
-    const task = body.task === 'recibo' ? 'recibo' : 'texto';
+    // Tareas con foto: recibos, compras (nevera o lista) y análisis de laboratorio (1.17).
+    const task = ['recibo', 'compras', 'analitica'].includes(body.task) ? body.task : 'texto';
     const prompt = String(body.prompt || '').slice(0, MAX_PROMPT);
     if (!prompt) return json({ error: 'empty_prompt' }, 400, cors.headers);
     const content = [];
-    if (task === 'recibo') {
+    if (task !== 'texto' && body.image) {
       const img = body.image || {};
       if (!img.data || !MEDIA.has(img.mediaType) || img.data.length > MAX_IMAGE_B64) return json({ error: 'bad_image' }, 400, cors.headers);
       content.push({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.data } });
@@ -70,7 +71,7 @@ export default {
         'x-api-key': env.ANTHROPIC_API_KEY,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify({ model: env.MODEL || 'claude-sonnet-5-5', max_tokens: 2000, messages: [{ role: 'user', content }] }),
+      body: JSON.stringify({ model: env.MODEL || 'claude-sonnet-5-5', max_tokens: task === 'analitica' ? 4000 : 2000, messages: [{ role: 'user', content }] }),
     });
     if (!res.ok) return json({ error: 'upstream', status: res.status }, res.status === 429 ? 429 : 502, cors.headers);
     const data = await res.json();

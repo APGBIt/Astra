@@ -8,6 +8,7 @@ import { openLoans, leftOf } from './loans.js';
 import { dosesFor } from './health.js';
 import { shopSummary, shopOf } from './shop.js';
 import { exPlan, planDone, PLAN_KIND, ROUTINE, routineMinutes } from './routines.js';
+import { weekOf } from './report.js';
 
 export const NOTIFY_KINDS = [
   { key: 'resumen', label: 'Resumen de la mañana', help: 'Misiones, pendientes y pagos del día.', time: 'morning' },
@@ -21,12 +22,13 @@ export const NOTIFY_KINDS = [
   { key: 'compras', label: 'Compras y despensa', help: 'Tu día de compras y lo que se vence pronto en la despensa.', time: 'morning' },
   { key: 'ejercicio', label: 'Plan de movimiento', help: 'En la tarde, el día que te toca fuerza, cardio o movilidad y aún no lo haces.', time: 'afternoon' },
   { key: 'pausas', label: 'Pausas activas', help: 'De lunes a viernes a las 10:30 y a las 3:30 p. m.: 5 minutos para moverte.', time: 'exact' },
+  { key: 'informe', label: 'Informe de la semana', help: 'El domingo en la noche: lo que mejoró y lo que conviene mejorar.', time: 'evening' },
 ];
 
 export function defaultNotify() {
   return {
     on: false,
-    kinds: { resumen: true, pagos: true, misiones: true, posada: true, dejar: true, metas: true, animo: false, medicinas: true, compras: true, ejercicio: true, pausas: false },
+    kinds: { resumen: true, pagos: true, misiones: true, posada: true, dejar: true, metas: true, animo: false, medicinas: true, compras: true, ejercicio: true, pausas: false, informe: true },
     morning: '08:00', afternoon: '17:30', evening: '20:30', quietFrom: '22:00', quietTo: '07:00',
   };
 }
@@ -171,6 +173,16 @@ function forDay(s, day, today, cfg) {
   }
   if (k.pausas && wd >= 1 && wd <= 5) {
     for (const t of ['10:30', '15:30']) out.push({ id: `${day}:pausa-${t}`, kind: 'pausas', day, at: atOf(day, t), title: 'Pausa activa', body: 'Párate y muévete 5 minutos: estírate, camina y descansa la vista.', url: '#/area/salud?rutina=pausa', tag: `astra-pausa-${t}` });
+  }
+
+  // Informe semanal (1.17): el domingo en la noche (no antes de las 6 p. m.), si aún no lo abres.
+  if (k.informe && wd === 0) {
+    const wk = weekOf(day);
+    const seen = s.reports && s.reports.seen && s.reports.seen[wk];
+    if (!seen && (!s.profile.created || s.profile.created <= addDays(wk, 4))) {
+      const hm = outOfQuiet(cfg.evening < '18:00' ? '18:00' : cfg.evening, cfg);
+      out.push({ id: `${day}:informe`, kind: 'informe', day, at: atOf(day, hm), title: 'Tu informe de la semana está listo', body: 'Lo que salió bien, lo que conviene mejorar y tu foco para la próxima.', url: '#/informe', tag: 'astra-informe' });
+    }
   }
 
   if (k.metas && s.growth && new Date(atOf(day, '12:00')).getDay() === 0) {

@@ -255,10 +255,11 @@ function ValuesSheet({ keys, onClose }) {
 
 // ---------- Revisión de la semana ----------
 
-export function WeeklyReviewCard({ s, today }) {
+// `day`: un día de la semana que se revisa (por defecto, esta semana). El informe semanal pasa el lunes de su semana.
+export function WeeklyReviewCard({ s, today, day = today, focusHint = '' }) {
   const [open, setOpen] = useState(false);
-  const r = reviewFor(s, today);
-  const past = s.mind.reviews.filter((x) => x.week !== weekStart(today)).slice(0, 3);
+  const r = reviewFor(s, day);
+  const past = s.mind.reviews.filter((x) => x.week !== weekStart(day)).slice(0, 3);
   return (
     <section class="card" aria-label="Revisión de la semana">
       <div class="between-c"><h2 class="h2">Tu semana en palabras</h2>{r && <span class="chip sm tone-good"><Icon name="check" size={13} />Hecha</span>}</div>
@@ -277,18 +278,19 @@ export function WeeklyReviewCard({ s, today }) {
           <div class="stack-sm" style={{ paddingTop: 6 }}>{past.map((x) => <div key={x.id} class="stack-xs"><span class="tiny strong muted">Semana del {fmtShort(x.week)}</span>{x.focus && <span>Foco: {x.focus}</span>}{x.learned && <span class="muted">Aprendí: {x.learned}</span>}</div>)}</div>
         </details>
       )}
-      {open && <ReviewSheet s={s} today={today} onClose={() => setOpen(false)} />}
+      {open && <ReviewSheet s={s} today={today} day={day} focusHint={focusHint} onClose={() => setOpen(false)} />}
     </section>
   );
 }
 
-function ReviewSheet({ s, today, onClose }) {
-  const r = reviewFor(s, today);
-  const sum = weekSummary(s, today);
+function ReviewSheet({ s, today, day = today, focusHint = '', onClose }) {
+  const r = reviewFor(s, day);
+  const end = addDays(weekStart(day), 6);
+  const sum = weekSummary(s, end < today ? end : today);
   const vals = s.mind.values.keys;
-  const [p, setP] = useState({ good: r ? r.good : '', hard: r ? r.hard : '', learned: r ? r.learned : '', focus: r ? r.focus : '', values: r ? { ...(r.values || {}) } : {}, focusTodo: false });
+  const [p, setP] = useState({ good: r ? r.good : '', hard: r ? r.hard : '', learned: r ? r.learned : '', focus: r ? r.focus : focusHint, values: r ? { ...(r.values || {}) } : {}, focusTodo: false });
   const set = (k) => (e) => setP({ ...p, [k]: e.currentTarget.value });
-  const save = () => { act((st, t, ev) => saveReview(st, p, t, ev)); toast(r ? 'Revisión actualizada' : 'Semana cerrada · +20 XP de Sabiduría', 'book'); onClose(); };
+  const save = () => { act((st, t, ev) => saveReview(st, p, t, ev, day)); toast(r ? 'Revisión actualizada' : 'Semana cerrada · +20 XP de Sabiduría', 'book'); onClose(); };
   const moods = sum.moods.reduce((a, b) => a + b, 0);
   return (
     <Sheet onClose={onClose} label="Revisión de la semana">
@@ -329,9 +331,9 @@ function ReviewSheet({ s, today, onClose }) {
 }
 
 // Para Hoy: el fin de semana, si no has cerrado la semana.
-export function ReviewPrompt() {
+export function ReviewPrompt({ wk = '' }) {
   return (
-    <a href="#/cronica" class="row" style={{ gap: 14, padding: 16, borderRadius: 20, background: 'var(--crecimiento-soft)', color: 'var(--crecimiento-ink)', textDecoration: 'none' }}>
+    <a href={`#/informe${wk ? `?semana=${wk}` : ''}`} class="row" style={{ gap: 14, padding: 16, borderRadius: 20, background: 'var(--crecimiento-soft)', color: 'var(--crecimiento-ink)', textDecoration: 'none' }}>
       <span class="tile" style={{ background: 'var(--surface)', color: 'var(--crecimiento)' }}><Icon name="book" /></span>
       <span class="stack-xs grow"><span class="strong">Cierra tu semana</span><span class="small">Qué salió bien, qué costó y tu foco para la próxima · +20 XP.</span></span>
       <Icon name="right" size={18} />

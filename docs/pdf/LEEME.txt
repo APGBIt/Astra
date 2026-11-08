@@ -1,0 +1,3 @@
+Lector de PDF de Astra (para los análisis de laboratorio)
+pdf.js 6.5.438 de Mozilla (licencia Apache 2.0), versión legacy.
+wasm/: decodificadores de imágenes OpenJPEG y JBIG2 (sus licencias van al lado), solo para PDF escaneados.

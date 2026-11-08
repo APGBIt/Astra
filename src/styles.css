@@ -660,3 +660,53 @@ details > summary::-webkit-details-marker { display: none; }
 /* Cuando el número no lo dice todo: una línea pequeña debajo de un KPI. */
 .kpi-sub { font-size: 11.5px; font-weight: 600; color: var(--muted); }
 .chip-links .chip { min-height: 36px; padding: 0 12px; }
+
+/* ---------- 1.17: salud al estilo WHOOP, análisis e informe semanal ---------- */
+.scale10.five { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.scale10.five button { min-height: 44px; font-size: 16px; }
+
+/* Semana de presión: arriba la mañana, abajo la noche. */
+.bp-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.bp-days > span { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.bp-days i { display: block; width: 100%; max-width: 30px; height: 10px; border-radius: 4px; background: var(--soft-2); }
+.bp-days i.half { background: var(--salud-soft); box-shadow: inset 0 0 0 1.5px var(--salud); }
+.bp-days i.full { background: var(--salud); }
+.bp-days b { font-size: 11px; color: var(--muted); font-weight: 700; }
+.bp-days > span.on b { color: var(--ink); }
+
+/* Dónde cae un resultado dentro del rango del laboratorio. */
+.range-bar { position: relative; height: 36px; margin: 2px 6px 0; }
+.range-bar::before { content: ''; position: absolute; left: 0; right: 0; top: 7px; height: 8px; border-radius: 4px; background: var(--soft-2); }
+.range-bar .band { position: absolute; top: 7px; height: 8px; border-radius: 4px; background: var(--good-soft); box-shadow: inset 0 0 0 1.5px var(--good); }
+.range-bar .mark { position: absolute; top: 1px; width: 4px; height: 20px; margin-left: -2px; border-radius: 2px; background: var(--ink); box-shadow: 0 0 0 2px var(--bg); }
+.range-bar .tick { position: absolute; top: 20px; transform: translateX(-50%); font-size: 11px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+.dot-s { width: 10px; height: 10px; border-radius: 5px; display: inline-block; flex-shrink: 0; background: var(--muted); }
+.dot-s.tone-good { background: var(--good); }
+.dot-s.tone-xp { background: var(--xp); }
+.dot-s.tone-vit { background: var(--vit); }
+
+/* Informe semanal */
+.card.improve { gap: 12px; }
+.report-sec > summary { list-style: none; }
+.report-sec > summary::-webkit-details-marker { display: none; }
+.report-sec[open] > summary > svg:last-child { transform: rotate(180deg); }
+.report-sec > div { padding-top: 4px; }
+.print-only { display: none; }
+
+/* Imprimir o guardar como PDF: siempre en claro, sin la barra ni los botones. */
+@media print {
+  :root, :root:not([data-theme="light"]), :root[data-theme="dark"] {
+    --bg: #FFFFFF; --surface: #FFFFFF; --soft: #F2F1EC; --soft-2: #E9E7E1; --line: #E2E0D9; --line-2: #D6D3CB;
+    --ink: #141519; --ink-2: #34363C; --muted: #4F5158; --faint: #5E6067; --on-ink: #FFFFFF;
+    --vit-soft: #FFEBE9; --vit-ink: #942126; --ene-soft: #E8F1FE; --ene-ink: #074FA3; --xp-soft: #FCEFD4; --xp-ink: #735601;
+    --good-soft: #DFF8E3; --good-ink: #02642C; --crecimiento-soft: #ECEFFE; --crecimiento-ink: #3E45A3;
+    --salud-soft: #DDF8E6; --emocional-soft: #F3EDFE; --finanzas-soft: #DEF5FB; --relaciones-soft: #FFE9F3; --laborales-soft: #FFF0E4;
+    color-scheme: light;
+  }
+  body { background: #FFFFFF !important; }
+  .nav, .fab, .no-print, .toasts, .sheet-wrap, .save-alert, .topbar .icon-btn { display: none !important; }
+  .print-only { display: block !important; }
+  .screen { padding: 12px 0 !important; max-width: none !important; }
+  .card, .kpi, .note { break-inside: avoid; box-shadow: none !important; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

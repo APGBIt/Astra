@@ -10,6 +10,9 @@ import { ensureNotify } from '../game/reminders.js';
 import { ensureHealthPlus } from '../game/health.js';
 import { ensureShop } from '../game/shop.js';
 import { ensureFood } from '../game/food.js';
+import { ensureLabs } from '../game/labs.js';
+import { ensureVitals } from '../game/vitals.js';
+import { ensureReports } from '../game/report.js';
 import { dayKey } from './dates.js';
 import { AREA } from '../game/content.js';
 import { kvGet, kvSetMany } from './idb.js';
@@ -36,7 +39,7 @@ export function migrate(s) {
   if (!s || typeof s !== 'object') return d;
   const m = merge(d, s);
   // Listas: si vienen dañadas, se reinician vacías.
-  for (const k of ['missions', 'vitLog', 'campaigns', 'bosses', 'moods', 'people', 'contacts', 'books', 'reads', 'cards', 'practice', 'focus', 'rewards', 'redeemed', 'titles', 'journal', 'todos', 'todoLists', 'chores', 'wins', 'meds']) {
+  for (const k of ['missions', 'vitLog', 'campaigns', 'bosses', 'moods', 'people', 'contacts', 'books', 'reads', 'cards', 'practice', 'focus', 'rewards', 'redeemed', 'titles', 'journal', 'todos', 'todoLists', 'chores', 'wins', 'meds', 'labs']) {
     if (!Array.isArray(m[k])) m[k] = [];
   }
   // Pendientes y categorías dañados se descartan uno a uno (no toda la lista).
@@ -60,6 +63,10 @@ export function migrate(s) {
   ensureShop(m);
   // 1.14: «Tu plato» (comidas con el método del plato).
   ensureFood(m);
+  // 1.17: análisis de laboratorio, señales vitales (presión, peso, pulso) e informe semanal.
+  ensureLabs(m);
+  ensureVitals(m);
+  ensureReports(m);
   m.v = 4;
   if (!Array.isArray(m.profile.classKeys)) m.profile.classKeys = [];
   m.profile.classKeys = m.profile.classKeys.filter((k) => AREA[k]).slice(0, 2);

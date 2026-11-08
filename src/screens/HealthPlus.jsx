@@ -7,6 +7,8 @@ import { fmtShort, DAYS_SHORT } from '../app/dates.js';
 import { EXERCISE_TYPES } from '../game/content.js';
 import { fmtHours, fmtClock, timeToMin } from '../game/logic.js';
 import { nutrientOf, suggestTimes, SLOT } from '../game/nutrients.js';
+import { rpeDefault } from '../game/vitals.js';
+import { RpePicker } from './Vitals.jsx';
 import {
   activityWeek, INTENSITIES, typeOf, dosesFor, logDose, medsToday, medAdherence, addMed, updateMed, archiveMed, restoreMed, removeMed,
   MED_KINDS, healthWeeks, TREND_METRICS, trendOf,
@@ -49,6 +51,8 @@ export function ExerciseSheet({ onClose, onSave }) {
   const [min, setMin] = useState(30);
   const [inten, setInten] = useState(() => typeOf(type).intensity || 'moderada');
   const [strength, setStrength] = useState(() => !!typeOf(type).strength);
+  // 1.17: qué tan duro fue (0 a 10, escala de Foster): con los minutos da la carga del día.
+  const [rpe, setRpe] = useState(null);
   const pick = (k) => {
     setType(k);
     setInten(typeOf(k).intensity || 'moderada');
@@ -72,12 +76,13 @@ export function ExerciseSheet({ onClose, onSave }) {
         <div class="seg" role="tablist" aria-label="Intensidad">{INTENSITIES.map(([k, l]) => <button key={k} type="button" role="tab" aria-selected={inten === k ? 'true' : 'false'} onClick={() => setInten(k)}>{l}</button>)}</div>
         <span class="small muted">{info[2]}{inten === 'intensa' ? ' Cuenta doble para tu meta de la semana.' : ''}</span>
       </div>
+      <RpePicker value={rpe || rpeDefault(inten)} onChange={setRpe} />
       <label class="between-c panel" style={{ cursor: 'pointer' }}>
         <span class="stack-xs"><span class="semi">Trabajé fuerza</span><span class="small muted">Pesas, ligas o ejercicios con tu peso (sentadillas, planchas).</span></span>
         <Switch checked={strength} onChange={setStrength} label="Trabajé fuerza" />
       </label>
       <span class="small muted">Se suma a tu ejercicio de hoy y da XP de Vigor.</span>
-      <button type="button" class="btn block" disabled={!min} onClick={() => onSave(min, type, inten, strength)}><Icon name="check" size={20} />Guardar</button>
+      <button type="button" class="btn block" disabled={!min} onClick={() => onSave(min, type, inten, strength, rpe || rpeDefault(inten))}><Icon name="check" size={20} />Guardar</button>
     </Sheet>
   );
 }
