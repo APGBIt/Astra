@@ -215,7 +215,7 @@ test('pulso: acierta dentro de 2 latidos entre 50 y 120, con cámaras de 30 y de
   }
 });
 
-test('pulso: con ruido o poco tiempo no da un número; la VFC solo con señal muy limpia', () => {
+test('pulso: con ruido o poco tiempo no da un número; la VFC de la cámara tiene un piso de ruido (por eso no se guarda)', () => {
   const noisy = P.analyzePulse(P.fakePulse({ bpm: 70, noise: 4 }).samples);
   assert.equal(noisy.ok, false);
   assert.equal(noisy.hrvOk, false);
@@ -228,6 +228,9 @@ test('pulso: con ruido o poco tiempo no da un número; la VFC solo con señal mu
   // La VFC estimada crece con la variación real entre latidos.
   const low = P.analyzePulse(P.fakePulse({ bpm: 62, hrv: 12, seed: 3 }).samples);
   assert.ok(clean.rmssd > low.rmssd, `${clean.rmssd} > ${low.rmssd}`);
+  // Una onda sin ninguna variación entre latidos no da cero: ese es el piso de ruido de la cámara.
+  const zero = P.analyzePulse(P.fakePulse({ bpm: 66, hrv: 0, seed: 2 }).samples);
+  assert.ok(zero.ok && zero.rmssd >= 5, `piso de ruido: ${zero.rmssd}`);
 });
 
 test('pulso: el dedo sobre la cámara se reconoce por el color', () => {

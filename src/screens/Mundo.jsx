@@ -22,7 +22,7 @@ const toneColor = (tone) => (tone === 'good' ? 'var(--good-ink)' : tone === 'xp'
 export function fireTag(id, { follow = true } = {}) {
   const r = act((st, t, ev) => runTag(st, id, t, ev, { now: Date.now(), nowMin: nowMin() }));
   if (!r) return null;
-  const undo = r.ok && r.undo ? { label: 'Deshacer', run: () => { act((st, t, ev) => undoTag(st, r.undo, t, ev)); toast('Deshecho', 'undo'); } } : null;
+  const undo = r.ok && r.undo ? { label: 'Deshacer', run: () => { act((st, t, ev) => undoTag(st, r.undo, t, ev, id)); toast('Deshecho', 'undo'); } } : null;
   if (!(r.ok && r.tag && r.tag.action.type === 'open')) toast(r.text, r.icon || 'check', { action: undo });
   if (follow && r.ok && r.href) go(r.href);
   return r;
@@ -370,11 +370,11 @@ function PulseSheet({ onClose }) {
     } catch (err) { setPhase('error'); setMsg(cameraErrorText(err)); return; }
     setTorch(await cam.current.torch(true));
     let t0 = null; let lastLive = 0; let off = 0;
-    timer.current = setInterval(() => {
+    // Cada cuadro de la cámara con su momento exacto (si el navegador lo da): así el pulso sale más fino.
+    const onFrame = (now) => {
       const c = frameColor(video.current, canvas.current);
       if (!c) return;
       const on = fingerOn(c);
-      const now = performance.now();
       if (!on) {
         off += 1;
         // Si el dedo se quita más de un segundo, se empieza de nuevo.
@@ -393,12 +393,28 @@ function PulseSheet({ onClose }) {
         setRes(r);
         setPhase('listo');
       }
-    }, 33);
+    };
+    const v = video.current;
+    if (v && typeof v.requestVideoFrameCallback === 'function') {
+      let live2 = true;
+      const step = (now, meta) => {
+        if (!live2 || !cam.current) return;
+        onFrame(meta && meta.captureTime ? meta.captureTime : meta && meta.presentationTime ? meta.presentationTime : now);
+        if (cam.current) v.requestVideoFrameCallback(step);
+      };
+      v.requestVideoFrameCallback(step);
+      timer.current = setInterval(() => {}, 1000); // para que «stop» tenga qué limpiar
+      const prevStop = cam.current.stop;
+      cam.current.stop = () => { live2 = false; prevStop(); };
+    } else {
+      timer.current = setInterval(() => onFrame(performance.now()), 33);
+    }
   };
 
   const save = () => {
-    act((st, t, ev) => logReady(st, t, res.hrvOk ? { rhr: res.bpm, hrv: res.rmssd } : { rhr: res.bpm }, t, ev));
-    toast(`Pulso de hoy: ${res.bpm} lpm${res.hrvOk ? ` · VFC ${res.rmssd} ms` : ''}`, 'pulse');
+    // Solo el pulso: la VFC medida con la cámara depende demasiado del ruido de la imagen (ver ppg.js).
+    act((st, t, ev) => logReady(st, t, { rhr: res.bpm }, t, ev));
+    toast(`Pulso de hoy: ${res.bpm} lpm`, 'pulse');
     onClose();
   };
 
@@ -421,11 +437,12 @@ function PulseSheet({ onClose }) {
       )}
       {phase === 'medir' && (
         <div class="stack-sm" role="status" aria-live="polite" style={{ alignItems: 'center', textAlign: 'center' }}>
-          <Ring value={Math.min(1, secs / PPG_SECONDS)} size={132} stroke={10} color="var(--vit)" label="Avance de la medición">
-            <span class="stack-xs" style={{ alignItems: 'center' }}>
+          <div style={{ position: 'relative', width: 132, height: 132 }}>
+            <Ring value={Math.min(1, secs / PPG_SECONDS)} size={132} stroke={10} color="var(--vit)" label="Avance de la medición" />
+            <span class="stack-xs" style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', gap: 0 }}>
               <span class="h1">{live ? live.bpm : '—'}</span><span class="tiny muted">lpm</span>
             </span>
-          </Ring>
+          </div>
           <p class="lead">{finger ? `No te muevas… ${Math.max(0, PPG_SECONDS - secs)} s` : 'Cubre la cámara y el flash con la yema del dedo'}</p>
           {!torch && <p class="small muted">Este teléfono no deja encender el flash desde aquí: ponte donde haya mucha luz, con el dedo sobre la cámara.</p>}
           <button type="button" class="btn ghost block" onClick={() => { stop(); setPhase('intro'); }}>Cancelar</button>
@@ -435,11 +452,11 @@ function PulseSheet({ onClose }) {
         <>
           <div class="kpis">
             <div class="kpi"><span class="v">{res.bpm}</span><span class="l">Pulso (lpm)</span></div>
-            <div class="kpi"><span class="v">{res.hrvOk ? res.rmssd : '—'}</span><span class="l">VFC (ms)</span></div>
+            <div class="kpi"><span class="v">{res.beats}</span><span class="l">Latidos leídos</span></div>
             <div class="kpi"><span class="v">{Math.round(res.quality * 100)} %</span><span class="l">Calidad</span></div>
           </div>
           {base && base.n >= 5 && <p class="small muted">Tu normal de 30 días: {Math.round(base.mean)} lpm{Math.abs(res.bpm - base.mean) > Math.max(5, base.sd * 1.5) ? `. Hoy salió ${res.bpm > base.mean ? 'más alto' : 'más bajo'} de lo usual.` : '. Hoy estás en tu rango.'}</p>}
-          {!res.hrvOk && <p class="small muted">Para la VFC hace falta una señal muy limpia; esta vez solo guardo el pulso.</p>}
+          <p class="small muted">La cámara mide bien el pulso. La VFC necesita más precisión: para eso usa una banda de pulso en «Aparatos Bluetooth».</p>
           <button type="button" class="btn block" onClick={save}><Icon name="check" size={20} />Guardar como pulso en reposo de hoy</button>
           <button type="button" class="btn ghost block" onClick={start}>Medir otra vez</button>
           <p class="small muted">Alimenta tu preparación de cada mañana y tus señales en Salud.</p>

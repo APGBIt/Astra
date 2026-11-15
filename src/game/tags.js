@@ -213,8 +213,11 @@ export function runTag(s, id, today, ev = [], { now = Date.now(), nowMin = null 
   return { ok: false, tag, text: 'Esta etiqueta no tiene una acción.', icon: 'info' };
 }
 
-export function undoTag(s, undo, today, ev = []) {
+export function undoTag(s, undo, today, ev = [], tagId = null) {
   if (!undo) return false;
+  // Al deshacer, la etiqueta queda como si no se hubiera leído: se puede volver a usar enseguida.
+  const tag = tagId ? ensurePlus(s).tags.find((t) => t.id === tagId) : null;
+  if (tag) { tag.lastAt = 0; tag.uses = Math.max(0, (tag.uses || 0) - 1); }
   if (undo.type === 'todo') { const t = (s.todos || []).find((x) => x.id === undo.id); if (!t || !t.done) return false; uncompleteTodo(s, undo.id); return true; }
   if (undo.type === 'mission') { undoMission(s, undo.id, today); return true; }
   if (undo.type === 'dose') { logDose(s, today, undo.key, null, today, ev); return true; }

@@ -125,7 +125,9 @@ export function analyzePulse(samples, { fs = PPG_FS, minSeconds = PPG_MIN_SECOND
   return {
     ok: quality >= 0.6, bpm: Math.round(bpm), bpmRaw: bpm, rmssd: rmssd != null ? Math.round(rmssd) : null, sdnn: Math.round(sd(good)),
     beats: good.length, quality: Math.round(quality * 100) / 100, acf: Math.round(per.r * 100) / 100, seconds: Math.round(seconds), reason: quality >= 0.6 ? '' : 'ruido',
-    // La VFC solo se ofrece para guardar con una señal muy limpia y medio minuto de datos.
+    // La VFC (rmssd) queda aquí como referencia, pero Astra NO la guarda cuando viene de la cámara: a 30 cuadros
+    // por segundo su piso de ruido (10 a 35 ms según la imagen) es del tamaño de la propia medida. Probado con una
+    // onda sin ninguna variación: daba 16 ms. La VFC se toma de una banda de pulso (Bluetooth) o de un reloj.
     hrvOk: rmssd != null && quality >= 0.85 && per.r >= 0.85 && seconds >= 25 && good.length >= 20,
   };
 }
