@@ -80,16 +80,18 @@ export function Home() {
   return (
     <>
       <main class="screen">
-        <header class="between-c">
-          <div class="stack-xs">
+        <header class="stack-xs">
+          <div class="between-c" style={{ minHeight: 28 }}>
             <span class="small muted semi">{fmtDay(today)}</span>
-            <h1 class="h1">{greeting(hour)}, {s.profile.name.split(' ')[0] || 'aventurero'}</h1>
+            <button type="button" class="link-btn muted" style={{ minHeight: 36, margin: '-4px 0' }} aria-label="Buscar en Astra" onClick={openFinder}><Icon name="search" size={16} />Buscar</button>
           </div>
-          <div class="row" style={{ gap: 6 }}>
-            <button type="button" class="icon-btn" aria-label="Buscar en Astra" onClick={openFinder}><Icon name="search" size={20} /></button>
-            <SyncBadge />
-            <a class="chip tone-xp" href="#/tienda" style={{ textDecoration: 'none', minHeight: 36, padding: '0 12px' }} aria-label={`${num(s.gold)} de oro: abrir la tienda`}><Icon name="coin" size={16} />{num(s.gold)}</a>
-            <a href="#/personaje" aria-label="Tu personaje" style={{ display: 'flex' }}><Avatar name={s.profile.name} size={44} /></a>
+          <div class="between-c">
+            <h1 class="h1">{greeting(hour)}, {s.profile.name.split(' ')[0] || 'aventurero'}</h1>
+            <div class="row" style={{ gap: 6 }}>
+              <SyncBadge />
+              <a class="chip tone-xp" href="#/tienda" style={{ textDecoration: 'none', minHeight: 36, padding: '0 12px' }} aria-label={`${num(s.gold)} de oro: abrir la tienda`}><Icon name="coin" size={16} />{num(s.gold)}</a>
+              <a href="#/personaje" aria-label="Tu personaje" style={{ display: 'flex' }}><Avatar name={s.profile.name} size={44} /></a>
+            </div>
           </div>
         </header>
 

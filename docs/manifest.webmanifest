@@ -43,6 +43,14 @@
     {
       "name": "Escanear recibo",
       "url": "./#/recibo"
+    },
+    {
+      "name": "Lente",
+      "url": "./#/lente"
+    },
+    {
+      "name": "Centro de mando",
+      "url": "./#/mando"
     }
   ]
 }

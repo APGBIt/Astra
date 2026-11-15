@@ -2,6 +2,25 @@
 
 Tu vida en modo juego de rol. App web instalable (y futura APK) para crecer en seis áreas de la vida con barras de vitalidad y energía, caminos, misiones y jefes.
 
+## Novedades de la versión 2.0 «Renacer» (copiloto, gemelo digital, tablero Lean, etiquetas, lente de realidad aumentada, sensores y automatizaciones)
+
+Hasta la 1.18 Astra era una app donde **registras**. La 2.0 la convierte en un sistema que **te lleva**: mira lo que ya anotas, predice, propone el siguiente paso y se conecta con el mundo físico. Es lo que la industria 4.0 hizo con las fábricas, aplicado a una vida. **Tus datos no cambian de forma**: la versión de datos sigue en 4, todo lo nuevo vive en una clave aparte (`plus`) y una copia de la 1.x abre igual.
+
+- **Centro de mando** (`#/mando`, desde Hoy o Áreas), con seis vistas:
+  - **Copiloto**: «Lo siguiente» (un solo paso, con su porqué y dos alternativas), el **plan de hoy con horas** hasta tu hora de dormir según tu tiempo libre, y **tu semana nivelada** (mueve lo que no es importante a un día con espacio). En Hoy aparece la tarjeta «Lo siguiente».
+  - **Gemelo digital**: siete sistemas de tu vida (cuerpo, mente, dinero, vínculos, crecimiento, trabajo, hogar) con índice de 0 a 100 y tendencia; **tu restricción** (el sistema que hoy limita a los demás); el pronóstico de tu caja a 45 días, de tu nivel y de tu vitalidad; y **«¿qué pasa si…?»** con cuatro palancas (dormir más, gastar menos, moverte más, apartar cada mes).
+  - **Alertas tempranas** (mantenimiento predictivo): la falla antes de que ocurra, con días de aviso y cómo evitarla: caja en negativo, agotamiento, racha en riesgo, ritmo de gasto, colchón, despensa, vencimientos, tomas y pendientes.
+  - **Lean**: tu **OEE personal** (Disponibilidad × Rendimiento × Calidad) frente a tu promedio de 8 semanas, los **ocho desperdicios** (muda) medidos con tus datos y un **Kaizen** por semana: línea base, 7 días y comparación (+20 XP y 10 de oro si mejoró).
+  - **Mundo físico**:
+    - **Etiquetas inteligentes** (NFC o código QR): pegas una en la lavadora, el pastillero, el botellón o la mesa de noche; acercas el teléfono y se marca la rutina, se anota la toma, se suma el vaso de agua, entra a la lista de compras o se abre la pantalla. Con «Deshacer». La etiqueta solo guarda una dirección de Astra con su clave. Los códigos QR se generan en la app (sin bibliotecas) y se imprimen en una hoja.
+    - **Lente** (`#/lente`, realidad aumentada): apuntas la cámara y, encima de cada etiqueta, ves su estado («Toca hoy», «Tocaba a las 8:00») con el botón para hacerla; sobre el código de barras de un producto, su último precio, dónde sale más barato, si subió y si está en tu lista o en tu despensa.
+    - **Pulso con la cámara**: la yema del dedo sobre la cámara, 30 segundos. Guarda tu pulso en reposo, que alimenta la preparación de cada mañana. La VFC no se guarda desde la cámara (su piso de ruido es del tamaño de la medida).
+    - **Aparatos Bluetooth**: banda de pulso (pulso y VFC con los intervalos reales entre latidos), tensiómetro y báscula que usan el estándar de salud de Bluetooth, sin la app del fabricante.
+  - **Automático**: reglas «si pasa esto → haz esto» (cuando cobro, cuando duermo poco, cuando hago un gasto grande, cuando baja mi vitalidad, cuando termino la compra, cuando leo una etiqueta, un día y una hora → crear un pendiente, agregar a la lista o avisarme), con recetas para activar con un toque y la bitácora de lo que Astra hizo sola.
+- **Buscador universal** (lupa en Hoy y en el centro de mando, o Ctrl + K): llega a cualquier pantalla por su nombre o por cómo la llamarías («nevera», «colesterol», «presupuesto»), encuentra pendientes, rutinas, personas, productos, cuentas, movimientos y etiquetas, y si escribes algo para anotar («almuerzo 350») lo pasa a Registrar.
+- **Qué funciona dónde**: NFC y códigos de barras, en Chrome para Android; Bluetooth, en Chrome (Android y computadora); QR, cámara y pulso, en cualquier teléfono. La app dice en «Mundo físico» qué tiene disponible cada equipo.
+- **Privacidad**: el video de la cámara y las mediciones se procesan en el teléfono. Para el nombre de un producto por su código solo se envía el número (Open Food Facts).
+
 ## Novedades de la versión 1.18 (Compras con fotos y precios; Finanzas con lo disponible, los gastos del mes y las deudas a largo plazo)
 
 - **Las fotos ya abren la cámara**: en Compras, en los movimientos, en los logros y en el expediente, el botón de foto toca directamente el campo de la cámara. Antes era un campo escondido que se «tocaba» desde otro botón, y en algunos teléfonos (sobre todo con la app instalada) no abría nada. Sin IA, la hoja de foto empieza por «Lista, receta o producto», que lee el lector del teléfono, y la nevera avisa que necesita la IA. El botón de la Lista ahora es la cámara.

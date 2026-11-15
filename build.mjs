@@ -94,6 +94,8 @@ writeFileSync('dist/manifest.webmanifest', JSON.stringify({
     { name: 'Nueva misión', url: './#/mision/nueva' },
     { name: 'Registrar', url: './#/registrar' },
     { name: 'Escanear recibo', url: './#/recibo' },
+    { name: 'Lente', url: './#/lente' },
+    { name: 'Centro de mando', url: './#/mando' },
   ],
 }, null, 2));
 
@@ -232,7 +234,12 @@ Tus datos se guardan en tu teléfono y, si lo conectas, en tu propio Google Driv
    Personaje → Ajustes → «Puntos de restauración» para volver a uno, y «Descargar copia» para
    guardar tu progreso fuera del teléfono o pasarlo a otro.
 
-7) SINCRONIZAR CON TU DRIVE
+7) ETIQUETAS, LENTE Y SENSORES (2.0)
+   Hoy → Centro de mando → Mundo físico. Las etiquetas NFC se escriben con Chrome en Android; en los demás
+   teléfonos se usan los códigos QR (se imprimen desde la app). La Lente lee los QR en cualquier teléfono
+   (carpeta qr/) y los códigos de barras en Chrome para Android. El video de la cámara no sale del teléfono.
+
+8) SINCRONIZAR CON TU DRIVE
    Personaje → Ajustes → Sincronización. Cada persona conecta su propio Drive:
    con el conector propio (un script en su Drive) o con «Conectar con Google».
    El código del conector está en conector.gs/ (se abre en el navegador para copiarlo).
