@@ -17,8 +17,10 @@ import { systems, lifeIndex, risks, cashOutlook, levelOutlook, vitOutlook, whatI
 import { oeeTrend, oeeWeek, muda, OEE_PART, MUDA_LEVEL, kaizenRunning, kaizenProgress, kaizenHistory, startKaizen, dropKaizen, kaizenUnit, KAIZEN_DAYS, MUDA } from '../game/lean.js';
 import { plusOf } from '../game/plus.js';
 import { WorldTab } from './Mundo.jsx';
+import { RulesTab } from './Reglas.jsx';
+import { openFinder } from './Finder.jsx';
 
-const TABS = [['copiloto', 'Copiloto'], ['gemelo', 'Gemelo'], ['alertas', 'Alertas'], ['lean', 'Lean'], ['mundo', 'Mundo físico']];
+const TABS = [['copiloto', 'Copiloto'], ['gemelo', 'Gemelo'], ['alertas', 'Alertas'], ['lean', 'Lean'], ['mundo', 'Mundo físico'], ['reglas', 'Automático']];
 const rd = (v) => `RD$${Math.round(v).toLocaleString('en-US')}`;
 const rdK = (v) => (Math.abs(v) >= 1000 ? `${v < 0 ? '−' : ''}RD$${(Math.abs(v) / 1000).toFixed(Math.abs(v) >= 100000 ? 0 : 1).replace(/\.0$/, '')}k` : rd(v));
 const pct = (v) => `${Math.round(v * 100)} %`;
@@ -51,13 +53,14 @@ export function Mando({ query }) {
   const tabs = TABS.map(([k, l]) => (k === 'alertas' && rk.length ? [k, `Alertas · ${rk.length}`] : [k, l]));
   return (
     <main class="screen no-nav">
-      <TopBar backTo="/" title="Centro de mando" heading />
+      <TopBar backTo="/" title="Centro de mando" heading right={<button type="button" class="icon-btn" aria-label="Buscar en Astra" onClick={openFinder}><Icon name="search" /></button>} />
       <ScrollTabs tabs={tabs} value={tab} onChange={setTab} label="Vistas del centro de mando" sticky />
       {tab === 'copiloto' && <CopilotTab s={s} today={today} hour={hour} high={high} onAlerts={() => setTab('alertas')} />}
       {tab === 'gemelo' && <TwinTab s={s} today={today} />}
       {tab === 'alertas' && <RiskTab s={s} today={today} list={rk} />}
       {tab === 'lean' && <LeanTab s={s} today={today} />}
       {tab === 'mundo' && <WorldTab s={s} today={today} query={query} />}
+      {tab === 'reglas' && <RulesTab s={s} />}
     </main>
   );
 }

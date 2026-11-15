@@ -570,6 +570,7 @@ function describe(e) {
     case 'cardPaid': return { icon: 'card', text: `Pagaste todo el estado de ${e.name} a tiempo · +15 XP` };
     case 'creditPaid': return e.extra ? { icon: 'bank', text: `Abonaste a capital de «${e.name}» · +15 XP` } : { icon: 'bank', text: `Cuota de «${e.name}» pagada a tiempo · +10 XP` };
     case 'creditDone': return { big: true, icon: 'trophy', color: 'var(--xp)', title: '¡Terminaste de pagar!', text: `«${e.name}» ya no es una deuda. Ganas 100 XP y 50 de oro.` };
+    case 'rule': return { icon: e.icon || 'wand', text: `Automático · ${e.text}` };
     case 'kaizen': return { icon: 'target', text: 'Tu mejora de la semana funcionó · +20 XP y 10 de oro' };
     case 'planLinked': return { icon: 'calendar', text: `«${e.name}» quedó como ${e.kind === 'ingreso' ? 'recibido' : 'pagado'}` };
     default: return null;

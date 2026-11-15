@@ -1,7 +1,7 @@
 import { render } from 'preact';
 import './ui/typo.js';
 import { useEffect } from 'preact/hooks';
-import { useApp, runReconcile, applyTheme, getState, onChange, ready, snapshotNow, askPersist, useStorage, importData } from './app/store.js';
+import { useApp, runReconcile, runAutomations, applyTheme, getState, onChange, ready, snapshotNow, askPersist, useStorage, importData } from './app/store.js';
 import { Guard, SaveAlert, Blocked, watchErrors } from './ui/guard.jsx';
 import { startNotifications } from './app/notify.js';
 import { useRoute, go } from './app/router.js';
@@ -36,6 +36,7 @@ import { Report } from './screens/Report.jsx';
 import { Mando } from './screens/Mando.jsx';
 import { TagsPrint, TagRun } from './screens/Mundo.jsx';
 import { Lente } from './screens/Lente.jsx';
+import { Finder } from './screens/Finder.jsx';
 import { startSync, syncNow, connectGoogle, syncConfig } from './app/sync.js';
 import { handleGoogleRedirect } from './app/google.js';
 import { toast } from './ui/kit.jsx';
@@ -144,11 +145,12 @@ function Main() {
   useEffect(() => {
     applyTheme(getState().settings.theme);
     runReconcile();
+    runAutomations();
     // La tasa del dólar se actualiza sola una vez al día (si hay internet).
     setTimeout(() => { if (getState().profile.onboarded) refreshRate(); }, 1500);
-    const onVis = () => { if (!document.hidden) { runReconcile(); if (getState().profile.onboarded) refreshRate(); } };
+    const onVis = () => { if (!document.hidden) { runReconcile(); runAutomations(); if (getState().profile.onboarded) refreshRate(); } };
     document.addEventListener('visibilitychange', onVis);
-    const id = setInterval(runReconcile, 60000);
+    const id = setInterval(() => { runReconcile(); runAutomations(); }, 60000);
     if (!getState().profile.onboarded && location.hash && location.hash !== '#/crear' && location.hash !== '#/sincronizar') go('/', { replace: true });
     startSync();
     startNotifications(getState, onChange);
@@ -166,6 +168,7 @@ function Main() {
     <div class="app">
       <SaveAlert />
       <Screen key={screenKey(route.parts)} route={route} />
+      {getState().profile.onboarded && <Finder />}
       <Toasts />
       <Celebrations />
       <Confirmer />

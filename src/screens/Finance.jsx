@@ -53,8 +53,9 @@ export function Finance({ query }) {
   const [tab, setTabState] = useState(TABS.some(([k]) => k === q0) ? q0 : 'resumen');
   // «nuevo»: un movimiento a medio llenar que puede venir de otra pantalla (un comprobante leído, 1.10).
   const [sheet, setSheet] = useState(() => (query.get('alerta') ? { kind: 'alert' } : query.get('nuevo') ? { kind: 'tx', ...(takePendingTx() || {}) } : null));
-  const [filter, setFilter] = useState(emptyFilter());
-  const [per, setPer] = useState({ kind: 'mes', mk: monthKey(today) });
+  // «q» en la dirección (2.0, desde el buscador): abre los movimientos ya filtrados por ese texto.
+  const [filter, setFilter] = useState(() => ({ ...emptyFilter(), q: (query.get('q') || '').slice(0, 60) }));
+  const [per, setPer] = useState(() => (query.get('q') ? { kind: 'todo' } : { kind: 'mes', mk: monthKey(today) }));
   const [sel, setSel] = useState(null);
   useEffect(() => { refreshRate(); }, []);
 

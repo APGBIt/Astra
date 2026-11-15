@@ -15,6 +15,7 @@ import { ensureVitals } from '../game/vitals.js';
 import { ensureReports } from '../game/report.js';
 import { ensurePlus, tidyPlus } from '../game/plus.js';
 import { checkKaizen } from '../game/lean.js';
+import { runRules, tickRules } from '../game/rules.js';
 import { dayKey } from './dates.js';
 import { AREA } from '../game/content.js';
 import { kvGet, kvSetMany } from './idb.js';
@@ -346,6 +347,8 @@ export function act(fn) {
   const ev = [];
   const today = dayKey();
   const ret = fn(next, today, ev);
+  // 2.0: automatizaciones. Si lo que acaba de pasar cumple una regla, su acción se aplica en el mismo cambio.
+  if (next.plus && next.plus.rules && next.plus.rules.length) { try { ev.push(...runRules(state, next, today)); } catch { /* una regla que falla no detiene el cambio */ } }
   state = next;
   json = null;
   persist();
@@ -426,6 +429,22 @@ export function runReconcile() {
   let ev = [];
   act((s, t, e) => { ev = reconcile(s, t); claimQuit(s, t, e); tidyPlus(s, t); checkKaizen(s, t, e); });
   return ev;
+}
+
+// Reglas de día y hora (2.0): se revisan al abrir y cada minuto. Sin reglas pendientes no se toca nada.
+export function runAutomations() {
+  const rules = state.plus && Array.isArray(state.plus.rules) ? state.plus.rules : null;
+  if (!rules || !state.profile || !state.profile.onboarded) return;
+  const today = dayKey();
+  if (state.processed !== today) return; // primero se cierra el día anterior
+  const d = new Date();
+  const now = d.getHours() * 60 + d.getMinutes();
+  const due = rules.some((r) => {
+    if (!r || !r.on || !r.when || r.when.type !== 'time' || r.timeDay === today || !r.when.days.includes(d.getDay())) return false;
+    const [h, m] = r.when.at.split(':').map(Number);
+    return now >= h * 60 + m;
+  });
+  if (due) act((s, t, e) => { e.push(...tickRules(s, t, now)); });
 }
 
 export function resetAll() {

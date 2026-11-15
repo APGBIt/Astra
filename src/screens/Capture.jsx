@@ -103,7 +103,8 @@ export function applyItems(st, items, today, ev) {
 export function Capture() {
   const s = useApp();
   const today = s.energy.day;
-  const [text, setText] = useState('');
+  // «t» en la dirección (2.0, desde el buscador): llega con el texto ya escrito.
+  const [text, setText] = useState(() => (parseHash().query.get('t') || '').slice(0, 300));
   const [items, setItems] = useState(null);
   const [off, setOff] = useState({});
   const [listening, setListening] = useState(false);

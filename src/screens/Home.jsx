@@ -1,6 +1,7 @@
 import { shopSummary } from '../game/shop.js';
 import { plusOf } from '../game/plus.js';
 import { CopilotCard } from './Mando.jsx';
+import { openFinder } from './Finder.jsx';
 import { useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
 import { Nav, Segs, Bar, Bolts, Avatar, AreaDot, Sheet, SheetHead, TChip, toast, useHour, areaColor, areaSoft, money, cur, plural, num } from '../ui/kit.jsx';
@@ -85,6 +86,7 @@ export function Home() {
             <h1 class="h1">{greeting(hour)}, {s.profile.name.split(' ')[0] || 'aventurero'}</h1>
           </div>
           <div class="row" style={{ gap: 6 }}>
+            <button type="button" class="icon-btn" aria-label="Buscar en Astra" onClick={openFinder}><Icon name="search" size={20} /></button>
             <SyncBadge />
             <a class="chip tone-xp" href="#/tienda" style={{ textDecoration: 'none', minHeight: 36, padding: '0 12px' }} aria-label={`${num(s.gold)} de oro: abrir la tienda`}><Icon name="coin" size={16} />{num(s.gold)}</a>
             <a href="#/personaje" aria-label="Tu personaje" style={{ display: 'flex' }}><Avatar name={s.profile.name} size={44} /></a>

@@ -30,8 +30,10 @@ const COUNTERS = [
   /^days\.[^.]+\.(?!vitEnd$)[^.]+$/, /^days\.[^.]+\.(xpBy|slips|potions)\.[^.]+$/,
   /^health\.[^.]+\.(water|exercise|veg|exVig|breaks|load)$/, /^health\.[^.]+\.exTypes\.[^.]+$/,
   /^bosses\[\]\.progress$/, /^books\[\]\.read$/,
+  // 2.0: usos de una etiqueta y veces que corrió una regla.
+  /^plus\.tags\[\]\.uses$/, /^plus\.rules\[\]\.runs$/,
 ];
-const MAXES = [/^streak\.(count|best|lastDay)$/, /^processed$/, /^v$/, /^health\.[^.]+\.steps$/, /^chores\[\]\.base$/, /^people\[\]\.last$/, /^settings\.lastBackup$/];
+const MAXES = [/^streak\.(count|best|lastDay)$/, /^processed$/, /^v$/, /^health\.[^.]+\.steps$/, /^chores\[\]\.base$/, /^people\[\]\.last$/, /^settings\.lastBackup$/, /^plus\.tags\[\]\.(lastAt|last)$/, /^plus\.rules\[\]\.(last|day|timeDay)$/];
 
 const isCounter = (p) => COUNTERS.some((re) => re.test(p));
 const isMax = (p) => MAXES.some((re) => re.test(p));

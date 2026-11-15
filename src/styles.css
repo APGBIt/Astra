@@ -808,3 +808,12 @@ button.mrow.price-row { width: 100%; background: none; border-left: 0; border-ri
   .qr-sheet { grid-template-columns: repeat(4, 1fr); gap: 8px; }
   .qr-cut { border-color: #999; }
 }
+/* ---------- 2.0: buscador universal ---------- */
+.finder-box { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 16px; border-radius: 18px; border: 1.5px solid var(--line-2); background: var(--surface); color: var(--muted); }
+.finder-box:focus-within { border-color: var(--ink); }
+.finder-input { flex: 1 1 auto; min-width: 0; border: 0; outline: none; background: none; color: var(--ink); font: inherit; font-size: 17px; font-weight: 600; }
+.finder-input::-webkit-search-cancel-button { display: none; }
+/* ---------- 2.0: automatizaciones ---------- */
+.rule-row { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.rule-row:last-child { border-bottom: none; }
+.rule-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; background: none; border: 0; padding: 0; text-align: left; color: var(--ink); font: inherit; min-height: 44px; justify-content: center; }
