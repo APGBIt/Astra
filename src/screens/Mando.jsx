@@ -57,7 +57,7 @@ export function Mando({ query }) {
       {tab === 'gemelo' && <TwinTab s={s} today={today} />}
       {tab === 'alertas' && <RiskTab s={s} today={today} list={rk} />}
       {tab === 'lean' && <LeanTab s={s} today={today} />}
-      {tab === 'mundo' && <WorldTab s={s} today={today} />}
+      {tab === 'mundo' && <WorldTab s={s} today={today} query={query} />}
     </main>
   );
 }

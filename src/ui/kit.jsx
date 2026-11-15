@@ -514,14 +514,16 @@ export function SheetHead({ title, onClose }) {
 
 let toastList = [];
 const toastSubs = new Set();
-export function toast(text, icon = 'check') {
+// `action` (2.0): un botón dentro del aviso, por ejemplo «Deshacer» después de leer una etiqueta.
+export function toast(text, icon = 'check', { action = null, ms = 0 } = {}) {
   const id = Math.random();
-  toastList = [...toastList, { id, text, icon }].slice(-3);
-  toastSubs.forEach((f) => f(toastList));
-  setTimeout(() => {
+  const drop = () => {
     toastList = toastList.filter((t) => t.id !== id);
     toastSubs.forEach((f) => f(toastList));
-  }, 3200);
+  };
+  toastList = [...toastList, { id, text, icon, action, drop }].slice(-3);
+  toastSubs.forEach((f) => f(toastList));
+  setTimeout(drop, ms || (action ? 6000 : 3200));
 }
 
 export function Toasts() {
@@ -533,7 +535,10 @@ export function Toasts() {
   return (
     <div class="toasts" role="status" aria-live="polite">
       {list.map((t) => (
-        <div class="toast" key={t.id}><Icon name={t.icon} size={18} />{t.text}</div>
+        <div class="toast" key={t.id}>
+          <Icon name={t.icon} size={18} /><span class="grow">{t.text}</span>
+          {t.action && <button type="button" class="toast-btn" onClick={() => { t.drop(); t.action.run(); }}>{t.action.label}</button>}
+        </div>
       ))}
     </div>
   );

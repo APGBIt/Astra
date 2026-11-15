@@ -11,6 +11,7 @@
   "private": true,
   "dependencies": {
     "esbuild": "^0.25.12",
+    "jsqr": "^1.4.0",
     "preact": "^10.29.8"
   },
   "devDependencies": {

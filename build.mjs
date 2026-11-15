@@ -327,6 +327,12 @@ pdf.js ${JSON.parse(readFileSync('node_modules/pdfjs-dist/package.json', 'utf8')
 wasm/: decodificadores de imágenes OpenJPEG y JBIG2 (sus licencias van al lado), solo para PDF escaneados.
 `);
 
+// Lector de códigos QR para la Lente (2.0) en teléfonos sin lector propio (iPhone): jsQR, aparte de la app.
+rmSync('dist/qr', { recursive: true, force: true });
+mkdirSync('dist/qr', { recursive: true });
+await build({ entryPoints: ['node_modules/jsqr/dist/jsQR.js'], bundle: true, minify: true, format: 'iife', globalName: '__jsqr', footer: { js: 'window.jsQR=__jsqr.default||__jsqr;' }, target: ['es2020'], outfile: 'dist/qr/jsqr.min.js', legalComments: 'none' });
+cpSync('node_modules/jsqr/LICENSE', 'dist/qr/LICENSE-jsQR.txt');
+
 // Copia para GitHub Pages (se publica la carpeta docs/).
 rmSync('docs', { recursive: true, force: true });
 cpSync('dist', 'docs', { recursive: true, filter: (src) => !basename(src).startsWith('_') });
