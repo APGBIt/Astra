@@ -6,6 +6,7 @@ import { uid, getDay, gainXP, addGold, addTx, checkAchievements, fxRate, toDOP, 
 import { budgetRows } from './money.js';
 import { workInfo, workHours, fmtWork } from './ledger.js';
 import { AISLES, AISLE_IDS, BASICS, aisleIndex, aisleOf, isCountUnit, matchProduct, norm, parseShopLine, productOf, qtyText, unitOf, UNITS } from './shoplex.js';
+import { ensurePrices, addPrice, listPrice, itemUnitSize } from './prices.js';
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isDay = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d);
@@ -82,6 +83,8 @@ export function ensureShop(s) {
       autoAdd: cfg.autoAdd !== false, autoPantry: cfg.autoPantry !== false, budget: Math.max(0, Math.round(Number(cfg.budget) || 0)),
     },
   };
+  // 1.18: la libreta de precios (y los productos que sigues).
+  ensurePrices(s.shop, o);
   return s.shop;
 }
 
@@ -188,7 +191,9 @@ export function clearChecked(s, listId) { const sh = shopOf(s); sh.items = sh.it
 
 // ---------- Precios y totales ----------
 
-export const priceOf = (s, it) => it.price > 0 ? it.price : ((shopOf(s).hist[it.key] || {}).price || 0);
+// El precio de un artículo: el que le pusiste; si no, el último de tu libreta de precios (en la unidad del
+// artículo); si tampoco, el que se aprendió de tus compras antes de la 1.18.
+export const priceOf = (s, it) => it.price > 0 ? it.price : (listPrice(s, it) || ((shopOf(s).hist[it.key] || {}).price || 0));
 export const itemTotal = (s, it) => priceOf(s, it) * (it.qty || 1);
 
 export function listTotals(s, listId = null) {
@@ -373,7 +378,7 @@ export function applyScan(s, { seen = [], add = [] }, { list = null, today, ev =
 
 // ---------- Compra terminada ----------
 
-// `p`: { list, total (lo que pagaste, en RD$), store, account, day, saveTx, ids }.
+// `p`: { list, total (lo que pagaste, en RD$), store, account, day, saveTx, ids, skipPrices }.
 export function closeTrip(s, p, today, ev = []) {
   const sh = shopOf(s);
   const lid = sh.lists.some((l) => l.id === p.list) ? p.list : listOf(s, null).id;
@@ -384,7 +389,13 @@ export function closeTrip(s, p, today, ev = []) {
   const est = r2(items.reduce((a, i) => a + itemTotal(s, i), 0));
   const total = r2(pos(p.total));
   // Si pagaste lo que dice la lista, el precio de cada cosa se queda; si no, los precios que tú pusiste se aprenden.
-  for (const it of items) learn(sh, it, store, day, it.price);
+  // 1.18: también van a tu libreta de precios, con la tienda y la fecha de la compra.
+  // `skipPrices`: los artículos cuyo precio ya se guardó desde la foto del recibo (para no anotarlo dos veces).
+  const skip = new Set(p.skipPrices || []);
+  for (const it of items) {
+    learn(sh, it, store, day, it.price);
+    if (it.price > 0 && !skip.has(it.id)) { const z = itemUnitSize(s, it); addPrice(s, { key: it.key, name: it.name, price: it.price, qty: z.qty, unit: z.unit, store, day, src: 'compra' }, today); }
+  }
   for (const it of items) {
     if (sh.cfg.autoPantry) {
       const prod = productOf(it.key);

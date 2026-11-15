@@ -11,6 +11,9 @@ import {
   monthProjection, insights, monthShort, prevMonth, compareTotals, groupStats, incomeStats, smallSpends, bankCosts, healthSnapshot, moodMoney,
   debtLoad, emergencyFund, subscriptionStats, loanCosts,
 } from '../game/stats.js';
+import { monthView, debtSeries } from '../game/overview.js';
+import { basket } from '../game/prices.js';
+import { go } from '../app/router.js';
 import { workInfo, workHours, fmtWork } from '../game/ledger.js';
 import { WorkCalc } from './FinTools.jsx';
 import { WorthCard } from './Loans.jsx';
@@ -51,7 +54,10 @@ export function Analysis({ s, today, onCat, setSheet = () => {} }) {
   // 1.15: en el mes en curso, lo que falta por cobrar cuenta (como en el Resumen y el Plan): así «te pasas» dice lo mismo en todas partes.
   const pr = per === 'mes' ? monthProjection(s, today) : null;
   const toGet = pr && pr.toGet > 0 ? pr.toGet : 0;
-  const expectedNet = toGet ? tot.income + toGet - tot.spent : null;
+  // 1.18: en el mes en curso, «te queda» es el mismo número del Resumen y del Plan: lo que sobra para el día a
+  // día después de lo fijo (pagado y por pagar) y lo apartado.
+  const mv = per === 'mes' ? monthView(s, today) : null;
+  const expectedNet = mv ? mv.left : null;
   return (
     <>
       <div class="chips stat-periods" role="group" aria-label="Período">
@@ -62,11 +68,11 @@ export function Analysis({ s, today, onCat, setSheet = () => {} }) {
           <div class="stack-xs"><span class="tiny semi muted">Ingresos</span><span class="strong tab-num kpi-v">{whole(tot.income)}</span>{toGet > 0 && <span class="kpi-sub">faltan {whole(toGet)}</span>}{cmp.any && !toGet && <span class="tiny semi">{ch(cmp.dIncome, true)}</span>}</div>
           <div class="stack-xs"><span class="tiny semi muted">Gastos</span><span class="strong tab-num kpi-v">{whole(tot.spent)}</span>{cmp.any && <span class="tiny semi">{ch(cmp.dSpent, false)}</span>}</div>
           {expectedNet != null
-            ? <div class="stack-xs"><span class="tiny semi muted">{expectedNet >= 0 ? 'Te quedaría' : 'Te pasas'}</span><span class="strong tab-num kpi-v" style={{ color: expectedNet < 0 ? 'var(--vit-ink)' : 'var(--ink)' }}>{whole(Math.abs(expectedNet))}</span><span class="kpi-sub">con lo que falta cobrar</span></div>
+            ? <div class="stack-xs"><span class="tiny semi muted">{expectedNet >= 0 ? 'Te queda' : 'Te pasas'}</span><span class="strong tab-num kpi-v" style={{ color: expectedNet < 0 ? 'var(--vit-ink)' : 'var(--ink)' }}>{whole(Math.abs(expectedNet))}</span><span class="kpi-sub">{expectedNet >= 0 ? 'para el día a día' : 'este mes'}</span></div>
             : <div class="stack-xs"><span class="tiny semi muted">{tot.net >= 0 ? 'Te quedó' : 'Gastaste de más'}</span><span class="strong tab-num kpi-v" style={{ color: tot.net < 0 ? 'var(--vit-ink)' : 'var(--ink)' }}>{whole(Math.abs(tot.net))}</span></div>}
         </div>
         <span class="small muted">
-          {toGet > 0 ? (expectedNet < 0 ? `Ya gastaste ${whole(-expectedNet)} más de lo que entra este mes (falta cobrar ${whole(toGet)}). ` : `Falta cobrar ${whole(toGet)} este mes; con eso te quedarían ${whole(expectedNet)}. `)
+          {mv ? `De ${whole(mv.income)} que entran este mes: ${whole(mv.fixed)} en fijos y cuotas${mv.funds > 0 ? `, ${whole(mv.funds)} apartado` : ''} y ${whole(mv.variable)} en el día a día hasta hoy. ${mv.left >= 0 ? `Te quedan ${whole(mv.left)} (${whole(mv.perDay)} por día). ` : `Te pasas por ${whole(-mv.left)}. `}`
             : tot.rate != null ? (tot.rate >= 0 ? `Guardaste el ${pct(tot.rate)} de lo que entró. ` : 'Salió más de lo que entró. ') : ''}
           {tot.n ? `${plural(tot.n, 'gasto', 'gastos')} · ${whole(tot.perDay)} por día en promedio.` : 'Sin gastos en este período.'}
           {cmp.any ? ` Las flechas comparan con ${cmp.label} (${whole(cmp.prev.spent)} de gastos).` : ''}
@@ -85,7 +91,7 @@ export function Analysis({ s, today, onCat, setSheet = () => {} }) {
       {view === 'resumen' && (
         <>
           {per === 'mes' && <Insights s={s} today={today} onCat={onCat} />}
-          {per === 'mes' && <PaceCard s={s} today={today} />}
+          {per === 'mes' && <PaceCard s={s} today={today} funds={mv ? mv.funds : 0} />}
           <HealthCard s={s} today={today} />
           <CashflowCard s={s} mks={cfMks} today={today} />
           <WorthCard s={s} today={today} />
@@ -94,6 +100,7 @@ export function Analysis({ s, today, onCat, setSheet = () => {} }) {
       {view === 'gastos' && (
         <>
           {any && <CategoriesCard s={s} period={period} today={today} onCat={onCat} wi={wi} />}
+          <BasketCard s={s} today={today} />
           {any && <MerchantsCard s={s} period={period} />}
           <SubsCard s={s} today={today} onCat={onCat} />
           {any && <BankCard s={s} period={period} wi={wi} onTax={() => setSheet({ kind: 'tax' })} />}
@@ -111,6 +118,7 @@ export function Analysis({ s, today, onCat, setSheet = () => {} }) {
       {view === 'deudas' && (
         <>
           <DebtLoadCard s={s} today={today} onDebts={() => setSheet({ kind: 'debts' })} />
+          <DebtTrendCard s={s} today={today} />
           <LoanCostCard s={s} period={period} />
           <EmergencyCard s={s} today={today} />
           {any && <AccountsCard s={s} period={period} />}
@@ -148,7 +156,7 @@ function Insights({ s, today, onCat }) {
 
 // ---------- Ritmo del mes ----------
 
-function PaceCard({ s, today }) {
+function PaceCard({ s, today, funds = 0 }) {
   const p = paceSeries(s, today);
   const pr = monthProjection(s, today);
   const [hover, setHover] = useState(null);
@@ -207,7 +215,12 @@ function PaceCard({ s, today }) {
           </div>
         )}
       </div>
-      <span class="small">Llevas <b class="tab-num">{whole(pr.spent)}</b>{pr.left > 0 ? <>; a este ritmo terminas el mes en unos <b class="tab-num">{whole(pr.projected)}</b>.</> : '.'}{pr.projIncome > 0 ? (pr.projNet >= 0 ? ` Con ${whole(pr.projIncome)} de ingresos, te quedarían unos ${whole(pr.projNet)}.` : ` Con ${whole(pr.projIncome)} de ingresos, te faltarían unos ${whole(-pr.projNet)}.`) : ''}</span>
+      {/* Con lo apartado para pagos futuros, igual que «Gastos del mes» en el Resumen y que el Plan. */}
+      <span class="small">Llevas <b class="tab-num">{whole(pr.spent)}</b>{pr.left > 0 ? <>; a este ritmo terminas el mes en unos <b class="tab-num">{whole(pr.projected)}</b>.</> : '.'}{pr.projIncome > 0 ? (() => {
+        const net = pr.projNet - funds;
+        const tail = funds > 0 ? ` y de apartar ${whole(funds)} para pagos futuros` : '';
+        return net >= 0 ? ` Con ${whole(pr.projIncome)} de ingresos, después de esto${tail}, te quedarían unos ${whole(net)}.` : ` Con ${whole(pr.projIncome)} de ingresos, después de esto${tail}, te faltarían unos ${whole(-net)}.`;
+      })() : ''}</span>
       {!pr.hasHistory && <span class="tiny muted">Con más meses registrados, la estimación usa tu gasto de siempre.</span>}
     </section>
   );
@@ -215,6 +228,8 @@ function PaceCard({ s, today }) {
 
 // ---------- Ingresos y gastos por mes ----------
 
+// Ingresos y gastos por mes (1.18): una barra por mes con lo fijo (pagos fijos y cuotas) abajo y el día a día
+// arriba; la raya es lo que entró. Debajo, qué parte de lo que entró quedó.
 function CashflowCard({ s, mks, today }) {
   const rows = cashflow(s, mks);
   const curMk = monthKey(today);
@@ -222,23 +237,26 @@ function CashflowCard({ s, mks, today }) {
   const W = 340; const H = 170; const L = 40; const R = 6; const T = 10; const B = 36;
   const max = niceMax(Math.max(...rows.map((r) => Math.max(r.income, r.spent)), 1));
   const gw = (W - L - R) / rows.length;
-  const bw = Math.min(22, (gw - 10) / 2);
+  const bw = Math.min(30, gw - 14);
   const y = (v) => T + (1 - v / max) * (H - T - B);
-  const bar = (x0, v, cls, label) => {
-    const h = Math.max(0, H - B - y(v));
-    if (h <= 0) return null;
-    const r = Math.min(4, h, bw / 2);
-    const top = H - B - h;
-    const d = `M${x0},${H - B}V${top + r}Q${x0},${top} ${x0 + r},${top}H${x0 + bw - r}Q${x0 + bw},${top} ${x0 + bw},${top + r}V${H - B}Z`;
+  const seg = (x0, from, to, cls, label, round) => {
+    const yb = y(from); const yt = y(to);
+    const h = yb - yt;
+    if (h <= 0.5) return null;
+    const r = round ? Math.min(4, h, bw / 2) : 0;
+    const d = r ? `M${x0},${yb}V${yt + r}Q${x0},${yt} ${x0 + r},${yt}H${x0 + bw - r}Q${x0 + bw},${yt} ${x0 + bw},${yt + r}V${yb}Z` : `M${x0},${yb}V${yt}H${x0 + bw}V${yb}Z`;
     return <path d={d} class={cls}><title>{label}</title></path>;
   };
   const last = rows[rows.length - 1];
+  const avgVar = rows.filter((r) => r.mk !== curMk && r.spent > 0);
+  const varAvg = avgVar.length ? avgVar.reduce((a, r) => a + r.variable, 0) / avgVar.length : 0;
+  const fixAvg = avgVar.length ? avgVar.reduce((a, r) => a + r.fixed, 0) / avgVar.length : 0;
   return (
     <section class="card" aria-label="Ingresos y gastos por mes">
       <h2 class="h2">Ingresos y gastos</h2>
-      <div class="legend"><span><i class="sw s-in" />Ingresos</span><span><i class="sw s-out" />Gastos</span></div>
+      <div class="legend"><span><i class="sw mb-fixed" />Fijos y cuotas</span><span><i class="sw mb-daily" />Día a día</span><span><i class="sw mark" />Lo que entró</span></div>
       <div class="chart-wrap">
-        <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={rows.map((r) => `${monthShort(r.mk)}: entraron ${money(r.income)}, salieron ${money(r.spent)}`).join('. ')}>
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={rows.map((r) => `${monthShort(r.mk)}: entraron ${money(r.income)}; fijos ${money(r.fixed)} y día a día ${money(r.variable)}`).join('. ')}>
           {[0, max / 2, max].map((v) => (
             <g key={v}>
               <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} class="grid" />
@@ -246,12 +264,14 @@ function CashflowCard({ s, mks, today }) {
             </g>
           ))}
           {rows.map((r, i) => {
-            const gx = L + i * gw + (gw - (bw * 2 + 2)) / 2;
+            const gx = L + i * gw + (gw - bw) / 2;
             return (
               <g key={r.mk} onPointerDown={() => setTip(tip === i ? null : i)} style={{ cursor: 'pointer' }}>
                 <rect x={L + i * gw} y={T} width={gw} height={H - T - B} fill="transparent" />
-                {bar(gx, r.income, 's-in fill', `${monthShort(r.mk)}: ingresos ${money(r.income)}`)}
-                {bar(gx + bw + 2, r.spent, 's-out fill', `${monthShort(r.mk)}: gastos ${money(r.spent)}`)}
+                {seg(gx, 0, r.fixed, 'cf-fixed', `${monthShort(r.mk)}: fijos y cuotas ${money(r.fixed)}`, r.variable <= 0)}
+                {seg(gx, r.fixed, r.spent, 'cf-daily', `${monthShort(r.mk)}: día a día ${money(r.variable)}`, true)}
+                {r.fixed > 0 && r.variable > 0 && <line x1={gx} x2={gx + bw} y1={y(r.fixed)} y2={y(r.fixed)} class="cf-gap" />}
+                {r.income > 0 && <line x1={gx - 5} x2={gx + bw + 5} y1={y(r.income)} y2={y(r.income)} class="cf-income"><title>{`${monthShort(r.mk)}: entraron ${money(r.income)}`}</title></line>}
                 <text x={L + i * gw + gw / 2} y={H - B + 14} text-anchor="middle" class="axis strong-axis">{cap(monthShort(r.mk))}</text>
                 <text x={L + i * gw + gw / 2} y={H - B + 28} text-anchor="middle" class="axis">{r.mk === curMk ? 'en curso' : r.rate != null ? pct(r.rate) : '—'}</text>
               </g>
@@ -261,17 +281,18 @@ function CashflowCard({ s, mks, today }) {
         {tip != null && rows[tip] && (
           <div class="tip" style={{ left: `${Math.min(64, Math.max(6, ((L + tip * gw) / W) * 100))}%` }}>
             <b style={{ textTransform: 'capitalize' }}>{monthName(rows[tip].mk)}</b>
-            <span>Ingresos: {whole(rows[tip].income)}</span>
-            <span>Gastos: {whole(rows[tip].spent)}</span>
+            <span>Entró: {whole(rows[tip].income)}</span>
+            <span>Fijos y cuotas: {whole(rows[tip].fixed)}</span>
+            <span>Día a día: {whole(rows[tip].variable)}</span>
             <span>{rows[tip].net >= 0 ? 'Quedó' : 'Faltó'}: {whole(Math.abs(rows[tip].net))}</span>
           </div>
         )}
       </div>
-      <span class="tiny muted">Debajo de cada mes: qué parte de lo que entró guardaste{rows.some((r) => r.mk === curMk) ? ' (el mes en curso todavía no termina)' : ''}. Toca un mes para ver los montos.</span>
-      {last && <span class="small muted">En {monthName(last.mk).split(' ')[0]}{last.mk === curMk ? ', hasta hoy,' : ''} entraron {whole(last.income)} y salieron {whole(last.spent)}.</span>}
+      <span class="tiny muted">Debajo de cada mes: qué parte de lo que entró quedó{rows.some((r) => r.mk === curMk) ? ' (el mes en curso todavía no termina)' : ''}. Toca un mes para ver los montos.</span>
+      {avgVar.length >= 2 && <span class="small muted">En un mes normal se te van {whole(fixAvg)} en fijos y cuotas y {whole(varAvg)} en el día a día.{last && last.mk === curMk ? ` Este mes, hasta hoy: ${whole(last.fixed)} y ${whole(last.variable)}.` : ''}</span>}
       <details class="table-view"><summary>Ver como tabla</summary>
-        <table><thead><tr><th>Mes</th><th>Ingresos</th><th>Gastos</th><th>Quedó</th></tr></thead>
-          <tbody>{rows.map((r) => <tr key={r.mk}><td style={{ textTransform: 'capitalize' }}>{monthShort(r.mk)}</td><td class="tab-num">{money(r.income)}</td><td class="tab-num">{money(r.spent)}</td><td class="tab-num">{money(r.net)}</td></tr>)}</tbody>
+        <table><thead><tr><th>Mes</th><th>Entró</th><th>Fijos</th><th>Día a día</th><th>Quedó</th></tr></thead>
+          <tbody>{rows.map((r) => <tr key={r.mk}><td style={{ textTransform: 'capitalize' }}>{monthShort(r.mk)}</td><td class="tab-num">{whole(r.income)}</td><td class="tab-num">{whole(r.fixed)}</td><td class="tab-num">{whole(r.variable)}</td><td class="tab-num">{whole(r.net)}</td></tr>)}</tbody>
         </table>
       </details>
     </section>
@@ -617,6 +638,79 @@ function DebtLoadCard({ s, today, onDebts }) {
       <div class="between-c"><span class="small semi muted">Debes en total</span><span class="strong tab-num">{whole(d.owe)}</span></div>
       {d.missing > 0 && <span class="tiny muted">A {plural(d.missing, 'deuda', 'deudas')} le falta el pago mensual; con él, este número sube.</span>}
       <button type="button" class="link-btn" style={{ alignSelf: 'flex-start', minHeight: 32 }} onClick={onDebts}><Icon name="trend" size={15} />Plan para salir de deudas</button>
+    </section>
+  );
+}
+
+// 1.18: lo que debías al cierre de cada mes, a largo y a corto plazo. Una gráfica para cada uno (cada una con su
+// escala: la hipoteca no deja ver las tarjetas).
+function MiniBars({ title, rows, k, cls, today }) {
+  const W = 340; const H = 92; const L = 4; const R = 4; const T = 18; const B = 18;
+  const vals = rows.map((r) => r[k]);
+  const max = Math.max(...vals, 1);
+  const gw = (W - L - R) / rows.length;
+  const bw = Math.min(26, gw - 14);
+  const y = (v) => T + (1 - v / max) * (H - T - B);
+  const first = rows.find((r) => r[k] > 0);
+  const last = rows[rows.length - 1];
+  const diff = first && last ? last[k] - first[k] : 0;
+  const n = first ? rows.length - 1 - rows.indexOf(first) : 0;
+  return (
+    <div class="stack-xs">
+      <div class="between-c"><span class="semi">{title}</span><span class="strong tab-num">{whole(last ? last[k] : 0)}</span></div>
+      <div class="chart-wrap">
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={`${title}: ${rows.map((r) => `${monthShort(r.mk)} ${whole(r[k])}`).join(', ')}`}>
+          <line x1={L} x2={W - R} y1={H - B} y2={H - B} class="grid" />
+          {rows.map((r, i) => {
+            const x0 = L + i * gw + (gw - bw) / 2;
+            const yt = y(r[k]);
+            const h = H - B - yt;
+            return (
+              <g key={r.mk}>
+                {h > 0.5 && <path d={`M${x0},${H - B}V${yt + Math.min(4, h)}Q${x0},${yt} ${x0 + Math.min(4, h)},${yt}H${x0 + bw - Math.min(4, h)}Q${x0 + bw},${yt} ${x0 + bw},${yt + Math.min(4, h)}V${H - B}Z`} class={cls} opacity={r.current ? 1 : 0.75}><title>{`${monthName(r.mk)}: ${whole(r[k])}`}</title></path>}
+                <text x={L + i * gw + gw / 2} y={H - 4} text-anchor="middle" class="axis">{cap(monthShort(r.mk))}{r.current ? ' (hoy)' : ''}</text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+      {n > 0 && Math.abs(diff) >= 1 && <span class="tiny semi" style={{ color: diff < 0 ? 'var(--good-ink)' : 'var(--vit-ink)' }}>{diff < 0 ? `Bajó ${whole(-diff)}` : `Subió ${whole(diff)}`} desde {monthName(first.mk).split(' ')[0]}.</span>}
+    </div>
+  );
+}
+
+function DebtTrendCard({ s, today }) {
+  const rows = debtSeries(s, today, 6);
+  const hasLong = rows.some((r) => r.long > 0);
+  const hasShort = rows.some((r) => r.short > 0);
+  if (!hasLong && !hasShort) return null;
+  return (
+    <section class="card" aria-label="Tus deudas mes a mes">
+      <h2 class="h2">Tus deudas mes a mes</h2>
+      <span class="small muted">Lo que debías al cierre de cada mes (el último, hasta hoy). A largo plazo: préstamos de más de un año; a corto plazo: tarjetas, préstamos cortos y personas.</span>
+      {hasLong && <MiniBars title="A largo plazo" rows={rows} k="long" cls="cf-fixed" today={today} />}
+      {hasShort && <MiniBars title="A corto plazo" rows={rows} k="short" cls="cf-daily" today={today} />}
+    </section>
+  );
+}
+
+// 1.18: tu canasta del súper, con los precios que anotas en Compras.
+function BasketCard({ s, today }) {
+  const b = basket(s, today);
+  if (b.change == null) return null;
+  const up = b.change > 0.005;
+  const down = b.change < -0.005;
+  return (
+    <section class="card" aria-label="Tu canasta del súper">
+      <div class="between-c"><h2 class="h2">Tu canasta del súper</h2><span class={`chip sm ${up ? 'tone-vit' : down ? 'tone-good' : ''}`}>{up ? `Subió ${pct(b.change)}` : down ? `Bajó ${pct(-b.change)}` : 'Igual'}</span></div>
+      <span class="small muted">En unos 3 meses, con los precios que anotaste de {plural(b.moved, 'producto', 'productos')} que sigues (cada uno pesa igual).</span>
+      {(b.up.length > 0 || b.down.length > 0) && (
+        <div class="chips">
+          {b.up.map((x) => <span key={x.key} class="chip sm tone-vit">{x.st.last.e.name} +{pct(x.st.change3)}</span>)}
+          {b.down.map((x) => <span key={x.key} class="chip sm tone-good">{x.st.last.e.name} {pct(x.st.change3)}</span>)}
+        </div>
+      )}
+      <button type="button" class="link-btn" style={{ alignSelf: 'flex-start', minHeight: 32 }} onClick={() => go('/compras?ver=precios')}><Icon name="tag" size={15} />Ver tus precios</button>
     </section>
   );
 }

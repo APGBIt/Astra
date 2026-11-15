@@ -16,6 +16,7 @@ import { dosesFor, medAdherence } from './health.js';
 import { plateFull } from './food.js';
 import { nutrientOf } from './nutrients.js';
 import { shopOf, priceOf, wishInfo } from './shop.js';
+import { priceRows } from './prices.js';
 import { aisleOf, qtyText } from './shoplex.js';
 import { labRows } from './labs.js';
 import { readiness, dayLoad, READY_ITEMS, HABITS } from './vitals.js';
@@ -196,6 +197,11 @@ export function buildTables(s, today) {
     'Compras hechas': table(
       ['Fecha', 'Tienda', 'Productos', 'Estimado RD$', 'Pagado RD$', 'Lo que compraste'],
       s.shop ? shopOf(s).trips.map((t) => [t.day, t.store, t.n, round2(t.est), round2(t.total), t.items.map((i) => `${qtyText(i.qty, i.unit) ? `${qtyText(i.qty, i.unit)} ` : ''}${i.name}`).join(', ')]) : [],
+    ),
+    // 1.18: tu libreta de precios del súper (cada precio anotado, con su medida para comparar).
+    Precios: table(
+      ['Fecha', 'Producto', 'Precio RD$', 'Cantidad', 'Medida', 'Precio comparable RD$', 'Por', 'Tienda', 'De dónde'],
+      s.shop ? priceRows(s) : [],
     ),
     Deseos: table(
       ['Deseo', 'Precio', 'Moneda', 'En RD$', 'Desde', 'Decidir desde', 'Estado', 'Nota'],

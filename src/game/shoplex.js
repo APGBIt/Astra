@@ -42,6 +42,8 @@ export const UNITS = [
   { k: 'ml', one: 'mililitro', many: 'mililitros', short: 'ml', words: ['ml', 'mililitro', 'mililitros'] },
   { k: 'gal', one: 'galón', many: 'galones', short: 'gal', words: ['gal', 'galon', 'galones'] },
   { k: 'doc', one: 'docena', many: 'docenas', short: 'doc', words: ['doc', 'docena', 'docenas'], count: true },
+  // 1.18: el cartón de huevos (30), como se venden en el súper y en el colmado.
+  { k: 'carton', one: 'cartón', many: 'cartones', short: 'cartón', words: ['carton', 'cartones'], count: true },
   { k: 'paq', one: 'paquete', many: 'paquetes', short: 'paq', words: ['paq', 'paquete', 'paquetes', 'pack', 'packs'], count: true },
   { k: 'funda', one: 'funda', many: 'fundas', short: 'funda', words: ['funda', 'fundas', 'bolsa', 'bolsas'], count: true },
   { k: 'lata', one: 'lata', many: 'latas', short: 'lata', words: ['lata', 'latas', 'latica', 'laticas'], count: true },
@@ -350,20 +352,22 @@ const INDEX = (() => {
 })();
 
 // Busca el producto del catálogo que mejor corresponde a lo que escribiste.
-// Coincidencia exacta; si no, el nombre más largo cuyas palabras estén todas en lo escrito («pollo entero» → Pollo).
+// Coincidencia exacta; si no, el nombre con más palabras que estén todas en lo escrito («pollo entero» → Pollo);
+// entre nombres de igual tamaño, el que aparece primero, porque en español el producto va delante («atún en
+// aceite» es atún, «jugo de naranja» es jugo); y si no, el más largo.
 export function matchProduct(text) {
   const k = tokKey(text);
   if (!k) return null;
   if (INDEX.has(k)) return INDEX.get(k);
   const words = k.split(' ');
   let best = null;
-  let bestLen = 0;
+  let bestScore = null;
   for (const [name, c] of INDEX) {
     const nw = name.split(' ');
     if (nw.length > words.length) continue;
     if (!nw.every((w) => words.includes(w))) continue;
-    const len = nw.join('').length;
-    if (len > bestLen) { best = c; bestLen = len; }
+    const score = [nw.length, -Math.min(...nw.map((w) => words.indexOf(w))), nw.join('').length];
+    if (!bestScore || score[0] > bestScore[0] || (score[0] === bestScore[0] && (score[1] > bestScore[1] || (score[1] === bestScore[1] && score[2] > bestScore[2])))) { best = c; bestScore = score; }
   }
   // Una sola palabra suelta que apenas se parece no cuenta («salsa» no es «Salsa de tomate»).
   return best;

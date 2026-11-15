@@ -710,3 +710,54 @@ details > summary::-webkit-details-marker { display: none; }
   .card, .kpi, .note { break-inside: avoid; box-shadow: none !important; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* ---------- 1.18: Resumen de Finanzas ---------- */
+.calc { display: flex; flex-direction: column; gap: 0; padding: 4px 14px; border-radius: 16px; background: var(--soft); }
+.calc-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 38px; font-size: 14px; font-weight: 600; color: var(--muted); background: none; border: 0; padding: 0; width: 100%; text-align: left; font-family: inherit; }
+button.calc-row { cursor: pointer; }
+button.calc-row:disabled { cursor: default; opacity: 1; }
+.calc-row .tab-num { color: var(--ink); font-weight: 700; white-space: nowrap; }
+.calc-row.total { border-top: 1.5px solid var(--line-2, var(--line)); color: var(--ink); font-weight: 800; }
+.calc-row.total .tab-num { font-weight: 800; }
+.calc-list { display: flex; flex-direction: column; gap: 2px; padding: 0 0 8px 12px; }
+.calc-sub { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; font-weight: 600; color: var(--muted); min-width: 0; }
+.calc-sub .clip { min-width: 0; }
+.mbar { position: relative; display: flex; gap: 2px; height: 16px; border-radius: 8px; background: var(--soft); overflow: visible; }
+.mbar > i { display: block; height: 100%; min-width: 0; }
+.mbar > i:first-child { border-radius: 8px 0 0 8px; }
+.mbar > b { position: absolute; top: -5px; width: 3px; height: 26px; margin-left: -1.5px; border-radius: 2px; background: var(--ink); }
+.mb-fixed { background: var(--finanzas); }
+.mb-fixed-left { background: repeating-linear-gradient(45deg, var(--finanzas) 0 3px, transparent 3px 7px); box-shadow: inset 0 0 0 1px var(--finanzas); }
+.mb-funds { background: var(--finanzas); opacity: 0.45; }
+.mb-daily { background: var(--series-out); }
+.legend .sw.mb-left { background: var(--soft); box-shadow: inset 0 0 0 1.5px var(--line-2, var(--line)); }
+.debt-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.debt-box { display: flex; flex-direction: column; gap: 3px; padding: 12px; border-radius: 16px; background: var(--soft); border: 0; text-align: left; color: var(--ink); font-family: inherit; min-width: 0; }
+button.debt-box { cursor: pointer; }
+.debt-num { font-family: var(--font-display); font-size: 19px; font-weight: 800; line-height: 1.15; white-space: nowrap; }
+.debt-num.lg { font-size: 17px; }
+.debt-num.xl { font-size: 15px; }
+.chart-wrap .cf-fixed { fill: var(--finanzas); }
+.chart-wrap .cf-daily { fill: var(--series-out); }
+.chart-wrap .cf-income { stroke: var(--ink); stroke-width: 3; stroke-linecap: round; }
+.chart-wrap .cf-gap { stroke: var(--surface); stroke-width: 2; }
+
+/* ---------- 1.18: Compras → Precios ---------- */
+/* Un campo de archivo transparente encima del botón: tocarlo abre la cámara o la galería en cualquier teléfono. */
+.filepick { position: relative; overflow: hidden; cursor: pointer; }
+.filepick:focus-within { outline: 3px solid var(--ink); outline-offset: 2px; }
+.icon-btn.sm { width: 40px; height: 40px; border-radius: 20px; }
+.icon-btn.sm.plain { color: var(--muted); }
+button.mrow.price-row { width: 100%; background: none; border-left: 0; border-right: 0; border-top: 0; color: inherit; text-align: left; font-family: inherit; cursor: pointer; padding: 12px 0; }
+.price-row .body { min-height: 40px; }
+.price-kpis { padding: 12px 14px; border-radius: 16px; background: var(--soft); }
+.hist-row { display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.hist-row:last-child { border-bottom: none; }
+.lrow.pick-row { min-height: 60px; border-radius: 16px; padding: 10px 12px; border: 1.5px solid transparent; }
+.lrow.pick-row.on { border-color: var(--ink); }
+.lrow.pick-row + .lrow.pick-row { margin-top: 2px; }
+.quick2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.qbtn { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 14px; border-radius: 20px; background: var(--soft); color: var(--ink); min-height: 104px; text-align: left; }
+.qbtn .tile { margin-bottom: 4px; }
+.qbtn b { font-size: 15px; line-height: 1.25; }
+.receipt-thumb.sm { width: 44px; height: 56px; border-radius: 8px; }

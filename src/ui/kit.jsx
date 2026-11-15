@@ -101,7 +101,7 @@ export function moneyDueCount(s) {
 }
 
 // La barra de abajo. El botón flotante registra algo nuevo; algunas pantallas lo cambian por lo suyo
-// (pendiente nuevo, movimiento, rutina, logro…).
+// (pendiente nuevo, movimiento, rutina, logro…) y, si no es «agregar», le ponen su ícono (`fab.icon`).
 export function Nav({ active, fab = { registrar: true, label: 'Registrar' } }) {
   const s = useApp();
   const badge = todosDue(s, s.energy.day).length;
@@ -124,8 +124,8 @@ export function Nav({ active, fab = { registrar: true, label: 'Registrar' } }) {
       {fab && (fab.registrar
         ? <button type="button" class="fab" aria-label={fab.label || 'Registrar'} onClick={openRegistrar}><Icon name="plus" size={28} stroke={2.4} /></button>
         : fab.onClick
-          ? <button type="button" class="fab" aria-label={fab.label} onClick={fab.onClick}><Icon name="plus" size={28} stroke={2.4} /></button>
-          : <a class="fab" href={`#${fab.href}`} aria-label={fab.label}><Icon name="plus" size={28} stroke={2.4} /></a>)}
+          ? <button type="button" class="fab" aria-label={fab.label} onClick={fab.onClick}><Icon name={fab.icon || 'plus'} size={fab.icon ? 26 : 28} stroke={fab.icon ? 2.1 : 2.4} /></button>
+          : <a class="fab" href={`#${fab.href}`} aria-label={fab.label}><Icon name={fab.icon || 'plus'} size={fab.icon ? 26 : 28} stroke={fab.icon ? 2.1 : 2.4} /></a>)}
     </>
   );
 }

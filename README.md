@@ -2,6 +2,47 @@
 
 Tu vida en modo juego de rol. App web instalable (y futura APK) para crecer en seis áreas de la vida con barras de vitalidad y energía, caminos, misiones y jefes.
 
+## Novedades de la versión 1.18 (Compras con fotos y precios; Finanzas con lo disponible, los gastos del mes y las deudas a largo plazo)
+
+- **Las fotos ya abren la cámara**: en Compras, en los movimientos, en los logros y en el expediente, el botón de foto toca directamente el campo de la cámara. Antes era un campo escondido que se «tocaba» desde otro botón, y en algunos teléfonos (sobre todo con la app instalada) no abría nada. Sin IA, la hoja de foto empieza por «Lista, receta o producto», que lee el lector del teléfono, y la nevera avisa que necesita la IA. El botón de la Lista ahora es la cámara.
+- **Precios** (Compras → Precios), tu libreta de precios del súper:
+  - Lo básico ya está para llenar: huevos, leche, arroz, pollo, aceite, atún, azúcar, habichuelas rojas, plátano verde, pan, café y salami. Agregas lo que compras seguido.
+  - Anotas un precio a mano (botón +), con la **foto de la etiqueta** o con la **foto del recibo**:
+    - De la etiqueta, el lector del teléfono lee el precio, propone el producto y elige el tamaño («30 UND», «1 GAL», «por libra»).
+    - Del recibo saca cada producto con su precio, cantidad, peso y tamaño. Tú revisas antes de guardar. La IA es opcional, para recibos borrosos.
+  - Cada precio se pasa a una medida para comparar: los huevos por cartón de 30, el aceite por galón, lo que se pesa por libra y lo líquido por litro. Si compras la docena, te dice a cuánto sale el cartón.
+  - Cada producto tiene su histórico:
+    - gráfica, último precio, el más bajo y el promedio de 90 días;
+    - cuánto cambió en 3 meses (por promedios, para que cambiar de tienda pese menos);
+    - el último precio de cada tienda (de los últimos 3 meses);
+    - cada precio con su foto.
+  - Al guardar te dice si subió o bajó desde la última vez, y dónde. Arriba ves lo que más subió y lo que bajó, y cuánto cambió tu canasta.
+  - También se anotan solos:
+    - al terminar una compra con precios;
+    - con la foto del recibo al terminar la compra, también sin IA (lee el total, la tienda, la fecha, la tarjeta por sus 4 últimos dígitos y los precios);
+    - desde «Escanear recibo» de Finanzas, si el recibo es del súper.
+- **Tu lista con tus precios**:
+  - El estimado usa la libreta: «huevos» es el cartón que sueles comprar y «12 huevos» son 12 huevos.
+  - Dice en qué tienda te sale más barata la lista, con tus últimos precios, y marca lo que subió. Si la lista es de una tienda, también dice dónde sale más barato cada cosa.
+  - Cada producto muestra tu último precio y el más barato, con «Foto de la etiqueta» y «Ver precios».
+- **Finanzas → Resumen**, en el orden en que lo necesitas:
+  - **Disponible**: lo que hay en cuentas y efectivo menos lo que ya está comprometido hasta tu próximo cobro (o hasta fin de mes), con el cálculo a la vista. Los ahorros y el crédito de las tarjetas van aparte. Si algo vence el mismo día del cobro, te lo avisa.
+  - **Gastos del mes**: lo que entra, lo fijo (pagado y por pagar), lo apartado para pagos futuros y el día a día, en una sola barra. Te dice cuánto te queda para el día a día, cuánto es por día y si, al ritmo que vas, te alcanza. Usa el mismo cálculo que el Plan y el Análisis.
+  - **Lo que debes**:
+    - a largo plazo, los préstamos que terminan en más de un año (hipoteca, carro);
+    - a corto plazo, las tarjetas, los préstamos que terminan antes y lo que les debes a personas;
+    - aparte, lo que te deben;
+    - qué parte de lo que entra se va en deudas (sano hasta 20 %, con cuidado hasta 36 %).
+- **Deudas**: dos secciones, «A largo plazo» y «A corto plazo» (tarjetas, préstamos que terminan pronto y personas). Cada deuda dice su cuota o pago y hasta cuándo dura.
+- **Análisis**:
+  - «Te queda para el día a día» del mes.
+  - Cada mes, lo que entró frente a lo fijo y el día a día: barras apiladas en colores que se distinguen con daltonismo, con su tabla.
+  - Cómo van tus deudas a largo y a corto plazo.
+  - Tu canasta del súper, en Gastos.
+  - El ritmo del mes cuenta lo apartado para pagos futuros.
+- **Drive**: tabla nueva «Precios» y carpeta de fotos «Precios».
+- 348 pruebas automáticas (24 nuevas). La versión de los datos sigue en 4. Al abrir, los precios que se habían aprendido de tus compras pasan solos a la libreta.
+
 ## Novedades de la versión 1.17 (salud al estilo WHOOP, tus análisis de laboratorio e informe semanal)
 
 Comparación con WHOOP, Oura, Garmin, Apple Salud, Fitbit, Samsung Health, Ultrahuman, Bevel y Function Health. Astra no tiene sensor: toma lo que se puede hacer bien con lo que tú anotas (y con tu reloj o tensiómetro, si tienes) y dice siempre de dónde sale cada número.

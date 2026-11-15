@@ -86,142 +86,25 @@ export function payInitial(s, it, today) {
 
 // ---------- Resumen ----------
 
+// 1.18: el Resumen se arma en Finance.jsx con «Disponible», «Gastos del mes» y «Lo que debes» (Overview.jsx);
+// aquí queda lo que vence en los próximos 14 días.
 export function MoneyOverview({ s, today, setSheet, setTab }) {
   const bal = balances(s);
-  const t = moneyTotals(s, today, bal);
-  const lt = loanTotals(s, today);
-  const ct = creditTotals(s, today);
-  const debtsTotal = t.oweDOP + lt.yo + ct.owe;
-  const debtParts = [t.oweDOP > 0 ? `tarjetas ${money(Math.round(t.oweDOP))}` : '', ct.owe > 0 ? `préstamos ${money(Math.round(ct.owe))}` : '', lt.yo > 0 ? `personas ${money(Math.round(lt.yo))}` : ''].filter(Boolean);
-  const pay = untilPayday(s, today);
   const due = dueItems(s, today, addDays(today, 14), today, { bal }).filter((it) => !it.estimate);
-  const salary = PLAN_TEMPLATES.ingreso[0];
   return (
-    <>
-      {t.ready ? (
-        <section class="card" aria-label="Tu dinero hoy">
-          <span class="eyebrow">Tienes hoy</span>
-          <span class="stack-xs">
-            <span class="display-num tab-num" style={{ fontSize: 40 }}>{money(t.have.DOP)}</span>
-            {t.have.USD !== 0 && <span class="h2 tab-num">{usd(t.have.USD)}</span>}
-          </span>
-          <span class="small muted">En tus cuentas y efectivo.{t.have.USD ? ` Todo en pesos: ${money(t.haveDOP)}.` : ''}</span>
-          <div class="stack-xs" style={{ marginTop: 2 }}>
-            {debtsTotal > 0 && (
-              <button type="button" class="lrow" style={{ minHeight: 48 }} onClick={() => setTab('deudas')}>
-                <span class="stack-xs grow" style={{ gap: 0 }}><span class="semi">Debes en total</span><span class="tiny muted semi">{debtParts.join(' · ')}</span></span>
-                <span class="strong tab-num" style={{ color: 'var(--vit-ink)' }}>{money(Math.round(debtsTotal))}</span><Icon name="right" size={16} />
-              </button>
-            )}
-            {lt.me > 0 && (
-              <button type="button" class="lrow" style={{ minHeight: 48 }} onClick={() => setTab('deudas')}>
-                <span class="grow semi">Te deben</span><span class="strong tab-num" style={{ color: 'var(--good-ink)' }}>{money(Math.round(lt.me))}</span><Icon name="right" size={16} />
-              </button>
-            )}
-            {t.credit && (t.credit.DOP > 0 || t.credit.USD > 0) && (
-              <button type="button" class="lrow" style={{ minHeight: 48 }} onClick={() => setTab('cuentas')}>
-                <span class="stack-xs grow" style={{ gap: 0 }}><span class="semi">Crédito disponible</span><span class="tiny muted semi">En tus tarjetas: no es dinero tuyo</span></span><Amt o={t.credit} /><Icon name="right" size={16} />
-              </button>
-            )}
-          </div>
-        </section>
-      ) : (
-        <section class="card" aria-label="Tu dinero hoy" style={{ background: 'var(--finanzas-soft)', borderColor: 'transparent' }}>
-          <span class="eyebrow" style={{ color: 'var(--finanzas-ink)' }}>Tu dinero</span>
-          <h2 class="h2">¿Cuánto tienes hoy?</h2>
-          <span class="small">Pon el saldo de tus cuentas y lo que debes en tus tarjetas. Desde ahí, cada movimiento lo sube o lo baja solo.</span>
-          <button type="button" class="btn sm" style={{ alignSelf: 'flex-start' }} onClick={() => setTab('cuentas')}><Icon name="bank" size={18} />Poner mis saldos</button>
-        </section>
+    <section class="card flush" aria-label="Por pagar">
+      <div class="between-c" style={{ padding: '14px 0 4px' }}>
+        <h2 class="h2">Por pagar y cobrar</h2>
+        <button type="button" class="link-btn" onClick={() => setTab('plan')}>Calendario<Icon name="right" size={16} /></button>
+      </div>
+      {!due.length && (
+        <p class="small muted" style={{ padding: '2px 0 14px' }}>
+          {(s.money.plans || []).length || s.money.accounts.some((a) => isCard(a) && a.cut) ? 'Nada en los próximos 14 días.' : 'Agrega tus pagos fijos (alquiler, luz, colegio…) y la fecha de corte de tus tarjetas para verlos aquí antes de que venzan.'}
+        </p>
       )}
-
-      {pay ? <PaydayCard s={s} pay={pay} today={today} /> : (
-        <button type="button" class="note" style={{ border: 'none', textAlign: 'left', color: 'var(--ink)' }} onClick={() => setSheet({ kind: 'plan', tpl: { ...salary, kind: 'ingreso' } })}>
-          <Icon name="briefcase" size={20} /><span class="grow">¿Cuándo cobras? Agrega tu sueldo y te digo cuánto puedes gastar por día hasta el próximo cobro.</span><Icon name="right" size={18} />
-        </button>
-      )}
-
-      <ProjectionCard s={s} today={today} onMore={() => setTab('analisis')} />
-
-      <section class="card flush" aria-label="Por pagar">
-        <div class="between-c" style={{ padding: '14px 0 4px' }}>
-          <h2 class="h2">Por pagar y cobrar</h2>
-          <button type="button" class="link-btn" onClick={() => setTab('plan')}>Calendario<Icon name="right" size={16} /></button>
-        </div>
-        {!due.length && (
-          <p class="small muted" style={{ padding: '2px 0 14px' }}>
-            {(s.money.plans || []).length || s.money.accounts.some((a) => isCard(a) && a.cut) ? 'Nada en los próximos 14 días.' : 'Agrega tus pagos fijos (alquiler, luz, colegio…) y la fecha de corte de tus tarjetas para verlos aquí antes de que venzan.'}
-          </p>
-        )}
-        {due.slice(0, 6).map((it) => <DueRow key={dueKey(it)} s={s} it={it} today={today} onPay={() => setSheet(payInitial(s, it, today))} onOpen={() => setSheet(dueSheet(it))} />)}
-        {due.length > 6 && <button type="button" class="lrow" style={{ justifyContent: 'center', fontWeight: 700 }} onClick={() => setTab('plan')}>Ver {due.length - 6} más</button>}
-        {!(s.money.plans || []).length && <button type="button" class="lrow" style={{ justifyContent: 'center', fontWeight: 700, color: 'var(--ink)' }} onClick={() => setSheet({ kind: 'plan', tpl: null, planKind: 'gasto' })}><Icon name="plus" size={18} />Agregar un pago fijo</button>}
-      </section>
-    </>
-  );
-}
-
-// Proyección del mes: lo gastado, lo que falta pagar y tu gasto diario por los días que quedan.
-function ProjectionCard({ s, today, onMore }) {
-  const pr = monthProjection(s, today);
-  if (!(pr.spent > 0) && !(pr.toPay > 0)) return null;
-  const base = Math.max(pr.projected, pr.projIncome, 1);
-  return (
-    <section class="card" aria-label="Proyección del mes">
-      <div class="between-c"><span class="eyebrow">Este mes, a este ritmo</span><span class="chip sm">Quedan {plural(pr.left, 'día', 'días')}</span></div>
-      <span class="stack-xs">
-        <span class="small semi muted">Gastarías en total</span>
-        <span class="display-num tab-num" style={{ fontSize: 30 }}>{money(Math.round(pr.projected))}</span>
-      </span>
-      <div class="proj-bar" role="img" aria-label={`Llevas ${money(pr.spent)}; faltan ${money(pr.toPay)} programados y unos ${money(pr.daily * pr.left)} del día a día${pr.projIncome ? `; entran ${money(pr.projIncome)}` : ''}.`}>
-        <i class="pb-spent" style={{ width: `${(pr.spent / base) * 100}%` }} />
-        <i class="pb-fixed" style={{ width: `${(pr.toPay / base) * 100}%` }} />
-        <i class="pb-daily" style={{ width: `${((pr.daily * pr.left) / base) * 100}%` }} />
-        {pr.projIncome > 0 && <b style={{ left: `${Math.min(100, (pr.projIncome / base) * 100)}%` }} />}
-      </div>
-      <div class="legend">
-        <span><i class="sw pb-spent" />Llevas {money(Math.round(pr.spent))}</span>
-        {pr.toPay > 0 && <span><i class="sw pb-fixed" />Programado {money(Math.round(pr.toPay))}</span>}
-        {pr.left > 0 && <span><i class="sw pb-daily" />Día a día {money(Math.round(pr.daily * pr.left))}</span>}
-        {pr.projIncome > 0 && <span><i class="sw mark" />Ingresos {money(Math.round(pr.projIncome))}</span>}
-      </div>
-      {pr.projIncome > 0 && <span class="small strong" style={{ color: pr.projNet < 0 ? 'var(--vit-ink)' : 'var(--finanzas-ink)' }}>{projectionNote(pr)}</span>}
-      <button type="button" class="link-btn" style={{ alignSelf: 'flex-start', minHeight: 32 }} onClick={onMore}><Icon name="chart" size={15} />Ver el análisis</button>
-    </section>
-  );
-}
-
-function PaydayCard({ s, pay, today }) {
-  const amt = pay.next.p.amount;
-  return (
-    <section class="card" aria-label="Hasta tu próximo cobro">
-      <div class="between-c">
-        <span class="eyebrow">Hasta tu próximo cobro</span>
-        <span class="chip sm tone-good">{pay.days === 0 ? 'Hoy' : pay.days === 1 ? 'Mañana' : `En ${pay.days} días`}</span>
-      </div>
-      {pay.ready ? (pay.free >= 0 ? (
-        <span class="stack-xs">
-          <span class="small semi muted">Puedes gastar</span>
-          <span class="display-num tab-num" style={{ fontSize: 34 }}>{money(Math.round(pay.free))}</span>
-          {pay.perDay != null && <span class="small strong" style={{ color: 'var(--finanzas-ink)' }}>{money(Math.round(pay.perDay))} por día hasta cobrar</span>}
-          {pay.savings > 0 && <span class="tiny muted semi">Sin contar tus ahorros ({money(Math.round(pay.savings))}).</span>}
-        </span>
-      ) : (
-        <div class="note tone-vit"><Icon name="info" size={18} /><span>Te faltan <b>{money(Math.round(-pay.free))}</b> para cubrir los pagos antes de cobrar. Mira si alguno se puede mover.</span></div>
-      )) : <span class="small muted">Pon el saldo de tus cuentas para saber cuánto puedes gastar por día.</span>}
-      <div class="stack-xs">
-        <div class="lrow" style={{ minHeight: 46 }}>
-          <span class="tile xs" style={{ background: 'var(--good-soft)', color: 'var(--good-ink)' }}><Icon name="coins" size={15} /></span>
-          <span class="grow semi">Cobras: {pay.next.p.name} · {whenText(pay.next.date, today)}</span>
-          <span class="strong tab-num" style={{ color: 'var(--good-ink)' }}>+{cur(amt, pay.next.p.currency)}</span>
-        </div>
-        {pay.items.length + pay.loans.length > 0 && (
-          <div class="lrow" style={{ minHeight: 46 }}>
-            <span class="tile xs" style={{ background: 'var(--finanzas-soft)', color: 'var(--finanzas-ink)' }}><Icon name="calendar" size={15} /></span>
-            <span class="grow semi">Antes pagas {plural(pay.items.length + pay.loans.length, 'cosa', 'cosas')}{pay.loans.length ? ` (con lo que le debes a ${pay.loans.map((x) => x.l.who).slice(0, 2).join(' y ')})` : ''}</span>
-            <span class="strong tab-num">−{money(Math.round(pay.pay))}</span>
-          </div>
-        )}
-      </div>
+      {due.slice(0, 6).map((it) => <DueRow key={dueKey(it)} s={s} it={it} today={today} onPay={() => setSheet(payInitial(s, it, today))} onOpen={() => setSheet(dueSheet(it))} />)}
+      {due.length > 6 && <button type="button" class="lrow" style={{ justifyContent: 'center', fontWeight: 700 }} onClick={() => setTab('plan')}>Ver {due.length - 6} más</button>}
+      {!(s.money.plans || []).length && <button type="button" class="lrow" style={{ justifyContent: 'center', fontWeight: 700, color: 'var(--ink)' }} onClick={() => setSheet({ kind: 'plan', tpl: null, planKind: 'gasto' })}><Icon name="plus" size={18} />Agregar un pago fijo</button>}
     </section>
   );
 }
@@ -727,11 +610,11 @@ export function DebtCard({ s, today, onOpen }) {
   return (
     <button type="button" class="card" style={{ textAlign: 'left', color: 'var(--ink)', font: 'inherit' }} onClick={onOpen} aria-label="Salir de deudas">
       <div class="between-c"><h2 class="h2">Salir de deudas</h2><Icon name="right" size={18} /></div>
-      <span class="small muted">Debes {money(Math.round(total))} en {plural(on.length, 'deuda', 'deudas')}.</span>
+      <span class="small muted">Con el banco y tus tarjetas debes {money(Math.round(total))} en {plural(on.length, 'deuda', 'deudas')}{(s.money.loans || []).some((l) => l.dir === 'yo' && !l.closed) ? ' (sin lo que debes a personas)' : ''}.</span>
       {plan && plan.ok && plan.months > 0 ? (
         <span class="small strong" style={{ color: 'var(--finanzas-ink)' }}>Con tu plan ({d.method === 'snowball' ? 'bola de nieve' : 'avalancha'}) terminas en {MONTHS[Number(monthAfter(today, plan.months).slice(5)) - 1]} de {monthAfter(today, plan.months).slice(0, 4)}{cmp.minimum.ok && cmp.minimum.interest > plan.interest ? ` y te ahorras ${money(Math.round(cmp.minimum.interest - plan.interest))} de intereses` : ''}.</span>
       ) : plan && !plan.ok ? <span class="small strong" style={{ color: 'var(--vit-ink)' }}>Con estos pagos no terminarías: revisa tu plan.</span>
-        : <span class="small strong">Pon la tasa y el pago de cada una y te digo cuándo terminas y cuánto ahorras en intereses.</span>}
+        : <span class="small strong">{(() => { const miss = on.filter((x) => !(x.min > 0) || !(x.apr > 0)).map((x) => x.name); return miss.length ? `Falta la tasa o el pago de ${miss.slice(0, 2).join(' y ')}${miss.length > 2 ? ` y ${miss.length - 2} más` : ''}: ponlos y te digo cuándo terminas y cuánto ahorras en intereses.` : 'Pon la tasa y el pago de cada una y te digo cuándo terminas y cuánto ahorras en intereses.'; })()}</span>}
     </button>
   );
 }

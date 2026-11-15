@@ -63,18 +63,20 @@ const spentTx = (s, from, to) => s.money.tx.filter((t) => inRange(t, from, to) &
 
 // Ingresos, gastos y lo que quedó, mes por mes (las transferencias entre tus cuentas no cuentan).
 export function cashflow(s, mks) {
-  const by = Object.fromEntries(mks.map((mk) => [mk, { mk, income: 0, spent: 0 }]));
+  const by = Object.fromEntries(mks.map((mk) => [mk, { mk, income: 0, spent: 0, fixed: 0 }]));
+  const fixed = fixedIds(s);
   for (const t of s.money.tx) {
     const row = by[monthKey(t.day)];
     if (!row || !inStats(t)) continue;
     const k = txKind(t);
     if (k === 'ingreso') row.income += txDOP(t);
-    else if (k === 'gasto') row.spent += txDOP(t);
+    else if (k === 'gasto') { row.spent += txDOP(t); if (fixed.has(t.id)) row.fixed += txDOP(t); }
   }
+  // 1.18: lo fijo (pagos fijos y cuotas) separado del día a día.
   return mks.map((mk) => {
     const r = by[mk];
     const net = r.income - r.spent;
-    return { mk, income: r2(r.income), spent: r2(r.spent), net: r2(net), rate: r.income > 0 ? net / r.income : null };
+    return { mk, income: r2(r.income), spent: r2(r.spent), fixed: r2(r.fixed), variable: r2(r.spent - r.fixed), net: r2(net), rate: r.income > 0 ? net / r.income : null };
   });
 }
 

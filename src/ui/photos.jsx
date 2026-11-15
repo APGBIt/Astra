@@ -47,12 +47,16 @@ export function PhotoStrip({ ids = [], onChange, kind = 'otra', label = 'Fotos',
       <span class="label">{label}</span>
       <div class="photo-strip">
         {list.map((id, i) => <PhotoThumb key={id} id={id} onOpen={() => setOpen(id)} label={`Ver foto ${i + 1}`} />)}
-        {list.length < max && (
-          <button type="button" class="photo-thumb add" onClick={() => input.current && input.current.click()} disabled={busy} aria-label="Agregar foto">
-            <Icon name={busy ? 'sync' : 'camera'} size={20} />
-          </button>
-        )}
-        <input ref={input} type="file" accept="image/*" multiple hidden onChange={pick} />
+        {/* El campo de archivo va encima del botón (transparente): tocarlo abre la cámara o la galería en todos los
+            teléfonos; un campo escondido que se «toca» desde otro botón a veces no abre nada en la app instalada. */}
+        {list.length < max && (busy
+          ? <span class="photo-thumb add" style={{ width: 64, height: 64 }} aria-label="Guardando la foto" role="status"><Icon name="sync" size={20} /></span>
+          : (
+            <label class="photo-thumb add filepick" style={{ width: 64, height: 64, position: 'relative' }}>
+              <Icon name="camera" size={20} />
+              <input ref={input} type="file" accept="image/*" multiple aria-label="Agregar foto" onChange={pick} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', fontSize: 0 }} />
+            </label>
+          ))}
       </div>
       {hint && <span class="small muted">{hint}</span>}
       {open && <PhotoViewer id={open} onClose={() => setOpen(null)} onRemove={() => { removePhoto(open); onChange(list.filter((x) => x !== open)); setOpen(null); }} />}

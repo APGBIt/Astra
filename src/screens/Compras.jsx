@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
-import { Nav, TopBar, Sheet, SheetHead, TChip, Switch, NumberField, NumberChips, Bar, Empty, toast, ask, plural, money, areaColor, areaSoft, areaInk, focusOnMount } from '../ui/kit.jsx';
+import { Nav, TopBar, Sheet, SheetHead, TChip, Switch, NumberField, Bar, Empty, toast, ask, plural, money, moneyR, areaColor, areaSoft, areaInk, focusOnMount } from '../ui/kit.jsx';
 import { act, useApp } from '../app/store.js';
 import { go } from '../app/router.js';
 import { addDays, diffDays, fmtShort } from '../app/dates.js';
@@ -16,12 +16,16 @@ import {
   addWish, updateWish, removeWish, wishInfo, dropWish, buyWish, reopenWish, shopText, shopSummary,
 } from '../game/shop.js';
 import { suggestProducts } from '../game/shoplex.js';
+import { parseScan } from '../game/scan.js';
+import { priceStats, storeCompare, receiptItems, receiptPrices, addPrice, sizeIn } from '../game/prices.js';
+import { PricesTab, PriceSheet, ProductSheet, ReceiptPricesSheet, FilePick, ChangeChip } from './Prices.jsx';
 
-// Compras: listas, despensa (con foto) y deseos. Todo lo que se compra termina en Finanzas como gasto de supermercado.
+// Compras: listas, precios (1.18), despensa (con foto) y deseos. Todo lo que se compra termina en Finanzas como gasto
+// de supermercado.
 
 const AREA = 'finanzas';
 const cap = (t) => (t ? t[0].toUpperCase() + t.slice(1) : '');
-const TABS = [['lista', 'Lista'], ['despensa', 'Despensa'], ['deseos', 'Deseos']];
+const TABS = [['lista', 'Lista'], ['precios', 'Precios'], ['despensa', 'Despensa'], ['deseos', 'Deseos']];
 
 function groupByAisle(items) {
   const out = [];
@@ -40,10 +44,16 @@ export function Compras({ query }) {
   const sh = shopOf(s);
   const [tab, setTab] = useState(() => { const v = query && query.get('ver'); return TABS.some((t) => t[0] === v) ? v : 'lista'; });
   const [listId, setListId] = useState(() => (query && query.get('l')) || null);
-  const [sheet, setSheet] = useState(() => (query && query.get('foto') ? { t: 'scan' } : null));
+  const [sheet, setSheet] = useState(() => (query && query.get('foto') ? { t: 'scan' } : query && query.get('precio') ? { t: 'price' } : null));
   const lists = sh.lists.filter((l) => !l.archived);
   const list = lists.find((l) => l.id === listId) || listOf(s, null);
   const close = () => setSheet(null);
+  // Las hojas de precios pueden volver a la que las abrió (el producto de la lista).
+  const back = () => setSheet(sheet && sheet.back ? sheet.back : null);
+  const fab = tab === 'deseos' ? { onClick: () => setSheet({ t: 'wish' }), label: 'Nuevo deseo' }
+    : tab === 'precios' ? { onClick: () => setSheet({ t: 'price' }), label: 'Anotar precio' }
+      : tab === 'despensa' ? { onClick: () => setSheet({ t: 'scan', mode: 'despensa' }), label: 'Foto de la nevera', icon: 'camera' }
+        : { onClick: () => setSheet({ t: 'scan' }), label: 'Foto', icon: 'camera' };
 
   return (
     <>
@@ -52,14 +62,18 @@ export function Compras({ query }) {
         <div class="seg" role="tablist" aria-label="Compras">
           {TABS.map(([k, label]) => <button key={k} type="button" role="tab" aria-selected={tab === k ? 'true' : 'false'} onClick={() => setTab(k)}>{label}</button>)}
         </div>
-        {tab === 'lista' && <ListTab s={s} today={today} list={list} lists={lists} setListId={setListId} setSheet={setSheet} />}
+        {tab === 'lista' && <ListTab s={s} today={today} list={list} lists={lists} setListId={setListId} setSheet={setSheet} setTab={setTab} />}
+        {tab === 'precios' && <PricesTab s={s} today={today} list={list} setSheet={setSheet} />}
         {tab === 'despensa' && <PantryTab s={s} today={today} list={list} setSheet={setSheet} />}
         {tab === 'deseos' && <WishTab s={s} today={today} setSheet={setSheet} />}
       </main>
-      <Nav active="areas" fab={tab === 'deseos' ? { onClick: () => setSheet({ t: 'wish' }), label: 'Nuevo deseo' } : { onClick: () => setSheet({ t: 'scan' }), label: 'Foto' }} />
-      {sheet && sheet.t === 'item' && <ItemSheet id={sheet.id} onClose={close} />}
-      {sheet && sheet.t === 'scan' && <ScanSheet list={list} mode={sheet.mode} onClose={close} />}
+      <Nav active="areas" fab={fab} />
+      {sheet && sheet.t === 'item' && <ItemSheet id={sheet.id} list={list} onClose={close} setSheet={setSheet} />}
+      {sheet && sheet.t === 'scan' && <ScanSheet list={list} mode={sheet.mode} onClose={close} setSheet={setSheet} />}
       {sheet && sheet.t === 'trip' && <TripSheet list={list} onClose={close} />}
+      {sheet && sheet.t === 'price' && <PriceSheet initial={sheet.initial || (sheet.key ? { key: sheet.key } : {})} list={list} onClose={back} />}
+      {sheet && sheet.t === 'product' && <ProductSheet k={sheet.key} list={list} onClose={back} onAdd={() => setSheet({ t: 'price', initial: { key: sheet.key }, back: sheet })} />}
+      {sheet && sheet.t === 'receipt' && <ReceiptPricesSheet file={sheet.file || null} onClose={back} />}
       {sheet && sheet.t === 'list' && <ListSheet id={sheet.id} onClose={(newId) => { close(); if (typeof newId === 'string') setListId(newId); }} />}
       {sheet && sheet.t === 'wish' && <WishSheet id={sheet.id} onClose={close} />}
       {sheet && sheet.t === 'pantry' && <PantrySheet id={sheet.id} list={list} onClose={close} />}
@@ -71,7 +85,7 @@ export function Compras({ query }) {
 
 // ---------- Pestaña Lista ----------
 
-function ListTab({ s, today, list, lists, setListId, setSheet }) {
+function ListTab({ s, today, list, lists, setListId, setSheet, setTab }) {
   const sh = shopOf(s);
   const [text, setText] = useState('');
   const [mic, setMic] = useState(false);
@@ -90,6 +104,7 @@ function ListTab({ s, today, list, lists, setListId, setSheet }) {
   const low = runningLow(s).slice(0, 6);
   const groups = groupByAisle(left);
   const parsed = useMemo(() => parseShopLine(text), [text]);
+  const cmp = left.length >= 2 ? storeCompare(s, left, today) : null;
 
   const add = (value) => {
     const v = String(value == null ? text : value).trim();
@@ -132,11 +147,19 @@ function ListTab({ s, today, list, lists, setListId, setSheet }) {
         <h1 class="h1">{tot.left ? `${plural(tot.left, 'producto', 'productos')} por comprar` : 'Tu lista está vacía'}</h1>
         {tot.left > 0 && (
           <p class="lead">
-            {tot.known ? `Calculo unos ${money(tot.est)}${tot.unknown ? ` (faltan precios de ${tot.unknown})` : ''}.` : 'Aún no tengo precios: se aprenden cuando registras tus compras.'}
+            {tot.known ? `Calculo unos ${moneyR(tot.est)}${tot.unknown ? ` (me falta el precio de ${plural(tot.unknown, 'producto', 'productos')})` : ''}.` : 'Aún no tengo precios para calcular cuánto te sale.'}
             {bud.has ? ` Llevas ${money(bud.spent)} de ${money(bud.budget)} este mes.` : ''}
           </p>
         )}
         {bud.has && <Bar value={Math.min(1, bud.pct)} color={bud.pct > 1 ? 'var(--vit)' : areaColor(AREA)} label={`Presupuesto del súper: ${Math.round(bud.pct * 100)} %`} />}
+        {cmp && cmp.save >= 25 && (
+          <p class="note" style={{ margin: 0 }}><Icon name="tag" size={18} />
+            <span>En <b>{cmp.cheap.store}</b> te sale unos <b>{money(cmp.save)}</b> más barato que en {cmp.other.store} ({cmp.n} de {plural(cmp.of, 'producto', 'productos')}, con tus últimos precios).</span>
+          </p>
+        )}
+        {tot.left > 0 && tot.unknown > 0 && (
+          <button type="button" class="link-btn" style={{ alignSelf: 'flex-start' }} onClick={() => setTab('precios')}>{tot.known ? 'Anotar los precios que faltan' : 'Anotar precios'} <Icon name="right" size={14} /></button>
+        )}
       </section>
 
       <div class="chips scroll" role="group" aria-label="Listas">
@@ -184,7 +207,7 @@ function ListTab({ s, today, list, lists, setListId, setSheet }) {
       {groups.map(({ a, xs }) => (
         <section key={a.id} class="stack-xs" aria-label={a.name}>
           <h2 class="eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon name={a.icon} size={14} />{a.name}</h2>
-          <div>{xs.map((i) => <ItemRow key={i.id} s={s} it={i} today={today} onOpen={() => setSheet({ t: 'item', id: i.id })} />)}</div>
+          <div>{xs.map((i) => <ItemRow key={i.id} s={s} it={i} today={today} store={list.store} onOpen={() => setSheet({ t: 'item', id: i.id })} />)}</div>
         </section>
       ))}
 
@@ -214,11 +237,22 @@ function ListTab({ s, today, list, lists, setListId, setSheet }) {
   );
 }
 
-function ItemRow({ s, it, today, onOpen }) {
+function ItemRow({ s, it, today, store = '', onOpen }) {
   const q = qtyText(it.qty, it.unit);
   const price = priceOf(s, it);
-  const best = !it.done ? cheapest(s, it.key) : null;
-  const toggle = () => act((st, d) => toggleItem(st, it.id, d));
+  const st = !it.done ? priceStats(s, it.key, today) : null;
+  // Si la lista es de una tienda y otra lo tiene al menos 5 % más barato, se dice (sin tienda, lo dice el resumen).
+  const here = st && store ? st.stores.find((x) => x.store.toLowerCase() === store.toLowerCase()) : null;
+  const best = here && st.cheapest && st.cheapest.store.toLowerCase() !== store.toLowerCase() && st.cheapest.show <= here.show * 0.95 ? st.cheapest : null;
+  const up = st && st.change != null && st.change >= 0.05 && diffDays(st.last.e.day, today) <= 45;
+  const bits = [
+    price > 0 && { t: `${it.price > 0 ? '' : '≈ '}${money(itemTotal(s, it))}` },
+    it.note && { t: it.note },
+    best && { t: `más barato en ${best.store}` },
+    up && { t: `subió ${Math.round(st.change * 100)} %`, warn: true },
+    it.by === 'foto' && { t: 'de la foto' },
+  ].filter(Boolean);
+  const toggle = () => act((st2, d) => toggleItem(st2, it.id, d));
   return (
     <div class={`mrow todo${it.done ? ' done' : ''}`}>
       <button type="button" class="check" aria-pressed={it.done ? 'true' : 'false'} aria-label={it.done ? `Quitar del carrito: ${it.name}` : `En el carrito: ${it.name}`} onClick={toggle}>
@@ -226,12 +260,7 @@ function ItemRow({ s, it, today, onOpen }) {
       </button>
       <button type="button" class="body" onClick={onOpen}>
         <span class="title">{it.name}{q ? <span class="muted semi"> · {q}</span> : null}</span>
-        <span class="meta">
-          {price > 0 && <span>{money(itemTotal(s, it))}</span>}
-          {it.note && <span>· {it.note}</span>}
-          {best && best.store && <span>· más barato en {best.store}</span>}
-          {it.by === 'foto' && <span>· de la foto</span>}
-        </span>
+        {bits.length > 0 && <span class="meta">{bits.map((b, i) => <span key={i} style={b.warn ? { color: 'var(--vit-ink)' } : null}>{i ? '· ' : ''}{b.t}</span>)}</span>}
       </button>
     </div>
   );
@@ -239,8 +268,9 @@ function ItemRow({ s, it, today, onOpen }) {
 
 // ---------- Hoja de un producto ----------
 
-function ItemSheet({ id, onClose }) {
+function ItemSheet({ id, list, onClose, setSheet }) {
   const s = useApp();
+  const today = s.energy.day;
   const it = shopOf(s).items.find((x) => x.id === id);
   const [name, setName] = useState(it ? it.name : '');
   const [qty, setQty] = useState(it && it.qty ? it.qty : 0);
@@ -251,12 +281,15 @@ function ItemSheet({ id, onClose }) {
   const [lid, setLid] = useState(it ? it.list : null);
   if (!it) return null;
   const sh = shopOf(s);
-  const known = (sh.hist[it.key] || {}).price || 0;
-  const best = cheapest(s, it.key);
-  const save = () => {
-    act((st) => updateItem(st, id, { name, qty: qty || null, unit, price, note, aisle, list: lid }));
-    onClose();
-  };
+  const st = priceStats(s, it.key, today);
+  const known = st.last ? 0 : (sh.hist[it.key] || {}).price || 0;
+  const best = st.cheapest && st.stores.length >= 2 && st.stores[1].show - st.cheapest.show >= 1 ? st.cheapest : null;
+  const est = priceOf(s, { ...it, qty: qty || null, unit, price: 0 });
+  const keep = () => { if (name.trim().length >= 2) act((stt) => updateItem(stt, id, { name, qty: qty || null, unit, price, note, aisle, list: lid })); };
+  const save = () => { keep(); onClose(); };
+  // Al ir a los precios se guarda lo que cambiaste aquí, y al cerrar vuelves a este producto.
+  const back = { t: 'item', id };
+  const open = (sheet) => { keep(); setSheet({ ...sheet, back }); };
   return (
     <Sheet onClose={onClose} label="Producto">
       <SheetHead title="Producto" onClose={onClose} />
@@ -269,8 +302,17 @@ function ItemSheet({ id, onClose }) {
       </div>
       <div class="field"><label>Precio {unitOf(unit) && !unitOf(unit).count ? `por ${unitOf(unit).short}` : 'de cada uno'} (opcional)</label>
         <NumberField value={price} onChange={setPrice} step={5} min={0} prefix="RD$" label="Precio" />
-        {known > 0 && !price && <span class="tiny muted">La última vez pagaste {money(known)}.</span>}
-        {best && <span class="tiny muted">Más barato: {best.store} a {money(best.price)}.</span>}
+        {st.last ? (
+          <span class="tiny muted">
+            Tu libreta: {money(st.last.show)} {st.per}{st.last.e.store ? ` en ${st.last.e.store}` : ''} ({fmtShort(st.last.e.day)}){!price && est > 0 ? `. Calculo ${money(est)} cada uno` : ''}.
+            {best && (!list.store || best.store.toLowerCase() !== list.store.toLowerCase()) ? ` Más barato en ${best.store}: ${money(best.show)}.` : ''}
+          </span>
+        ) : known > 0 && !price ? <span class="tiny muted">La última vez pagaste {money(known)}.</span> : null}
+        {st.change != null && Math.abs(st.change) >= 0.03 && <span class="row" style={{ gap: 6 }}><ChangeChip change={st.change} label=" desde el precio anterior" /><span class="tiny muted">desde el precio anterior</span></span>}
+        <div class="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" class="btn sm soft" onClick={() => open({ t: 'price', initial: { key: it.key, name: it.name, store: list.store } })}><Icon name="camera" size={18} />Foto de la etiqueta</button>
+          {st.last && <button type="button" class="btn sm ghost" onClick={() => open({ t: 'product', key: it.key })}><Icon name="chart" size={18} />Ver precios ({st.n})</button>}
+        </div>
       </div>
       <div class="field"><label for="inn">Nota (marca, tamaño…)</label><input id="inn" class="input" value={note} maxLength={100} onInput={(e) => setNote(e.currentTarget.value)} /></div>
       <div class="field"><label>Pasillo</label>
@@ -316,9 +358,11 @@ function ListSheet({ id, onClose }) {
 
 // ---------- Foto: nevera, despensa, lista escrita o producto ----------
 
-const MODES = [['despensa', 'Nevera o despensa', 'Veo qué tienes y qué puede faltar'], ['lista', 'Lista, receta o producto', 'Paso lo escrito a tu lista']];
+const MODES = [['despensa', 'Nevera o despensa', 'Veo qué tienes y qué puede faltar', 'box'], ['lista', 'Lista, receta o producto', 'Paso lo escrito a tu lista', 'list']];
+// Fotos que van a tu libreta de precios (no necesitan IA: las lee el lector del teléfono).
+const JUMPS = [['receipt', 'Recibo del súper', 'Guardo el precio de cada producto', 'receipt'], ['price', 'Etiqueta de un precio', 'Anoto lo que cuesta un producto', 'tag']];
 
-function ScanSheet({ list, mode: mode0, onClose }) {
+function ScanSheet({ list, mode: mode0, onClose, setSheet }) {
   const s = useApp();
   const today = s.energy.day;
   const [mode, setMode] = useState(mode0 || 'despensa');
@@ -332,19 +376,15 @@ function ScanSheet({ list, mode: mode0, onClose }) {
   const [pickAdd, setPickAdd] = useState(new Set());
   const ctl = useRef(null);
   const run = useRef(0);
-  const inp = useRef(null);
   const canOCR = ocrSupported();
 
   useEffect(() => {
-    aiProvider(s.settings, { needImages: true }).then(setProvider).catch(() => setProvider(null));
+    // Sin IA no puedo reconocer la nevera: empiezo por la lista, que el lector del teléfono sí lee.
+    aiProvider(s.settings, { needImages: true }).then((p) => { setProvider(p); if (!p && !mode0) setMode('lista'); }).catch(() => { setProvider(null); if (!mode0) setMode('lista'); });
     return () => { run.current += 1; if (ctl.current) ctl.current.abort(); stopOCR(); };
   }, []);
 
-  const onFiles = (e) => {
-    const fs = Array.from(e.currentTarget.files || []);
-    e.currentTarget.value = '';
-    if (fs.length) setFiles((old) => [...old, ...fs].slice(0, 6));
-  };
+  const onFiles = (fs) => setFiles((old) => [...old, ...fs].slice(0, 6));
   const thumbs = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
   useEffect(() => () => thumbs.forEach((u) => URL.revokeObjectURL(u)), [thumbs]);
 
@@ -446,16 +486,21 @@ function ScanSheet({ list, mode: mode0, onClose }) {
       {phase === 'pick' && (
         <>
           <div class="stack-xs" role="group" aria-label="Qué vas a fotografiar">
-            {MODES.map(([k, t, d]) => (
-              <button key={k} type="button" class="lrow" style={{ minHeight: 56, opacity: mode === k ? 1 : 0.6 }} aria-pressed={mode === k ? 'true' : 'false'} onClick={() => setMode(k)}>
-                <span class="tile sm" style={{ background: mode === k ? areaSoft(AREA) : 'var(--soft)', color: mode === k ? areaColor(AREA) : 'var(--muted)' }}><Icon name={k === 'despensa' ? 'box' : 'list'} size={18} /></span>
-                <span class="stack-xs grow"><span class="semi">{t}</span><span class="tiny muted">{d}</span></span>
+            {MODES.map(([k, t, d, ic]) => (
+              <button key={k} type="button" class={`lrow pick-row${mode === k ? ' on' : ''}`} aria-pressed={mode === k ? 'true' : 'false'} onClick={() => setMode(k)}>
+                <span class="tile sm" style={{ background: mode === k ? areaSoft(AREA) : 'var(--soft)', color: mode === k ? areaInk(AREA) : 'var(--muted)' }}><Icon name={ic} size={18} /></span>
+                <span class="stack-xs grow"><span class="semi">{t}</span><span class="tiny muted">{k === 'despensa' && provider === null ? 'Necesita la IA (actívala en Ajustes)' : d}</span></span>
                 {mode === k && <Icon name="check" size={18} />}
               </button>
             ))}
+            {JUMPS.map(([k, t, d, ic]) => (
+              <button key={k} type="button" class="lrow pick-row" onClick={() => setSheet({ t: k, initial: k === 'price' ? { store: list.store } : undefined })}>
+                <span class="tile sm" style={{ background: 'var(--soft)', color: 'var(--muted)' }}><Icon name={ic} size={18} /></span>
+                <span class="stack-xs grow"><span class="semi">{t}</span><span class="tiny muted">{d}</span></span>
+                <Icon name="right" size={18} />
+              </button>
+            ))}
           </div>
-          <input ref={inp} type="file" accept="image/*" capture="environment" multiple hidden onChange={onFiles} />
-          <input id="gal" type="file" accept="image/*" multiple hidden onChange={onFiles} />
           {files.length > 0 && (
             <div class="row" style={{ gap: 8, flexWrap: 'wrap' }}>
               {thumbs.map((u, i) => (
@@ -467,8 +512,8 @@ function ScanSheet({ list, mode: mode0, onClose }) {
             </div>
           )}
           <div class="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-            <button type="button" class="btn soft grow" onClick={() => inp.current && inp.current.click()}><Icon name="camera" size={20} />{files.length ? 'Otra foto' : 'Tomar foto'}</button>
-            <button type="button" class="btn soft grow" onClick={() => { const g = document.getElementById('gal'); if (g) g.click(); }}><Icon name="image" size={20} />Galería</button>
+            <FilePick camera onFiles={onFiles} label={files.length ? 'Tomar otra foto' : 'Tomar foto'}><Icon name="camera" size={20} />{files.length ? 'Otra foto' : 'Tomar foto'}</FilePick>
+            <FilePick multiple onFiles={onFiles} label="Elegir fotos de la galería"><Icon name="image" size={20} />Galería</FilePick>
           </div>
           <p class="small muted">{mode === 'despensa' ? 'Abre la nevera o la alacena y toma fotos por partes (hasta 6). Lo que se ve borroso o tapado, no lo invento.' : 'Sirve para tu lista a mano, una receta, un folleto o un producto (si tiene código de barras, lo busco).'}</p>
           {provider === null && !hasReader && <p class="small" style={{ color: 'var(--vit-ink)' }}>La IA no está activada. {mode === 'lista' ? 'Puedo leer texto impreso con el lector del teléfono, pero no manuscrito.' : 'Actívala en Ajustes para reconocer productos.'}</p>}
@@ -479,8 +524,8 @@ function ScanSheet({ list, mode: mode0, onClose }) {
       )}
       {phase === 'reading' && (
         <div class="stack-sm" role="status" aria-live="polite">
-          <p class="lead">{prog && prog.status ? 'Leyendo el texto de la foto…' : 'Mirando la foto…'}</p>
-          <Bar value={prog && prog.progress ? prog.progress : 0.15} color={areaColor(AREA)} label="Progreso" />
+          <p class="lead">{prog ? prog.label : 'Mirando la foto…'}</p>
+          <Bar value={prog ? prog.pct : 0.15} color={areaColor(AREA)} label={prog ? `${Math.round(prog.pct * 100)} %` : 'Progreso'} />
           <button type="button" class="btn ghost block" onClick={() => { run.current += 1; if (ctl.current) ctl.current.abort(); stopOCR(); setPhase('pick'); }}>Cancelar</button>
         </div>
       )}
@@ -545,38 +590,65 @@ function TripSheet({ list, onClose }) {
   const [store, setStore] = useState(list.store || '');
   const [account, setAccount] = useState(accounts.length ? accounts[0].id : '');
   const [saveTx, setSaveTx] = useState(true);
-  const [rec, setRec] = useState({ busy: false, msg: '', pairs: [] });
-  const file = useRef(null);
-  const [provider, setProvider] = useState(null);
-  useEffect(() => { aiProvider(s.settings, { needImages: true }).then(setProvider).catch(() => setProvider(null)); }, []);
+  const [day, setDay] = useState(today);
+  const [rec, setRec] = useState({ busy: false, msg: '', pairs: [], prices: [], prog: null });
+  const [keepPrices, setKeepPrices] = useState(true);
+  const [provider, setProvider] = useState(undefined);
+  const canOCR = ocrSupported();
+  const run = useRef(0);
+  useEffect(() => {
+    aiProvider(s.settings, { needImages: true }).then(setProvider).catch(() => setProvider(null));
+    return () => { run.current += 1; stopOCR(); };
+  }, []);
 
-  const readReceipt = async (e) => {
-    const f = e.currentTarget.files && e.currentTarget.files[0];
-    e.currentTarget.value = '';
-    if (!f || !provider) return;
-    setRec({ busy: true, msg: '', pairs: [] });
+  // El recibo: con la IA si está activada; si no, con el lector del teléfono. Saca el total, la tienda, la fecha,
+  // el precio de lo que tenías en la lista y los precios de todo lo demás para tu libreta.
+  const readReceipt = async (fs) => {
+    const f = fs[0];
+    const me = ++run.current;
+    setRec({ busy: true, msg: '', pairs: [], prices: [], prog: null });
     try {
-      const prepared = await prepareImage(f);
-      const raw = await aiJSON(provider, receiptPrompt(), { image: prepared.blob, task: 'recibo' });
-      const r = checkReceipt(raw);
-      if (r.total) setTotal(r.total);
-      if (r.merchant && !store) setStore(r.merchant);
-      const pairs = matchReceipt(s, r.items, list.id);
-      setRec({ busy: false, msg: `Leí ${money(r.total || 0)}${pairs.length ? ` y ${plural(pairs.length, 'precio', 'precios')}` : ''}.`, pairs });
+      const prepared = await prepareImage(f, 2000);
+      let head = { total: 0, merchant: '', day: null, last4: '' };
+      let items = [];
+      if (provider) {
+        const r = checkReceipt(await aiJSON(provider, receiptPrompt(), { image: prepared.blob, task: 'recibo' }));
+        head = { total: r.total, merchant: r.merchant, day: r.day, last4: r.last4 };
+        items = r.items.map((x) => ({ desc: x.desc, total: x.total, qty: 1, each: x.total, size: sizeIn(x.desc), weight: null }));
+      } else {
+        const { text } = await readText(prepared.bitmap, (pr) => { if (run.current === me) setRec((o) => ({ ...o, prog: pr })); });
+        const h = parseScan(text, today, { kind: 'recibo' });
+        head = { total: h.total || 0, merchant: h.merchant || '', day: h.day, last4: h.last4 || '' };
+        items = receiptItems(text);
+      }
+      if (run.current !== me) return;
+      if (head.total) setTotal(head.total);
+      if (head.merchant && !store) setStore(head.merchant);
+      if (head.day && head.day <= today && diffDays(head.day, today) <= 14) setDay(head.day);
+      // Pagado con una tarjeta tuya: la elijo por sus últimos 4 dígitos.
+      const card = head.last4 ? accounts.find((a) => a.last4 && String(a.last4).slice(-4) === String(head.last4).slice(-4)) : null;
+      if (card) setAccount(card.id);
+      const pairs = matchReceipt(s, items, list.id);
+      const prices = receiptPrices(items).filter((x) => x.on);
+      const bits = [head.total ? `el total, ${money(head.total)}` : '', pairs.length ? plural(pairs.length, 'precio de tu lista', 'precios de tu lista') : '', prices.length ? `${prices.length} para tu libreta` : ''].filter(Boolean);
+      setRec({ busy: false, msg: bits.length ? `Leí ${bits.join(', ')}.${provider ? '' : ' Revisa el total: lo leyó el lector del teléfono.'}` : 'No pude leer el recibo. Prueba con una foto más derecha y con luz.', pairs, prices, prog: null });
     } catch (err) {
-      setRec({ busy: false, msg: aiErrorText(err) || 'No pude leer el recibo.', pairs: [] });
+      if (run.current === me) setRec({ busy: false, msg: (provider && aiErrorText(err)) || 'No pude leer el recibo.', pairs: [], prices: [], prog: null });
     }
   };
 
   const finish = () => {
     const r = act((st, d, ev) => {
       if (rec.pairs.length) applyPrices(st, rec.pairs);
-      return closeTrip(st, { list: list.id, total, store, account, saveTx: saveTx && total > 0 }, d, ev);
+      // Los precios del recibo van a tu libreta (con su tamaño); los de la lista que salieron del recibo no se repiten.
+      const saved = keepPrices ? rec.prices.map((x) => addPrice(st, { key: x.key, name: x.name, price: x.price, qty: x.qty, unit: x.unit, note: x.note, store, day, src: 'recibo' }, d)).filter(Boolean) : [];
+      const res = closeTrip(st, { list: list.id, total, store, account, day, saveTx: saveTx && total > 0, skipPrices: keepPrices && saved.length ? rec.pairs.map((x) => x.id) : [] }, d, ev);
+      return { ...res, saved: saved.length };
     });
-    toast(r.tx ? `Compra guardada: ${money(r.total)}${r.xp ? ` · +${r.xp} XP` : ''}` : `${plural(r.n, 'producto', 'productos')} a tu despensa`, 'cart');
+    toast(r.tx ? `Compra guardada: ${money(r.total)}${r.saved ? ` · ${plural(r.saved, 'precio', 'precios')}` : ''}${r.xp ? ` · +${r.xp} XP` : ''}` : `${plural(r.n, 'producto', 'productos')} a tu despensa`, 'cart');
     onClose();
-    void today;
   };
+  const canRead = !!provider || canOCR;
   const diff = total && est ? total - est : 0;
   return (
     <Sheet onClose={onClose} label="Terminé la compra">
@@ -587,17 +659,33 @@ function TripSheet({ list, onClose }) {
         {diff !== 0 && <span class="tiny muted">{diff > 0 ? `${money(diff)} más de lo calculado` : `${money(-diff)} menos de lo calculado`}</span>}
       </div>
       <div class="field"><label for="st">Tienda</label><input id="st" class="input" value={store} maxLength={40} placeholder="Ej. Jumbo, Nacional" onInput={(e) => setStore(e.currentTarget.value)} /></div>
+      {day !== today && <div class="field"><label for="td">Fecha de la compra</label><input id="td" class="input" type="date" value={day} max={today} onInput={(e) => setDay(e.currentTarget.value || today)} /></div>}
       {accounts.length > 0 && (
         <div class="field"><label>Pagaste con</label>
           <div class="chips scroll" role="group" aria-label="Cuenta">{accounts.map((a) => <TChip key={a.id} sm on={account === a.id} onClick={() => setAccount(a.id)}>{a.name}</TChip>)}</div></div>
       )}
       <div class="between-c"><span class="semi">Guardar como gasto de supermercado</span><Switch checked={saveTx} onChange={setSaveTx} label="Guardar como gasto" /></div>
-      {provider && (
-        <>
-          <input ref={file} type="file" accept="image/*" capture="environment" hidden onChange={readReceipt} />
-          <button type="button" class="btn soft block" disabled={rec.busy} onClick={() => file.current && file.current.click()}><Icon name="receipt" size={20} />{rec.busy ? 'Leyendo el recibo…' : 'Foto del recibo: total y precios'}</button>
+      {canRead && provider !== undefined && (
+        <div class="stack-xs">
+          {rec.busy ? (
+            <div class="stack-xs" role="status" aria-live="polite">
+              <span class="small semi">{rec.prog ? rec.prog.label : 'Leyendo el recibo…'}</span>
+              <Bar value={rec.prog ? rec.prog.pct : 0.12} color={areaColor(AREA)} label={rec.prog ? `${Math.round(rec.prog.pct * 100)} %` : 'Progreso'} />
+            </div>
+          ) : (
+            <div class="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+              <FilePick camera onFiles={readReceipt} label="Tomar foto del recibo"><Icon name="receipt" size={20} />Foto del recibo</FilePick>
+              <FilePick onFiles={readReceipt} label="Elegir foto del recibo"><Icon name="image" size={20} />Galería</FilePick>
+            </div>
+          )}
           {rec.msg && <p class="small muted" role="status">{rec.msg}</p>}
-        </>
+          {rec.prices.length > 0 && (
+            <label class="between-c" style={{ cursor: 'pointer', minHeight: 44 }}>
+              <span class="small semi">Guardar {plural(rec.prices.length, 'precio', 'precios')} en tu libreta</span>
+              <Switch checked={keepPrices} onChange={setKeepPrices} label="Guardar precios en tu libreta" />
+            </label>
+          )}
+        </div>
       )}
       <button type="button" class="btn block" onClick={finish}><Icon name="check" size={20} />Guardar compra</button>
       <p class="small muted">Lo comprado pasa a tu despensa y aprendo cada cuánto lo compras. Ir con lista da XP de Fortuna (una vez al día).</p>
@@ -862,9 +950,9 @@ export function ShopCard() {
   const today = s.energy.day;
   const sum = shopSummary(s, today);
   const sub = sum.empty && !sum.trips
-    ? 'Listas, despensa con foto y deseos'
+    ? 'Listas, precios, despensa con foto y deseos'
     : sum.pending
-      ? `${plural(sum.pending, 'producto', 'productos')} por comprar${sum.est ? ` · ${money(sum.est)}` : ''}`
+      ? `${plural(sum.pending, 'producto', 'productos')} por comprar${sum.est ? ` · unos ${moneyR(sum.est)}` : ''}`
       : sum.low ? `${plural(sum.low, 'producto', 'productos')} por acabarse` : 'Lista al día';
   return (
     <a href="#/compras" class="card" style={{ textDecoration: 'none', color: 'var(--ink)' }} aria-label={`Compras: ${sub}`}>

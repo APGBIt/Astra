@@ -27,6 +27,7 @@ import { WorkSheet, TaxSheet, RulesSheet, DebtSheet, CatDetailSheet, MoveCatShee
 import { LoanSheet } from './Loans.jsx';
 import { CreditSheet, AssetSheet } from './Credits.jsx';
 import { DebtsTab } from './Debts.jsx';
+import { AvailableCard, MonthCard, DebtSummary } from './Overview.jsx';
 import { openCredits, creditForTx, payCredit } from '../game/credits.js';
 import { insideBalance } from '../game/reconcile.js';
 import { takePendingTx } from '../app/handoff.js';
@@ -106,7 +107,10 @@ export function Finance({ query }) {
 
         {tab === 'resumen' && (
           <>
+            <AvailableCard s={s} today={today} setTab={setTab} setSheet={setSheet} />
+            <MonthCard s={s} today={today} setTab={setTab} setSheet={setSheet} />
             <MoneyOverview s={s} today={today} setSheet={setSheet} setTab={setTab} />
+            <DebtSummary s={s} today={today} setTab={setTab} />
             <RecentTx s={s} today={today} onOpen={(t) => setSheet({ kind: 'tx', tx: t })} onAll={() => setTab('movimientos')} />
             {bosses.map((b) => (
               <a key={b.id} href={`#/jefe/${b.id}`} class="card" style={{ textDecoration: 'none', color: 'var(--ink)' }}>

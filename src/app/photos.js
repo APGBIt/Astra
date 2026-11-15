@@ -5,7 +5,7 @@ import { photoGet, photoPut, photoDel } from './idb.js';
 import { downloadPhoto } from './sync.js';
 import { uid } from '../game/logic.js';
 
-export const PHOTO_FOLDERS = { recibo: 'Recibos', expediente: 'Expediente', logro: 'Logros', otra: 'Otras' };
+export const PHOTO_FOLDERS = { recibo: 'Recibos', expediente: 'Expediente', logro: 'Logros', precio: 'Precios', otra: 'Otras' };
 
 function loadImage(file) {
   return new Promise((resolve, reject) => {

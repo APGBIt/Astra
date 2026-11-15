@@ -10,6 +10,7 @@ import { toNumber } from '../game/parse.js';
 import { aiProvider, aiJSON, providerLabel, prepareImage, readQR, receiptPrompt, checkReceipt, aiErrorText } from '../ai/ai.js';
 import { ocrSupported, readText, stopOCR, ocrErrorText } from '../app/ocr.js';
 import { parseScan, voucherTx } from '../game/scan.js';
+import { receiptItems, receiptPrices, addPrice } from '../game/prices.js';
 import { setPendingTx } from '../app/handoff.js';
 
 const EMPTY = { merchant: '', rnc: '', ncf: '', day: null, time: '', subtotal: null, itbis: 0, tip: 0, total: 0, currency: 'DOP', method: '', last4: '', cat: 'otros', items: [], doubts: new Set() };
@@ -25,6 +26,7 @@ export function Receipt() {
   const [from, setFrom] = useState('');
   const [showItems, setShowItems] = useState(false);
   const [keep, setKeep] = useState(true);
+  const [keepPrices, setKeepPrices] = useState(true);
   const [saving, setSaving] = useState(false);
   // 1.10: lector de texto en el teléfono (OCR).
   const [prog, setProg] = useState(null);
@@ -90,6 +92,8 @@ export function Receipt() {
         const { text } = await readText(prepared.bitmap, (p) => { if (run.current === me) setProg(p); });
         if (run.current !== me) return;
         result = parseScan(text, today);
+        // 1.18: los productos con su precio (sin IA), para verlos y guardarlos en tu libreta de Compras.
+        if (!result.items || !result.items.length) result.items = receiptItems(text);
         setRawText(result.text);
         source = 'ocr';
         if (note) note = `${note} Lo leí con el lector de texto del teléfono.`;
@@ -137,6 +141,8 @@ export function Receipt() {
     setData({ ...data, [k]: v, doubts });
   };
 
+  // Un recibo del súper o del colmado también deja sus precios en tu libreta de Compras (si quieres).
+  const priceCands = data.cat === 'super' && data.currency !== 'USD' ? receiptPrices(data.items).filter((x) => x.on) : [];
   const save = async () => {
     const total = Number(data.total) || 0;
     if (!total || saving) return;
@@ -161,7 +167,10 @@ export function Receipt() {
       itbis: data.itbis,
       photos: photo ? [photo] : [],
     }, t, ev));
-    toast(photo ? 'Gasto guardado con la foto del recibo' : 'Gasto guardado · la foto no se guardó', 'check');
+    const nPrices = keepPrices && priceCands.length
+      ? act((st, t) => priceCands.map((x) => addPrice(st, { key: x.key, name: x.name, price: x.price, qty: x.qty, unit: x.unit, note: x.note, store: data.merchant, day: data.day || t, src: 'recibo' }, t)).filter(Boolean).length)
+      : 0;
+    toast(`${photo ? 'Gasto guardado con la foto del recibo' : 'Gasto guardado · la foto no se guardó'}${nPrices ? ` · ${nPrices} ${nPrices === 1 ? 'precio' : 'precios'} a Compras` : ''}`, 'check');
     go('/finanzas', { replace: true });
   };
 
@@ -274,6 +283,12 @@ export function Receipt() {
           </>
         ) : <span class="small muted">Esta categoría no tiene presupuesto. Puedes ponerle uno en Finanzas.</span>}
       </section>
+      {priceCands.length > 0 && (
+        <label class="between-c panel" style={{ cursor: 'pointer' }}>
+          <span class="stack-xs"><span class="semi">Guardar {priceCands.length === 1 ? 'el precio' : `${priceCands.length} precios`} en Compras</span><span class="small muted">{priceCands.slice(0, 4).map((x) => x.name).join(', ')}{priceCands.length > 4 ? '…' : ''}: así ves si suben y dónde salen más baratos.</span></span>
+          <Switch checked={keepPrices} onChange={setKeepPrices} label="Guardar los precios en Compras" />
+        </label>
+      )}
       {thumb && (
         <label class="between-c panel" style={{ cursor: 'pointer' }}>
           <span class="stack-xs"><span class="semi">Guardar la foto con el gasto</span><span class="small muted">Queda en este teléfono y, si sincronizas, en tu Drive (Astra/Fotos/Recibos).</span></span>
