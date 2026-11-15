@@ -1,6 +1,15 @@
 // Íconos de trazo (24×24). Sin emojis.
 const P = {
   home: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+  compass: '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/>',
+  layers: '<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 12.5 9 5 9-5"/><path d="m3 17 9 5 9-5"/>',
+  scan: '<path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M8 12h8"/>',
+  nfc: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M8 15V9l4 6V9"/><path d="M15.5 9.5a4 4 0 0 1 0 5"/>',
+  bluetooth: '<path d="m7 7 10 10-5 4V3l5 4L7 17"/>',
+  gauge: '<path d="M4 17a8 8 0 1 1 16 0"/><path d="m12 17 4-6"/><circle cx="12" cy="17" r="1.2"/>',
+  wand: '<path d="m5 19 10-10"/><path d="m15 5 .8 2.2L18 8l-2.2.8L15 11l-.8-2.2L12 8l2.2-.8z"/><path d="M19 13v3M17.5 14.5h3"/>',
+  radar: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><path d="M12 12 18.5 5.5"/><circle cx="12" cy="12" r="1"/>',
+  finger: '<path d="M8 11V6a2 2 0 1 1 4 0v5"/><path d="M12 10.5a2 2 0 1 1 4 0V12a2 2 0 1 1 4 0v3a6 6 0 0 1-6 6h-1.5a6 6 0 0 1-5-2.7L5 14.5a1.8 1.8 0 0 1 3-2z"/>',
   map: '<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/>',
   grid: '<rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',

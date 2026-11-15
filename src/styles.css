@@ -761,3 +761,22 @@ button.mrow.price-row { width: 100%; background: none; border-left: 0; border-ri
 .qbtn .tile { margin-bottom: 4px; }
 .qbtn b { font-size: 15px; line-height: 1.25; }
 .receipt-thumb.sm { width: 44px; height: 56px; border-radius: 8px; }
+
+/* ---------- 2.0: Centro de mando (copiloto, gemelo, alertas, Lean) ---------- */
+.cp-next { border-color: var(--ink); border-width: 2px; }
+.cp-home { border-color: var(--line-2); }
+.plan-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); min-height: 56px; }
+.plan-row:last-child { border-bottom: none; }
+.plan-time { width: 74px; flex-shrink: 0; font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.plan-dot { width: 10px; height: 10px; border-radius: 5px; flex-shrink: 0; }
+.plan-body { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; min-height: 44px; justify-content: center; background: none; border: 0; padding: 0; text-align: left; color: inherit; font: inherit; cursor: pointer; }
+.plan-row .check { margin: -8px -8px -8px 0; }
+.load-week, .oee-trend { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; align-items: end; }
+.load-col { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.load-track { position: relative; width: 70%; max-width: 34px; height: 84px; display: flex; align-items: flex-end; border-radius: 8px; background: var(--soft); overflow: hidden; }
+.oee-trend .load-track { height: 56px; }
+.load-bar { width: 100%; border-radius: 8px; }
+.load-cap { position: absolute; left: 0; right: 0; height: 2px; background: var(--muted); z-index: 1; }
+.fx-row { display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; border-radius: 16px; background: var(--soft); }
+.sys-row { align-items: flex-start; padding: 14px 0; }
+.sys-row > svg:last-child { margin-top: 10px; }

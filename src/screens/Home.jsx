@@ -1,4 +1,6 @@
 import { shopSummary } from '../game/shop.js';
+import { plusOf } from '../game/plus.js';
+import { CopilotCard } from './Mando.jsx';
 import { useState } from 'preact/hooks';
 import { Icon } from '../ui/icons.jsx';
 import { Nav, Segs, Bar, Bolts, Avatar, AreaDot, Sheet, SheetHead, TChip, toast, useHour, areaColor, areaSoft, money, cur, plural, num } from '../ui/kit.jsx';
@@ -71,6 +73,8 @@ export function Home() {
   const openTodos = pendingTodos(s).length;
   const toggle = (m) => act((st, t, ev) => (isDone(st, m, t) ? undoMission(st, m.id, t) : completeMission(st, m.id, t, ev)));
   const prompts = homePrompts(s, today, hour, en, pending, (it) => setSheet({ kind: 'pay', initial: payInitial(s, it, today) }));
+  // 2.0: el copiloto propone lo siguiente; lo que ya pide un aviso de abajo no se repite.
+  const copilotOn = plusOf(s).cfg.copilot !== false;
 
   return (
     <>
@@ -90,6 +94,8 @@ export function Home() {
         {s.settings.showDaily !== false && <DailyCard today={today} />}
 
         <StatusCard s={s} lvl={lvl} en={en} sts={sts} />
+
+        {copilotOn && <CopilotCard s={s} today={today} hour={hour} skip={skipKinds(prompts)} onSleep={() => setSheet('sleep')} />}
 
         {prompts.length > 0 && <PromptSlot prompts={prompts} />}
 
@@ -196,6 +202,15 @@ export function Home() {
       {sheet && sheet.kind === 'pay' && <TxSheet s={s} initial={sheet.initial} onClose={() => setSheet(null)} />}
     </>
   );
+}
+
+// Los avisos de Hoy que ya cubren un tipo de paso del copiloto (para no decir lo mismo dos veces).
+const PROMPT_KIND = { recovery: 'recovery', sleep: 'sleep', money: 'pay', inn: 'inn', ready: 'ready', report: 'report', shop: 'shop', person: 'person', move: 'move', record: 'doc' };
+function skipKinds(prompts) {
+  const out = new Set();
+  for (const p of prompts) if (PROMPT_KIND[p.key]) out.add(PROMPT_KIND[p.key]);
+  if (out.has('pay')) out.add('income');
+  return out;
 }
 
 // ---------- Tu camino: las campañas activas (en Hoy, Personaje y Áreas) ----------

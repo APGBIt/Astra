@@ -13,6 +13,8 @@ import { ensureFood } from '../game/food.js';
 import { ensureLabs } from '../game/labs.js';
 import { ensureVitals } from '../game/vitals.js';
 import { ensureReports } from '../game/report.js';
+import { ensurePlus, tidyPlus } from '../game/plus.js';
+import { checkKaizen } from '../game/lean.js';
 import { dayKey } from './dates.js';
 import { AREA } from '../game/content.js';
 import { kvGet, kvSetMany } from './idb.js';
@@ -67,6 +69,8 @@ export function migrate(s) {
   ensureLabs(m);
   ensureVitals(m);
   ensureReports(m);
+  // 2.0: copiloto, gemelo, kaizen, etiquetas y automatizaciones. La versión de datos no cambia.
+  ensurePlus(m);
   m.v = 4;
   if (!Array.isArray(m.profile.classKeys)) m.profile.classKeys = [];
   m.profile.classKeys = m.profile.classKeys.filter((k) => AREA[k]).slice(0, 2);
@@ -420,7 +424,7 @@ export function runReconcile() {
   if (state.processed === today && state.energy && state.energy.day === today) return [];
   if (state.processed !== today) snapshotNow('dia', { oncePerDay: true });
   let ev = [];
-  act((s, t, e) => { ev = reconcile(s, t); claimQuit(s, t, e); });
+  act((s, t, e) => { ev = reconcile(s, t); claimQuit(s, t, e); tidyPlus(s, t); checkKaizen(s, t, e); });
   return ev;
 }
 

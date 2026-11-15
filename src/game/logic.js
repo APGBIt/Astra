@@ -1,6 +1,7 @@
 // Astra · lógica del juego (sin interfaz). Todas las funciones que cambian el estado reciben el
 // estado (una copia editable), el día de hoy y una lista `ev` donde se anotan los eventos a celebrar.
 import { dayKey, addDays, diffDays, weekday, monthKey, DAYS, MONTHS } from '../app/dates.js';
+import { defaultPlus } from './plus.js';
 import {
   AREA, AREA_KEYS, GOALS, CUSTOM_CHAPTERS, TALENTS, TALENT_LEVELS, POTIONS, SHOP_ITEMS,
   CATEGORIES, DEFAULT_REWARDS, INTENSITIES, MOOD_QUADS, INFLUENCES, DEFAULT_GOALS,
@@ -105,6 +106,8 @@ export function defaultState(today = dayKey()) {
     labs: [],
     vitals: { wunit: 'lb', bpWeek: null, sex: '' },
     reports: { seen: {}, focus: {}, claimed: {} },
+    // 2.0: copiloto, gemelo, kaizen, etiquetas y automatizaciones (todo lo nuevo, en una clave aparte).
+    plus: defaultPlus(),
   };
 }
 

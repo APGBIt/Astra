@@ -33,6 +33,7 @@ import { WordScreen } from './screens/Word.jsx';
 import { SyncScreen } from './screens/Sync.jsx';
 import { Labs } from './screens/Labs.jsx';
 import { Report } from './screens/Report.jsx';
+import { Mando } from './screens/Mando.jsx';
 import { startSync, syncNow, connectGoogle, syncConfig } from './app/sync.js';
 import { handleGoogleRedirect } from './app/google.js';
 import { toast } from './ui/kit.jsx';
@@ -116,6 +117,7 @@ function ScreenBody({ route }) {
     case 'sincronizar': return <SyncScreen />;
     case 'analiticas': return <Labs query={q} />;
     case 'informe': return <Report query={q} />;
+    case 'mando': return <Mando query={q} />;
     default: return <Home />;
   }
 }

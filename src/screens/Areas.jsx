@@ -6,6 +6,7 @@ import { RecordCard } from './Record.jsx';
 import { GoalsSheet } from './Goals.jsx';
 import { HogarCard } from './Hogar.jsx';
 import { ShopCard } from './Compras.jsx';
+import { MandoCard } from './Mando.jsx';
 import { WinsCard } from './Wins.jsx';
 import { SleepSheet, SleepWeek, SleepInsights } from './Sleep.jsx';
 import { HealthHighlights, WellbeingCard, WheelCard, ValuesCard } from './Reflect.jsx';
@@ -38,6 +39,7 @@ export function Areas() {
     <>
       <main class="screen">
         <div class="stack-xs"><h1 class="h1">Áreas</h1><p class="lead">Seis atributos. Cada uno crece con lo que haces en su área.</p></div>
+        <MandoCard />
         <PathSummary s={s} card />
         <div class="stack">
           {AREAS.map((a) => {
