@@ -115,6 +115,7 @@ const P = {
   card: '<rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6 15h4"/>',
   wallet: '<path d="M17 7V5.5A1.5 1.5 0 0 0 15.5 4H6a3 3 0 0 0-3 3"/><rect x="3" y="7" width="18" height="13" rx="3"/><path d="M21 11h-4a2.5 2.5 0 0 0 0 5h4"/><circle cx="17" cy="13.5" r="0.6" fill="currentColor"/>',
   piggy: '<path d="M4.5 12.5A7 6 0 0 1 17 9.2l2.6-1-.5 3.2a5.4 5.4 0 0 1 .8 1.8l1.6.4v2.6l-2 .6a7 6 0 0 1-2.5 2.4V21h-3v-1.3a8.5 8.5 0 0 1-3 0V21H8v-2.1a6.3 6.3 0 0 1-3.5-6.4z"/><path d="M9.5 8.5h4"/>',
+  scale: '<path d="M12 4v16M8 20h8M5 7h14"/><path d="M5 7 2.5 13a2.5 2.5 0 0 0 5 0z"/><path d="M19 7l-2.5 6a2.5 2.5 0 0 0 5 0z"/>',
   percent: '<path d="M19 5 5 19"/><circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="17" r="2.5"/>',
   swap: '<path d="M4 8h15l-3.5-3.5M20 16H5l3.5 3.5"/>',
   cash: '<rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5h.01M18 14.5h.01"/>',

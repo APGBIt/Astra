@@ -84,7 +84,8 @@ export function Analysis({ s, today, onCat, setSheet = () => {} }) {
         <section class="note tone-xp" aria-label="Movimientos sin explicar">
           <Icon name="search" size={18} />
           <span class="stack-xs"><span class="semi">Hay {adj.out > 0 ? `${whole(adj.out)} de gastos sin anotar` : ''}{adj.out > 0 && adj.in > 0 ? ' y ' : ''}{adj.in > 0 ? `${whole(adj.in)} de ingresos sin anotar` : ''}</span>
-            <span class="small">Salen de cuadrar tus cuentas con el banco. Entra a Movimientos, ábrelos y ponles su categoría para que el análisis sea real.</span></span>
+            <span class="small">Salen de cuadrar tus cuentas con el banco. Repártelos en sus categorías o di qué fue para que el análisis sea real.</span>
+            <a class="link-btn" href="#/cuadres?ver=cuadres" style={{ alignSelf: 'flex-start', minHeight: 32, color: 'inherit' }}>Explicarlos <Icon name="right" size={14} /></a></span>
         </section>
       )}
       <ScrollTabs tabs={VIEWS} value={view} onChange={setView} label="Qué quieres ver" mini />

@@ -37,6 +37,7 @@ import { Mando } from './screens/Mando.jsx';
 import { TagsPrint, TagRun } from './screens/Mundo.jsx';
 import { Lente } from './screens/Lente.jsx';
 import { Finder } from './screens/Finder.jsx';
+import { Cuadres } from './screens/Cuadres.jsx';
 import { startSync, syncNow, connectGoogle, syncConfig } from './app/sync.js';
 import { handleGoogleRedirect } from './app/google.js';
 import { toast } from './ui/kit.jsx';
@@ -93,6 +94,7 @@ function ScreenBody({ route }) {
     case 'expediente': return b ? <RecordSection id={b} /> : <Record />;
     case 'recibo': return <Receipt />;
     case 'finanzas': return <Finance query={q} />;
+    case 'cuadres': return <Cuadres query={q} />;
     case 'importar': return <Import query={q} />;
     case 'camino': return <Path query={q} />;
     case 'meta': return <NewGoal query={q} />;

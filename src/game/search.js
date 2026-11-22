@@ -31,6 +31,7 @@ export const PLACES = [
   ['Cuentas', '/finanzas?tab=cuentas', 'bank', 'bancos tarjetas saldos ahorros'],
   ['Deudas', '/finanzas?tab=deudas', 'percent', 'prestamos tarjetas debo me deben cuotas'],
   ['Análisis de gastos', '/finanzas?tab=analisis', 'chart', 'estadisticas categorias graficas'],
+  ['Sobrantes y faltantes', '/cuadres', 'scale', 'cuadre cuadrar banco ajuste saldo sobro falto fuga sin anotar pronostico cierre del mes'],
   ['Escanear un recibo', '/recibo', 'receipt', 'foto factura comprobante'],
   ['Importar movimientos', '/importar', 'upload', 'estado de cuenta excel banco'],
   ['Compras', '/compras', 'cart', 'lista supermercado super mandado'],
@@ -113,7 +114,7 @@ export function searchAll(s, text, today, { max = 6 } = {}) {
 
   const money = s.money || {};
   add('cuentas', 'Cuentas y deudas', [
-    ...(money.accounts || []).filter((a) => !a.archived).map((a) => ({ sc: score(q, a.name, `${a.bank || ''} ${a.last4 || ''}`), title: accountLabel(a), sub: a.kind === 'tarjeta' ? 'Tarjeta' : 'Cuenta', href: '/finanzas?tab=cuentas', icon: a.kind === 'tarjeta' ? 'card' : 'bank' })),
+    ...(money.accounts || []).filter((a) => !a.archived).map((a) => ({ sc: score(q, a.name, `${a.bank || ''} ${a.last4 || ''}`), title: accountLabel(a), sub: a.kind === 'tarjeta' ? 'Tarjeta' : 'Cuenta', href: `/finanzas?tab=cuentas&cuenta=${a.id}`, icon: a.kind === 'tarjeta' ? 'card' : 'bank' })),
     ...(money.credits || []).map((c) => ({ sc: score(q, c.name), title: c.name, sub: 'Préstamo', href: '/finanzas?tab=deudas', icon: 'percent' })),
     ...(money.plans || []).map((p) => ({ sc: score(q, p.name), title: p.name, sub: 'Pago o cobro del plan', href: '/finanzas?tab=plan', icon: 'calendar' })),
   ]);

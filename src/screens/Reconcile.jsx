@@ -7,6 +7,8 @@ import { act } from '../app/store.js';
 import { fmtShort } from '../app/dates.js';
 import { isCard } from '../game/money.js';
 import { reconcilePreview, reconcileBalance, balanceBreakdown, balanceCurrencies, EPS } from '../game/reconcile.js';
+import { expectedFor, CLEAN_DOP, lastCuadre } from '../game/cuadres.js';
+import { go } from '../app/router.js';
 
 const shown = (a, v) => (isCard(a) ? Math.abs(v) : v);
 
@@ -23,7 +25,10 @@ export function ReconcilePanel({ s, a, amounts, onDone, label = 'Guardar saldo' 
     setBusy(true);
     const out = act((st, t) => reconcileBalance(st, a.id, amounts, t, Date.now(), { mode }));
     const adj = out.filter((r) => r.mode === 'ajuste');
-    toast(first ? 'Saldo guardado: desde aquí lo calculo con tus movimientos' : adj.length ? `Cuadrado: anoté ${adj.length === 1 ? 'un ajuste' : 'ajustes'} de ${adj.map((r) => cur(Math.abs(r.diff), r.c)).join(' y ')}` : mode === 'reiniciar' ? 'Saldo puesto como punto de partida' : 'Tu saldo ya cuadraba con el banco', 'check');
+    const see = { label: 'Ver', run: () => go('/cuadres?ver=cuadres') };
+    // 2.1: todo cuadre queda en la libreta de sobrantes y faltantes; uno limpio da premio.
+    if (out.some((r) => r.clean)) toast('¡Cuadre limpio! +10 XP y 3 de oro', 'sparkle');
+    else toast(first ? 'Saldo guardado: desde aquí lo calculo con tus movimientos' : adj.length ? `Cuadrado: ${adj.map((r) => `${r.diff < 0 ? 'faltaron' : 'sobraron'} ${cur(Math.abs(r.diff), r.c)}`).join(' y ')}. Quedó en tu libreta.` : mode === 'reiniciar' && diffs.length ? 'Saldo puesto. La diferencia quedó guardada en tu libreta.' : mode === 'reiniciar' ? 'Saldo puesto como punto de partida' : 'Tu saldo ya cuadraba con el banco', 'check', diffs.length && !first ? { action: see } : {});
     onDone();
   };
   return (
@@ -31,12 +36,14 @@ export function ReconcilePanel({ s, a, amounts, onDone, label = 'Guardar saldo' 
       {!first && diffs.length === 0 && <div class="note tone-good"><Icon name="check" size={18} /><span>Cuadra: es lo mismo que Astra calculó con tus movimientos.</span></div>}
       {diffs.map((r) => {
         const less = r.diff < 0;
+        const exp = expectedFor(s, a.id, r.c, today);
         return (
           <div key={r.c} class={`note ${less ? 'tone-xp' : ''}`}>
             <Icon name="info" size={18} />
             <span class="stack-xs">
               <span>Astra calculó <b>{cur(shown(a, r.expected), r.c)}</b>{isCard(a) ? ' de deuda' : ''} y tu banco dice <b>{cur(shown(a, r.target), r.c)}</b>.</span>
               <span class="small">{isCard(a) ? (less ? 'Debes más de lo que anotaste' : 'Debes menos de lo que anotaste') : less ? 'Salió más dinero del que anotaste' : 'Entró más dinero del que anotaste'}: <b>{cur(Math.abs(r.diff), r.c)}</b>.</span>
+              {exp && Math.abs(exp.dop) >= CLEAN_DOP && <span class="tiny semi">Con tu ritmo esperaba que {exp.dop < 0 ? 'faltaran' : 'sobraran'} unos {cur(Math.abs(exp.dop), 'DOP')} ({exp.since} días desde el último cuadre){Math.abs(r.diff) > Math.abs(exp.dop) * 1.5 && (r.diff < 0) === (exp.dop < 0) ? ': esta vez fue más.' : Math.abs(r.diff) < Math.abs(exp.dop) * 0.6 ? ': esta vez fue menos.' : '.'}</span>}
             </span>
           </div>
         );
@@ -44,8 +51,8 @@ export function ReconcilePanel({ s, a, amounts, onDone, label = 'Guardar saldo' 
       <div class="row wrap" style={{ gap: 8 }}>
         <button type="button" class="btn sm" disabled={busy} onClick={() => run('ajuste')}><Icon name="check" size={17} />{first ? label : diffs.length ? 'Cuadrar y anotar la diferencia' : 'Confirmar'}</button>
       </div>
-      {diffs.length > 0 && <span class="tiny muted">La diferencia se anota como «{diffs.some((r) => r.diff < 0) ? 'Gastos sin anotar' : 'Ingresos sin anotar'}» para que tus gastos expliquen el saldo; luego la puedes repartir en categorías.</span>}
-      {diffs.length > 0 && <button type="button" class="link-btn" style={{ alignSelf: 'flex-start', minHeight: 32 }} disabled={busy} onClick={() => run('reiniciar')}>Solo poner este saldo, sin anotar nada</button>}
+      {diffs.length > 0 && <span class="tiny muted">La diferencia se anota como «{diffs.some((r) => r.diff < 0) ? 'Gastos sin anotar' : 'Ingresos sin anotar'}» para que tus gastos expliquen el saldo; luego la puedes repartir en categorías o decir qué fue. Queda guardada en Sobrantes y faltantes.</span>}
+      {diffs.length > 0 && <button type="button" class="link-btn" style={{ alignSelf: 'flex-start', minHeight: 32 }} disabled={busy} onClick={() => run('reiniciar')}>Solo poner este saldo, sin anotar movimiento</button>}
     </div>
   );
 }
@@ -79,6 +86,7 @@ export function BalanceWhy({ s, a, onOpenTx = null }) {
           </div>
         );
       })}
+      {open && (() => { const lq = lastCuadre(s, a.id); return lq && lq.mode !== 'inicio' ? <button type="button" class="link-btn" style={{ alignSelf: 'flex-start', minHeight: 36 }} onClick={() => go('/cuadres')}><Icon name="scale" size={15} />Sobrantes y faltantes de todas tus cuentas</button> : null; })()}
       {open && hist.length > 0 && (
         <div class="stack-xs" style={{ padding: '0 0 12px' }}>
           <span class="eyebrow">Últimos ajustes</span>

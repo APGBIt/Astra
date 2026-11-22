@@ -4,6 +4,8 @@
 // un historial. Es lo que hacen YNAB (ajuste de conciliación), Firefly III (transacción de corrección) y Actual.
 import { addTx, accountOf } from './logic.js';
 import { txLegs, anchorOf, afterAnchor, isCard, accountCur, moneyAccount, setAccountBalance, balances } from './money.js';
+import { ensurePlus } from './plus.js';
+import { recordCuadre } from './cuadres.js';
 
 const isDay = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d);
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -69,6 +71,10 @@ export function reconcileBalance(s, id, amounts, today, now = Date.now(), opts =
   const rows = reconcilePreview(s, a.id, amounts, today, now, when);
   const out = [];
   if (!rows.length) return out;
+  // 2.1: cada cuadre (con lo que sobró o faltó) queda también en la libreta de cuadres. Primero se pasan a la
+  // libreta los cuadres de antes, para no repetir el que se está guardando.
+  ensurePlus(s);
+  const keep = (r, mode, tx) => { try { return recordCuadre(s, a, r, { day, time, mode, tx, src: opts.src, now, today }); } catch { return null; } };
   // Primer saldo, o reiniciar: punto de partida nuevo.
   const restart = mode === 'reiniciar' || rows.some((r) => r.first);
   if (restart) {
@@ -76,11 +82,21 @@ export function reconcileBalance(s, id, amounts, today, now = Date.now(), opts =
     for (const c of balanceCurrencies(a)) cur[c] = amounts[c] !== undefined && amounts[c] !== '' ? Number(amounts[c]) : isCard(a) ? Math.abs(Number(a.base && a.base[c]) || 0) : Number(a.base && a.base[c]) || 0;
     setAccountBalance(s, a.id, cur, today, now, when ? { day, time } : null);
     if (opts.src) a.base.src = String(opts.src).slice(0, 80);
-    for (const r of rows) { log(a, { day, time, c: r.c, was: r.expected, now: r.target, diff: r.diff, mode: r.first ? 'inicio' : 'reiniciar', tx: null }); out.push({ ...r, tx: null, mode: r.first ? 'inicio' : 'reiniciar' }); }
+    for (const r of rows) {
+      const m = r.first ? 'inicio' : 'reiniciar';
+      log(a, { day, time, c: r.c, was: r.expected, now: r.target, diff: r.diff, mode: m, tx: null });
+      const q = keep(r, m, null);
+      out.push({ ...r, tx: null, mode: m, cuadre: q ? q.id : null, clean: !!(q && q.clean), exp: q ? q.exp : null });
+    }
     return out;
   }
   for (const r of rows) {
-    if (Math.abs(r.diff) < EPS) { log(a, { day, time, c: r.c, was: r.expected, now: r.target, diff: 0, mode: 'igual', tx: null }); out.push({ ...r, tx: null, mode: 'igual' }); continue; }
+    if (Math.abs(r.diff) < EPS) {
+      log(a, { day, time, c: r.c, was: r.expected, now: r.target, diff: 0, mode: 'igual', tx: null });
+      const q = keep({ ...r, diff: 0 }, 'igual', null);
+      out.push({ ...r, tx: null, mode: 'igual', cuadre: q ? q.id : null, clean: !!(q && q.clean), exp: q ? q.exp : null });
+      continue;
+    }
     const gasto = r.diff < 0;
     const tx = addTx(s, {
       type: gasto ? 'gasto' : 'ingreso', cat: gasto ? 'ajuste' : 'ajuste_ingreso', merchant: 'Ajuste de saldo', amount: Math.abs(r.diff), currency: r.c,
@@ -88,7 +104,8 @@ export function reconcileBalance(s, id, amounts, today, now = Date.now(), opts =
     }, today, []);
     if (opts.src && tx) tx.note = `${tx.note} ${String(opts.src).slice(0, 60)}`.trim();
     log(a, { day, time, c: r.c, was: r.expected, now: r.target, diff: r.diff, mode: 'ajuste', tx: tx ? tx.id : null });
-    out.push({ ...r, tx: tx ? tx.id : null, mode: 'ajuste' });
+    const q = keep(r, 'ajuste', tx ? tx.id : null);
+    out.push({ ...r, tx: tx ? tx.id : null, mode: 'ajuste', cuadre: q ? q.id : null, clean: !!(q && q.clean), exp: q ? q.exp : null });
   }
   return out;
 }
@@ -153,11 +170,12 @@ export function insideBalance(s, t) {
   return null;
 }
 
-// Cuánto sin explicar hay en un período: la suma de los ajustes anotados (para el análisis).
+// Cuánto sin explicar hay en un período: la suma de los ajustes anotados que todavía no tienen categoría (para el
+// análisis). 2.1: las partes de un ajuste que ya repartiste en categorías ya están explicadas y no cuentan.
 export function adjustTotals(s, from, to) {
   let out = 0; let inc = 0; let n = 0;
   for (const t of s.money.tx) {
-    if (!t.adjust || t.day < from || t.day > to) continue;
+    if (!t.adjust || t.day < from || t.day > to || (t.cat !== 'ajuste' && t.cat !== 'ajuste_ingreso')) continue;
     const dop = Math.abs(Number(t.amount) || 0);
     if (t.kind === 'ingreso') inc += dop; else out += dop;
     n += 1;

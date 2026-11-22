@@ -34,7 +34,7 @@ test('una copia de la 1.18 abre igual: se agrega `plus` y nada más cambia', () 
   const before = clone(old);
   const m = migrate(clone(old));
   assert.equal(m.v, 4);
-  assert.deepEqual(m.plus, defaultPlus());
+  assert.deepEqual(m.plus, { ...defaultPlus(), cuadresFrom: true }); // 2.1: la libreta de cuadres ya revisó el historial
   for (const k of Object.keys(before)) {
     if (k === 'plus') continue;
     assert.deepEqual(m[k], before[k], `cambió «${k}»`);

@@ -28,6 +28,7 @@ import { LoanSheet } from './Loans.jsx';
 import { CreditSheet, AssetSheet } from './Credits.jsx';
 import { DebtsTab } from './Debts.jsx';
 import { AvailableCard, MonthCard, DebtSummary } from './Overview.jsx';
+import { CuadreCard } from './Cuadres.jsx';
 import { openCredits, creditForTx, payCredit } from '../game/credits.js';
 import { insideBalance } from '../game/reconcile.js';
 import { takePendingTx } from '../app/handoff.js';
@@ -52,7 +53,19 @@ export function Finance({ query }) {
   const q0 = query.get('tab');
   const [tab, setTabState] = useState(TABS.some(([k]) => k === q0) ? q0 : 'resumen');
   // «nuevo»: un movimiento a medio llenar que puede venir de otra pantalla (un comprobante leído, 1.10).
-  const [sheet, setSheet] = useState(() => (query.get('alerta') ? { kind: 'alert' } : query.get('nuevo') ? { kind: 'tx', ...(takePendingTx() || {}) } : null));
+  // 2.1: «cuenta», «dividir» y «mov» en la dirección abren esa cuenta, el reparto de un ajuste o un movimiento
+  // (desde Sobrantes y faltantes, las alertas y el buscador).
+  const [sheet, setSheet] = useState(() => {
+    if (query.get('alerta')) return { kind: 'alert' };
+    if (query.get('nuevo')) return { kind: 'tx', ...(takePendingTx() || {}) };
+    const acc = query.get('cuenta') && accountOf(s, query.get('cuenta'));
+    if (acc) return { kind: isCard(acc) ? 'card' : 'account', id: acc.id };
+    const sp = query.get('dividir') && s.money.tx.find((t) => t.id === query.get('dividir'));
+    if (sp) return { kind: 'split', id: sp.id };
+    const mv = query.get('mov') && s.money.tx.find((t) => t.id === query.get('mov'));
+    if (mv) return { kind: 'tx', tx: mv };
+    return null;
+  });
   // «q» en la dirección (2.0, desde el buscador): abre los movimientos ya filtrados por ese texto.
   const [filter, setFilter] = useState(() => ({ ...emptyFilter(), q: (query.get('q') || '').slice(0, 60) }));
   const [per, setPer] = useState(() => (query.get('q') ? { kind: 'todo' } : { kind: 'mes', mk: monthKey(today) }));
@@ -110,6 +123,7 @@ export function Finance({ query }) {
           <>
             <AvailableCard s={s} today={today} setTab={setTab} setSheet={setSheet} />
             <MonthCard s={s} today={today} setTab={setTab} setSheet={setSheet} />
+            <CuadreCard s={s} today={today} />
             <MoneyOverview s={s} today={today} setSheet={setSheet} setTab={setTab} />
             <DebtSummary s={s} today={today} setTab={setTab} />
             <RecentTx s={s} today={today} onOpen={(t) => setSheet({ kind: 'tx', tx: t })} onAll={() => setTab('movimientos')} />
@@ -692,6 +706,7 @@ function MoreSheet({ s, per, today, onPick, onClose }) {
     ['download', 'Importar movimientos', 'Estado de cuenta en Excel o CSV, avisos del banco o un archivo de Astra', () => { onClose(); go('/importar'); }],
     ['tag', 'Categorías', `${catsOfType(s, 'gasto').length} de gastos y ${catsOfType(s, 'ingreso').length} de ingresos · pasar o unir`, () => onPick('cats')],
     ['sparkle', 'Reglas de categorías', nRules ? `${plural(nRules, 'comercio', 'comercios')} con su categoría` : 'Este comercio siempre va en esta categoría', () => onPick('rules')],
+    ['scale', 'Sobrantes y faltantes', 'Lo que sobró o faltó al cuadrar con el banco, el pronóstico y el cierre de cada mes', () => { onClose(); go('/cuadres'); }],
     ['clock', 'Tu hora de trabajo', wi.ready ? `${money(Math.round(wi.rate))} la hora · cuánto trabajo cuesta cada gasto` : 'Cuánto trabajo cuesta cada gasto', () => onPick('work')],
     ['percent', 'Impuesto a transferencias', `${taxPct(transferTaxRate(s, today))} · se anota aparte como gasto`, () => onPick('tax')],
     ['upload', r.kind === 'mes' ? 'Exportar el mes (Excel)' : 'Exportar el período (Excel)', 'Archivo CSV con pesos, dólares, tasa y horas de trabajo', async () => {

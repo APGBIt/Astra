@@ -23,6 +23,7 @@ import { monthView } from './overview.js';
 import { workInfo, workHours, fmtWorkShort } from './ledger.js';
 import { shopOf, runningLow, expiring } from './shop.js';
 import { plusOf, ensurePlus } from './plus.js';
+import { cuadreOutlook } from './cuadres.js';
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
@@ -398,6 +399,16 @@ export function risks(s, today, { hour = 12 } = {}) {
   // Colchón.
   const ef = safe(() => emergencyFund(s, today));
   if (ef && ef.ready && ef.monthsAll != null && ef.monthsAll < 1) add({ id: 'colchon', sys: 'dinero', level: 'baja', title: 'Menos de un mes de colchón', detail: `Entre tus cuentas y ahorros tienes para ${r1(ef.monthsAll)} meses de gastos básicos. Un imprevisto te llevaría a endeudarte.`, action: { label: 'Ver tu fondo', href: '/finanzas?tab=analisis' } });
+  // 2.1: lo que se escapa sin anotar (sale de cuadrar con el banco) y las cuentas que hace mucho no cuadras.
+  const cq = safe(() => cuadreOutlook(s, today));
+  if (cq) {
+    const inc = safe(() => monthView(s, today).income, 0) || 0;
+    if (cq.daily != null && cq.daily < 0 && cq.conf && -cq.perMonth >= Math.max(500, inc * 0.02)) {
+      add({ id: 'fuga', sys: 'dinero', level: inc > 0 && -cq.perMonth >= inc * 0.08 ? 'media' : 'baja', title: `Se te escapan ${rd(-cq.perMonth)} al mes sin anotar`, detail: `Es lo que falta, en promedio, cada vez que cuadras tus cuentas con el banco (${rd(-cq.daily)} al día).${cq.trend === 'peor' ? ' Y va en aumento.' : ''}`, action: { label: 'Ver sobrantes y faltantes', href: '/cuadres' }, fix: 'Anotar cada gasto el mismo día y cuadrar cada semana' });
+    }
+    const old = [...cq.accounts.filter((r) => r.since >= 21), ...cq.never.filter((r) => r.since >= 21)].sort((a, b) => b.since - a.since)[0];
+    if (old) add({ id: `cuadre:${old.a.id}`, sys: 'dinero', level: 'baja', title: `Hace ${old.since} días que no cuadras ${old.a.name}`, detail: old.exp != null && Math.abs(old.exp) >= 100 ? `Con tu ritmo, espera que ${old.exp < 0 ? 'falten' : 'sobren'} unos ${rd(Math.abs(old.exp))}. Mientras más esperas, más difícil es saber qué fue.` : 'Mientras más esperas, más difícil es saber qué fue cada diferencia.', action: { label: 'Cuadrar ahora', href: `/finanzas?tab=cuentas&cuenta=${old.a.id}` } });
+  }
   const snooze = plusOf(s).snooze;
   return out
     .filter((r) => !(snooze[`r:${r.id}`] >= today))

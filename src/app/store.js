@@ -14,6 +14,7 @@ import { ensureLabs } from '../game/labs.js';
 import { ensureVitals } from '../game/vitals.js';
 import { ensureReports } from '../game/report.js';
 import { ensurePlus, tidyPlus } from '../game/plus.js';
+import { tidyCierres } from '../game/cuadres.js';
 import { checkKaizen } from '../game/lean.js';
 import { runRules, tickRules } from '../game/rules.js';
 import { dayKey } from './dates.js';
@@ -427,7 +428,7 @@ export function runReconcile() {
   if (state.processed === today && state.energy && state.energy.day === today) return [];
   if (state.processed !== today) snapshotNow('dia', { oncePerDay: true });
   let ev = [];
-  act((s, t, e) => { ev = reconcile(s, t); claimQuit(s, t, e); tidyPlus(s, t); checkKaizen(s, t, e); });
+  act((s, t, e) => { ev = reconcile(s, t); claimQuit(s, t, e); tidyPlus(s, t); checkKaizen(s, t, e); try { tidyCierres(s, t); } catch { /* el cierre del mes no detiene el día */ } });
   return ev;
 }
 

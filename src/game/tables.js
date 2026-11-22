@@ -17,6 +17,7 @@ import { plateFull } from './food.js';
 import { nutrientOf } from './nutrients.js';
 import { shopOf, priceOf, wishInfo } from './shop.js';
 import { priceRows } from './prices.js';
+import { cuadreRows } from './cuadres.js';
 import { aisleOf, qtyText } from './shoplex.js';
 import { labRows } from './labs.js';
 import { readiness, dayLoad, READY_ITEMS, HABITS } from './vitals.js';
@@ -59,6 +60,11 @@ export function buildTables(s, today) {
     Presupuestos: table(
       ['Mes', 'Presupuesto', 'De', 'Del mes', 'Sobrante del mes pasado', 'Disponible', 'Gastado', 'Queda', 'Lo que sobra pasa'],
       s.money ? budgetRows(s, mk, today).map((r) => [mk, r.c.name, r.isGroup ? 'Familia' : 'Categoría', round2(r.budget), round2(r.carry), round2(r.avail), round2(r.spent), round2(r.left), r.c.roll ? 'Sí' : '']) : [],
+    ),
+    // 2.1: cada cuadre con el banco: lo que sobró o faltó, lo que se esperaba y cómo se explicó.
+    Cuadres: table(
+      ['Fecha', 'Hora', 'Cuenta', 'Tipo', 'Moneda', 'Astra calculaba', 'El banco decía', 'Diferencia', 'Resultado', 'Diferencia RD$', 'Se esperaba RD$', 'Estado', 'Motivo', 'Repartido en', 'Cómo se guardó', 'Nota'],
+      s.money && s.plus ? cuadreRows(s) : [],
     ),
     // Plan para salir de deudas.
     Deudas: table(
